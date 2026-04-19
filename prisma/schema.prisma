@@ -1,8 +1,5 @@
 // ============================================================================
-// ZYRIX CRM — Prisma Schema (Initial Minimal)
-// ============================================================================
-// This is a starter schema with just the Company + User tables.
-// Full schema with all CRM tables will be built in Phase 4.
+// ZYRIX CRM — Prisma Schema (Full CRM)
 // ============================================================================
 
 generator client {
@@ -15,23 +12,28 @@ datasource db {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Companies — Multi-tenant root
+// COMPANIES — Multi-tenant root
 // ─────────────────────────────────────────────────────────────────────────
 model Company {
   id          String   @id @default(uuid())
   name        String
   slug        String   @unique
-  plan        String   @default("free") // free, starter, business, enterprise
+  plan        String   @default("free")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   users       User[]
+  customers   Customer[]
+  deals       Deal[]
+  activities  Activity[]
+  tags        Tag[]
+  whatsappChats WhatsappChat[]
 
   @@map("companies")
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Users — Company members
+// USERS
 // ─────────────────────────────────────────────────────────────────────────
 model User {
   id              String    @id @default(uuid())
@@ -40,7 +42,7 @@ model User {
   passwordHash    String?
   fullName        String
   phone           String?
-  role            String    @default("member") // owner, admin, manager, member
+  role            String    @default("member")
   googleId        String?   @unique
   emailVerified   Boolean   @default(false)
   twoFactorSecret String?
@@ -51,6 +53,9 @@ model User {
 
   company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   refreshTokens   RefreshToken[]
+  ownedCustomers  Customer[] @relation("CustomerOwner")
+  ownedDeals      Deal[]     @relation("DealOwner")
+  activities      Activity[]
 
   @@index([email])
   @@index([googleId])
@@ -59,7 +64,7 @@ model User {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Refresh Tokens — JWT refresh token storage
+// REFRESH TOKENS
 // ─────────────────────────────────────────────────────────────────────────
 model RefreshToken {
   id          String   @id @default(uuid())
@@ -74,4 +79,179 @@ model RefreshToken {
   @@index([userId])
   @@index([token])
   @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CUSTOMERS — CRM contacts
+// ─────────────────────────────────────────────────────────────────────────
+model Customer {
+  id            String   @id @default(uuid())
+  companyId     String
+  ownerId       String?
+
+  // Basic info
+  fullName      String
+  email         String?
+  phone         String?
+  whatsappPhone String?
+  companyName   String?
+  position      String?
+
+  // Location
+  country       String?
+  city          String?
+  address       String?
+
+  // CRM fields
+  source        String?   // "website", "whatsapp", "referral", "cold", etc.
+  status        String   @default("new") // new, qualified, customer, lost
+  lifetimeValue Decimal  @default(0) @db.Decimal(12, 2)
+  notes         String?
+
+  // AI-extracted data (from WhatsApp)
+  aiExtracted   Json?    // { intent, budget, preferences, etc. }
+  lastContactAt DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  owner         User?     @relation("CustomerOwner", fields: [ownerId], references: [id])
+  deals         Deal[]
+  activities    Activity[]
+  tags          CustomerTag[]
+  whatsappChats WhatsappChat[]
+
+  @@index([companyId])
+  @@index([ownerId])
+  @@index([email])
+  @@index([phone])
+  @@index([status])
+  @@map("customers")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DEALS — Sales pipeline entries
+// ─────────────────────────────────────────────────────────────────────────
+model Deal {
+  id            String   @id @default(uuid())
+  companyId     String
+  customerId    String
+  ownerId       String?
+
+  title         String
+  value         Decimal  @default(0) @db.Decimal(12, 2)
+  currency      String   @default("USD")
+  stage         String   @default("lead") // lead, qualified, proposal, negotiation, won, lost
+  probability   Int      @default(0) // 0-100
+  expectedCloseDate DateTime?
+  actualCloseDate   DateTime?
+  description   String?
+  lostReason    String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  owner         User?     @relation("DealOwner", fields: [ownerId], references: [id])
+  activities    Activity[]
+
+  @@index([companyId])
+  @@index([customerId])
+  @@index([ownerId])
+  @@index([stage])
+  @@map("deals")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ACTIVITIES — Call/Email/Note/Task logs
+// ─────────────────────────────────────────────────────────────────────────
+model Activity {
+  id            String   @id @default(uuid())
+  companyId     String
+  userId        String
+  customerId    String?
+  dealId        String?
+
+  type          String   // "note", "call", "email", "meeting", "task", "whatsapp"
+  title         String
+  content       String?
+  metadata      Json?    // { phoneNumber, duration, emailSubject, etc. }
+  completedAt   DateTime?
+  dueDate       DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  deal          Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([customerId])
+  @@index([dealId])
+  @@index([userId])
+  @@index([type])
+  @@map("activities")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TAGS
+// ─────────────────────────────────────────────────────────────────────────
+model Tag {
+  id            String   @id @default(uuid())
+  companyId     String
+  name          String
+  color         String   @default("#0891B2")
+  createdAt     DateTime @default(now())
+
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customers     CustomerTag[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("tags")
+}
+
+model CustomerTag {
+  customerId    String
+  tagId         String
+  createdAt     DateTime @default(now())
+
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag           Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, tagId])
+  @@map("customer_tags")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// WHATSAPP CHATS
+// ─────────────────────────────────────────────────────────────────────────
+model WhatsappChat {
+  id            String   @id @default(uuid())
+  companyId     String
+  customerId    String?
+
+  phoneNumber   String
+  messageText   String
+  direction     String   // "inbound", "outbound"
+  messageId     String?  @unique  // WhatsApp Business API message ID
+  mediaUrl      String?
+  aiProcessed   Boolean  @default(false)
+  aiExtracted   Json?    // { intent, entities, sentiment, etc. }
+
+  timestamp     DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([customerId])
+  @@index([phoneNumber])
+  @@index([timestamp])
+  @@map("whatsapp_chats")
 }
