@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as dealService from "../services/deal.service";
 import type { AuthenticatedRequest } from "../types";
+import { badRequest } from "../middleware/errorHandler";
 
 const createSchema = z.object({
   customerId: z.string().uuid(),
@@ -40,6 +41,12 @@ const listSchema = z.object({
   sortBy: z.enum(["createdAt", "value", "expectedCloseDate"]).optional(),
   sortOrder: z.enum(["asc", "desc"]).optional(),
 });
+
+function getParamId(req: Request, key: string = "id"): string {
+  const value = req.params[key];
+  if (!value) throw badRequest(`Missing parameter: ${key}`);
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export async function create(
   req: Request,
@@ -82,7 +89,7 @@ export async function getOne(
 ): Promise<void> {
   try {
     const authReq = req as AuthenticatedRequest;
-    const { id } = req.params;
+    const id = getParamId(req);
     const deal = await dealService.getDealById(authReq.user.companyId, id);
     res.json({ success: true, data: deal });
   } catch (error) {
@@ -97,7 +104,7 @@ export async function update(
 ): Promise<void> {
   try {
     const authReq = req as AuthenticatedRequest;
-    const { id } = req.params;
+    const id = getParamId(req);
     const dto = updateSchema.parse(req.body);
     const deal = await dealService.updateDeal(
       authReq.user.companyId,
@@ -117,7 +124,7 @@ export async function remove(
 ): Promise<void> {
   try {
     const authReq = req as AuthenticatedRequest;
-    const { id } = req.params;
+    const id = getParamId(req);
     const result = await dealService.deleteDeal(authReq.user.companyId, id);
     res.json({ success: true, data: result, message: "Deal deleted" });
   } catch (error) {

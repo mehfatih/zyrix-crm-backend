@@ -5,12 +5,9 @@ import {
   generateReplySuggestion,
   summarizeConversation,
 } from "../services/ai.service";
+import { prisma } from "../config/database";
 import type { AuthenticatedRequest } from "../types";
 import { badRequest } from "../middleware/errorHandler";
-
-// ============================================================================
-// WHATSAPP CONTROLLER
-// ============================================================================
 
 const incomingMessageSchema = z.object({
   phoneNumber: z.string().min(5),
@@ -31,11 +28,12 @@ const suggestReplySchema = z.object({
   language: z.enum(["ar", "en", "tr"]).optional().default("en"),
 });
 
-// ─────────────────────────────────────────────────────────────────────────
-// POST /api/whatsapp/message/incoming
-// Simulates an incoming WhatsApp message (for testing; real integration
-// will use webhook below)
-// ─────────────────────────────────────────────────────────────────────────
+function getParamId(req: Request, key: string = "customerId"): string {
+  const value = req.params[key];
+  if (!value) throw badRequest(`Missing parameter: ${key}`);
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export async function receiveIncoming(
   req: Request,
   res: Response,
@@ -66,10 +64,6 @@ export async function receiveIncoming(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// POST /api/whatsapp/message/outgoing
-// Log an outgoing message (manual or from UI)
-// ─────────────────────────────────────────────────────────────────────────
 export async function sendOutgoing(
   req: Request,
   res: Response,
@@ -79,9 +73,7 @@ export async function sendOutgoing(
     const authReq = req as AuthenticatedRequest;
     const dto = outgoingMessageSchema.parse(req.body);
 
-    const customer = await (
-      await import("../config/database")
-    ).prisma.customer.findFirst({
+    const customer = await prisma.customer.findFirst({
       where: { id: dto.customerId, companyId: authReq.user.companyId },
     });
 
@@ -102,9 +94,6 @@ export async function sendOutgoing(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// GET /api/whatsapp/customers/:customerId/chats
-// ─────────────────────────────────────────────────────────────────────────
 export async function getChatHistory(
   req: Request,
   res: Response,
@@ -112,7 +101,7 @@ export async function getChatHistory(
 ): Promise<void> {
   try {
     const authReq = req as AuthenticatedRequest;
-    const { customerId } = req.params;
+    const customerId = getParamId(req);
     const limit = Number(req.query.limit) || 50;
 
     const chats = await whatsappService.getCustomerChatHistory(
@@ -127,9 +116,6 @@ export async function getChatHistory(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// POST /api/whatsapp/ai/suggest-reply
-// ─────────────────────────────────────────────────────────────────────────
 export async function aiSuggestReply(
   req: Request,
   res: Response,
@@ -148,9 +134,6 @@ export async function aiSuggestReply(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// POST /api/whatsapp/ai/summarize/:customerId
-// ─────────────────────────────────────────────────────────────────────────
 export async function aiSummarize(
   req: Request,
   res: Response,
@@ -158,7 +141,7 @@ export async function aiSummarize(
 ): Promise<void> {
   try {
     const authReq = req as AuthenticatedRequest;
-    const { customerId } = req.params;
+    const customerId = getParamId(req);
 
     const chats = await whatsappService.getCustomerChatHistory(
       authReq.user.companyId,

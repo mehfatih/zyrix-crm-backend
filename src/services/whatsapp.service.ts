@@ -5,13 +5,6 @@ import {
 } from "./ai.service";
 import type { Prisma } from "@prisma/client";
 
-// ============================================================================
-// WHATSAPP SERVICE
-// ============================================================================
-// Handles incoming WhatsApp messages, auto-extracts data, creates/updates
-// customers, and logs activities.
-// ============================================================================
-
 export interface IncomingMessage {
   phoneNumber: string;
   messageText: string;
@@ -27,7 +20,7 @@ export async function processIncomingMessage(
   companyId: string,
   message: IncomingMessage
 ) {
-  // 1. Check if customer exists by phone/whatsappPhone
+  // 1. Check if customer exists
   let customer = await prisma.customer.findFirst({
     where: {
       companyId,
@@ -38,7 +31,7 @@ export async function processIncomingMessage(
     },
   });
 
-  // 2. Get previous messages for context (last 5)
+  // 2. Get previous messages for context
   const previousMessages = customer
     ? await prisma.whatsappChat.findMany({
         where: { companyId, customerId: customer.id },
@@ -77,19 +70,17 @@ export async function processIncomingMessage(
         country: extracted.location,
         source: "whatsapp",
         status: "new",
-        aiExtracted: extracted as Prisma.InputJsonValue,
+        aiExtracted: extracted as unknown as Prisma.InputJsonValue,
         lastContactAt: message.timestamp || new Date(),
       },
     });
   } else {
-    // Update existing customer with new extracted data (only filling empty fields)
+    // Update existing customer
     const updates: Prisma.CustomerUpdateInput = {
       lastContactAt: message.timestamp || new Date(),
     };
 
-    if (!customer.fullName.startsWith("WhatsApp ") && extracted.fullName) {
-      // Keep name as is — don't override manual name
-    } else if (customer.fullName.startsWith("WhatsApp ") && extracted.fullName) {
+    if (customer.fullName.startsWith("WhatsApp ") && extracted.fullName) {
       updates.fullName = extracted.fullName;
     }
 
@@ -107,11 +98,12 @@ export async function processIncomingMessage(
     }
 
     // Merge AI data
-    updates.aiExtracted = {
+    const mergedAiData = {
       ...((customer.aiExtracted as object) || {}),
       latest: extracted,
       lastUpdated: new Date().toISOString(),
-    } as Prisma.InputJsonValue;
+    };
+    updates.aiExtracted = mergedAiData as unknown as Prisma.InputJsonValue;
 
     customer = await prisma.customer.update({
       where: { id: customer.id },
@@ -130,7 +122,7 @@ export async function processIncomingMessage(
       messageId: message.messageId,
       mediaUrl: message.mediaUrl,
       aiProcessed: true,
-      aiExtracted: extracted as Prisma.InputJsonValue,
+      aiExtracted: extracted as unknown as Prisma.InputJsonValue,
       timestamp: message.timestamp || new Date(),
     },
   });
@@ -146,17 +138,14 @@ export async function processIncomingMessage(
       content: message.messageText,
       metadata: {
         phoneNumber: message.phoneNumber,
-        extracted: extracted as Prisma.JsonObject,
-      } as Prisma.InputJsonValue,
+        extracted: extracted,
+      } as unknown as Prisma.InputJsonValue,
     },
   });
 
   return { customer, chat, extracted };
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Store outgoing message
-// ─────────────────────────────────────────────────────────────────────────
 export async function logOutgoingMessage(
   companyId: string,
   customerId: string,
@@ -175,9 +164,6 @@ export async function logOutgoingMessage(
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Get chat history for a customer
-// ─────────────────────────────────────────────────────────────────────────
 export async function getCustomerChatHistory(
   companyId: string,
   customerId: string,
@@ -190,9 +176,6 @@ export async function getCustomerChatHistory(
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Helper: get the owner user of the company (fallback for auto-assignment)
-// ─────────────────────────────────────────────────────────────────────────
 async function getFirstOwnerId(companyId: string): Promise<string> {
   const owner = await prisma.user.findFirst({
     where: { companyId, role: "owner" },

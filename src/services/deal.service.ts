@@ -22,9 +22,17 @@ export interface CreateDealDto {
   description?: string;
 }
 
-export interface UpdateDealDto extends Partial<CreateDealDto> {
+// Updated to accept null for date fields (to match Zod schema)
+export interface UpdateDealDto {
+  title?: string;
+  value?: number;
+  currency?: string;
+  stage?: string;
+  probability?: number;
+  expectedCloseDate?: string | null;
+  actualCloseDate?: string | null;
+  description?: string;
   lostReason?: string;
-  actualCloseDate?: string;
   ownerId?: string | null;
 }
 
@@ -46,7 +54,6 @@ export async function createDeal(
   userId: string,
   dto: CreateDealDto
 ) {
-  // Validate customer exists in the same company
   const customer = await prisma.customer.findFirst({
     where: { id: dto.customerId, companyId },
   });
@@ -155,7 +162,7 @@ export async function getDealById(companyId: string, dealId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// UPDATE (includes stage transitions)
+// UPDATE
 // ─────────────────────────────────────────────────────────────────────────
 export async function updateDeal(
   companyId: string,
@@ -172,7 +179,7 @@ export async function updateDeal(
   }
 
   // Auto-set actualCloseDate when moving to won/lost
-  const actualCloseDate =
+  const autoCloseDate =
     (dto.stage === "won" || dto.stage === "lost") && !existing.actualCloseDate
       ? new Date()
       : undefined;
@@ -190,29 +197,39 @@ export async function updateDeal(
     });
   }
 
+  const updateData: Prisma.DealUpdateInput = {};
+  if (dto.title !== undefined) updateData.title = dto.title;
+  if (dto.value !== undefined) updateData.value = dto.value;
+  if (dto.currency !== undefined) updateData.currency = dto.currency;
+  if (dto.stage !== undefined) updateData.stage = dto.stage;
+  if (dto.probability !== undefined) updateData.probability = dto.probability;
+  if (dto.description !== undefined) updateData.description = dto.description;
+  if (dto.lostReason !== undefined) updateData.lostReason = dto.lostReason;
+
+  // Handle date fields (can be string, null, or undefined)
+  if (dto.expectedCloseDate !== undefined) {
+    updateData.expectedCloseDate = dto.expectedCloseDate
+      ? new Date(dto.expectedCloseDate)
+      : null;
+  }
+  if (dto.actualCloseDate !== undefined) {
+    updateData.actualCloseDate = dto.actualCloseDate
+      ? new Date(dto.actualCloseDate)
+      : null;
+  } else if (autoCloseDate) {
+    updateData.actualCloseDate = autoCloseDate;
+  }
+
+  // Handle owner (can be null to unassign)
+  if (dto.ownerId !== undefined) {
+    updateData.owner = dto.ownerId
+      ? { connect: { id: dto.ownerId } }
+      : { disconnect: true };
+  }
+
   return prisma.deal.update({
     where: { id: dealId },
-    data: {
-      ...(dto.title !== undefined && { title: dto.title }),
-      ...(dto.value !== undefined && { value: dto.value }),
-      ...(dto.currency !== undefined && { currency: dto.currency }),
-      ...(dto.stage !== undefined && { stage: dto.stage }),
-      ...(dto.probability !== undefined && { probability: dto.probability }),
-      ...(dto.expectedCloseDate !== undefined && {
-        expectedCloseDate: dto.expectedCloseDate
-          ? new Date(dto.expectedCloseDate)
-          : null,
-      }),
-      ...(actualCloseDate && { actualCloseDate }),
-      ...(dto.actualCloseDate !== undefined && {
-        actualCloseDate: dto.actualCloseDate
-          ? new Date(dto.actualCloseDate)
-          : null,
-      }),
-      ...(dto.description !== undefined && { description: dto.description }),
-      ...(dto.lostReason !== undefined && { lostReason: dto.lostReason }),
-      ...(dto.ownerId !== undefined && { ownerId: dto.ownerId }),
-    },
+    data: updateData,
     include: {
       customer: { select: { id: true, fullName: true, companyName: true } },
       owner: { select: { id: true, fullName: true } },
@@ -234,7 +251,7 @@ export async function deleteDeal(companyId: string, dealId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// PIPELINE VIEW (grouped by stage)
+// PIPELINE
 // ─────────────────────────────────────────────────────────────────────────
 export async function getPipeline(companyId: string) {
   const deals = await prisma.deal.findMany({
@@ -251,7 +268,6 @@ export async function getPipeline(companyId: string) {
     orderBy: { createdAt: "desc" },
   });
 
-  // Group by stage
   const pipeline: Record<string, typeof deals> = {
     lead: [],
     qualified: [],
@@ -265,7 +281,6 @@ export async function getPipeline(companyId: string) {
     }
   });
 
-  // Calculate totals per stage
   const summary = Object.entries(pipeline).map(([stage, stageDeals]) => ({
     stage,
     count: stageDeals.length,

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as activityService from "../services/activity.service";
 import type { AuthenticatedRequest } from "../types";
+import { badRequest } from "../middleware/errorHandler";
 
 const createSchema = z.object({
   type: z.enum(["note", "call", "email", "meeting", "task", "whatsapp"]),
@@ -21,6 +22,12 @@ const listSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
+
+function getParamId(req: Request, key: string = "id"): string {
+  const value = req.params[key];
+  if (!value) throw badRequest(`Missing parameter: ${key}`);
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export async function create(
   req: Request,
@@ -70,7 +77,7 @@ export async function complete(
 ): Promise<void> {
   try {
     const authReq = req as AuthenticatedRequest;
-    const { id } = req.params;
+    const id = getParamId(req);
     const activity = await activityService.completeActivity(
       authReq.user.companyId,
       id
@@ -92,7 +99,7 @@ export async function remove(
 ): Promise<void> {
   try {
     const authReq = req as AuthenticatedRequest;
-    const { id } = req.params;
+    const id = getParamId(req);
     const result = await activityService.deleteActivity(
       authReq.user.companyId,
       id
