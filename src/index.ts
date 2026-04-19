@@ -1,28 +1,20 @@
-import "dotenv/config";
-import express, { type Express, type Request, type Response } from "express";
+import express, { type Express } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 
+import { env, corsOrigins, isDevelopment } from "./config/env";
+import { prisma } from "./config/database";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
+
+// Routes
+import authRoutes from "./routes/auth.routes";
+
 // ============================================================================
 // ZYRIX CRM BACKEND — Entry Point
 // ============================================================================
-// Initial minimal Express server.
-// Full routes, middleware, and auth will be added in subsequent files.
-// ============================================================================
 
 const app: Express = express();
-
-// ─────────────────────────────────────────────────────────────────────────
-// Configuration
-// ─────────────────────────────────────────────────────────────────────────
-const PORT = Number(process.env.PORT) || 4000;
-const NODE_ENV = process.env.NODE_ENV || "development";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
-
-const corsOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
-  : [FRONTEND_URL];
 
 // ─────────────────────────────────────────────────────────────────────────
 // Middleware
@@ -41,7 +33,7 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-if (NODE_ENV === "development") {
+if (isDevelopment) {
   app.use(morgan("dev"));
 } else {
   app.use(morgan("combined"));
@@ -50,75 +42,69 @@ if (NODE_ENV === "development") {
 // ─────────────────────────────────────────────────────────────────────────
 // Health Check Endpoints
 // ─────────────────────────────────────────────────────────────────────────
-app.get("/", (_req: Request, res: Response) => {
+app.get("/", (_req, res) => {
   res.json({
     name: "Zyrix CRM API",
     version: "0.1.0",
     status: "operational",
-    environment: NODE_ENV,
+    environment: env.NODE_ENV,
     timestamp: new Date().toISOString(),
     documentation: "https://crm.zyrix.co/api-docs",
   });
 });
 
-app.get("/health", (_req: Request, res: Response) => {
-  res.json({
-    status: "healthy",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
+app.get("/health", async (_req, res) => {
+  try {
+    // Check DB connection
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({
+      status: "healthy",
+      database: "connected",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: "unhealthy",
+      database: "disconnected",
+      error: error instanceof Error ? error.message : "Unknown error",
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
-app.get("/api", (_req: Request, res: Response) => {
+app.get("/api", (_req, res) => {
   res.json({
     message: "Zyrix CRM API v0.1.0",
     endpoints: {
       health: "/health",
-      auth: "/api/auth (coming soon)",
-      customers: "/api/customers (coming soon)",
-      deals: "/api/deals (coming soon)",
+      auth: "/api/auth",
+      authEndpoints: {
+        signup: "POST /api/auth/signup",
+        signin: "POST /api/auth/signin",
+        refresh: "POST /api/auth/refresh",
+        logout: "POST /api/auth/logout",
+        me: "GET /api/auth/me (requires Bearer token)",
+      },
     },
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// 404 Handler
+// API Routes
 // ─────────────────────────────────────────────────────────────────────────
-app.use((_req: Request, res: Response) => {
-  res.status(404).json({
-    error: "Not Found",
-    message: "The requested resource does not exist",
-    timestamp: new Date().toISOString(),
-  });
-});
+app.use("/api/auth", authRoutes);
 
 // ─────────────────────────────────────────────────────────────────────────
-// Global Error Handler
+// Error Handling
 // ─────────────────────────────────────────────────────────────────────────
-app.use(
-  (
-    err: Error,
-    _req: Request,
-    res: Response,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _next: express.NextFunction
-  ) => {
-    console.error("[ERROR]", err);
-    res.status(500).json({
-      error: "Internal Server Error",
-      message:
-        NODE_ENV === "development"
-          ? err.message
-          : "An unexpected error occurred",
-      timestamp: new Date().toISOString(),
-    });
-  }
-);
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Server Startup
 // ─────────────────────────────────────────────────────────────────────────
-const server = app.listen(PORT, () => {
+const server = app.listen(env.PORT, () => {
   console.log("");
   console.log("╔══════════════════════════════════════════════════╗");
   console.log("║                                                  ║");
@@ -126,30 +112,31 @@ const server = app.listen(PORT, () => {
   console.log("║                                                  ║");
   console.log("╚══════════════════════════════════════════════════╝");
   console.log("");
-  console.log(`  Environment:  ${NODE_ENV}`);
-  console.log(`  Port:         ${PORT}`);
-  console.log(`  URL:          http://localhost:${PORT}`);
-  console.log(`  Frontend:     ${FRONTEND_URL}`);
+  console.log(`  Environment:  ${env.NODE_ENV}`);
+  console.log(`  Port:         ${env.PORT}`);
+  console.log(`  URL:          ${env.API_URL}`);
+  console.log(`  Frontend:     ${env.FRONTEND_URL}`);
   console.log(`  CORS:         ${corsOrigins.join(", ")}`);
   console.log("");
-  console.log("  Available endpoints:");
-  console.log(`    GET  http://localhost:${PORT}/`);
-  console.log(`    GET  http://localhost:${PORT}/health`);
-  console.log(`    GET  http://localhost:${PORT}/api`);
+  console.log("  Auth endpoints:");
+  console.log(`    POST  ${env.API_URL}/api/auth/signup`);
+  console.log(`    POST  ${env.API_URL}/api/auth/signin`);
+  console.log(`    POST  ${env.API_URL}/api/auth/refresh`);
+  console.log(`    POST  ${env.API_URL}/api/auth/logout`);
+  console.log(`    GET   ${env.API_URL}/api/auth/me`);
   console.log("");
 });
 
 // ─────────────────────────────────────────────────────────────────────────
 // Graceful Shutdown
 // ─────────────────────────────────────────────────────────────────────────
-const shutdown = (signal: string) => {
+const shutdown = async (signal: string) => {
   console.log(`\n[${signal}] Shutting down gracefully...`);
+  await prisma.$disconnect();
   server.close(() => {
     console.log("Server closed");
     process.exit(0);
   });
-
-  // Force exit if shutdown takes too long
   setTimeout(() => {
     console.error("Forced shutdown after timeout");
     process.exit(1);
