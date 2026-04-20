@@ -106,7 +106,7 @@ export function requireRole(
       return;
     }
 
-    if (!allowedRoles.includes(authReq.user.role)) {
+    if (!allowedRoles.includes(authReq.user.role as any)) {
       res.status(403).json({
         success: false,
         error: {

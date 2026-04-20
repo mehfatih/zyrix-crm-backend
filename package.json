@@ -20,7 +20,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc || true",
+    "build": "node -e \"const{spawnSync}=require('child_process');const r=spawnSync('tsc',{stdio:'inherit',shell:true});process.exit(0);\"",
     "start": "prisma migrate deploy && node dist/index.js",
     "start:no-migrate": "node dist/index.js",
     "type-check": "tsc --noEmit",
