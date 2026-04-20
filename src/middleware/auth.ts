@@ -48,7 +48,7 @@ export function authenticateToken(
       userId: decoded.userId,
       companyId: decoded.companyId,
       email: decoded.email,
-      role: decoded.role as "owner" | "admin" | "manager" | "member",
+      role: decoded.role as "super_admin" | "owner" | "admin" | "manager" | "member",
     };
 
     next();
@@ -90,7 +90,7 @@ export function authenticateToken(
 // Role-Based Access Control (RBAC)
 // ─────────────────────────────────────────────────────────────────────────
 export function requireRole(
-  ...allowedRoles: Array<"owner" | "admin" | "manager" | "member">
+  ...allowedRoles: Array<"super_admin" | "owner" | "admin" | "manager" | "member">
 ) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const authReq = req as AuthenticatedRequest;

@@ -202,7 +202,7 @@ export async function stats(_req: Request, res: Response, next: NextFunction) {
         users: { total: totalUsers, active: activeUsers },
         dataCounts: { customers: totalCustomers, deals: totalDeals },
         subscriptions: { total: totalSubscriptions, active: activeSubscriptions },
-        plansDistribution: plansDistribution.map((p) => ({
+        plansDistribution: plansDistribution.map((p: { plan: string; _count: { _all: number } }) => ({
           plan: p.plan,
           count: p._count._all,
         })),
@@ -228,7 +228,7 @@ export async function listCompanies(req: Request, res: Response, next: NextFunct
 
 export async function getCompany(req: Request, res: Response, next: NextFunction) {
   try {
-    const company = await CompaniesSvc.getCompany(req.params.id);
+    const company = await CompaniesSvc.getCompany((req.params.id as string));
     res.status(200).json({ success: true, data: company });
   } catch (err) {
     next(err);
@@ -239,7 +239,7 @@ export async function updateCompany(req: Request, res: Response, next: NextFunct
   try {
     const dto = updateCompanySchema.parse(req.body);
     const actor = (req as AuthenticatedRequest).user.userId;
-    const updated = await CompaniesSvc.updateCompany(req.params.id, actor, dto);
+    const updated = await CompaniesSvc.updateCompany((req.params.id as string), actor, dto);
     res.status(200).json({ success: true, data: updated });
   } catch (err) {
     next(err);
@@ -250,7 +250,7 @@ export async function suspendCompany(req: Request, res: Response, next: NextFunc
   try {
     const { reason } = suspendCompanySchema.parse(req.body ?? {});
     const actor = (req as AuthenticatedRequest).user.userId;
-    const updated = await CompaniesSvc.suspendCompany(req.params.id, actor, reason);
+    const updated = await CompaniesSvc.suspendCompany((req.params.id as string), actor, reason);
     res.status(200).json({ success: true, data: updated });
   } catch (err) {
     next(err);
@@ -260,7 +260,7 @@ export async function suspendCompany(req: Request, res: Response, next: NextFunc
 export async function resumeCompany(req: Request, res: Response, next: NextFunction) {
   try {
     const actor = (req as AuthenticatedRequest).user.userId;
-    const updated = await CompaniesSvc.resumeCompany(req.params.id, actor);
+    const updated = await CompaniesSvc.resumeCompany((req.params.id as string), actor);
     res.status(200).json({ success: true, data: updated });
   } catch (err) {
     next(err);
@@ -270,7 +270,7 @@ export async function resumeCompany(req: Request, res: Response, next: NextFunct
 export async function deleteCompany(req: Request, res: Response, next: NextFunction) {
   try {
     const actor = (req as AuthenticatedRequest).user.userId;
-    const result = await CompaniesSvc.deleteCompany(req.params.id, actor);
+    const result = await CompaniesSvc.deleteCompany((req.params.id as string), actor);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
@@ -280,7 +280,7 @@ export async function deleteCompany(req: Request, res: Response, next: NextFunct
 export async function impersonateCompany(req: Request, res: Response, next: NextFunction) {
   try {
     const actor = (req as AuthenticatedRequest).user.userId;
-    const result = await CompaniesSvc.impersonateCompanyOwner(req.params.id, actor);
+    const result = await CompaniesSvc.impersonateCompanyOwner((req.params.id as string), actor);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
@@ -302,7 +302,7 @@ export async function listUsers(req: Request, res: Response, next: NextFunction)
 
 export async function getUser(req: Request, res: Response, next: NextFunction) {
   try {
-    const user = await UsersSvc.getUser(req.params.id);
+    const user = await UsersSvc.getUser((req.params.id as string));
     res.status(200).json({ success: true, data: user });
   } catch (err) {
     next(err);
@@ -313,7 +313,7 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
   try {
     const dto = updateUserSchema.parse(req.body);
     const actor = (req as AuthenticatedRequest).user.userId;
-    const updated = await UsersSvc.updateUser(req.params.id, actor, dto);
+    const updated = await UsersSvc.updateUser((req.params.id as string), actor, dto);
     res.status(200).json({ success: true, data: updated });
   } catch (err) {
     next(err);
@@ -324,7 +324,7 @@ export async function disableUser(req: Request, res: Response, next: NextFunctio
   try {
     const { reason } = disableUserSchema.parse(req.body ?? {});
     const actor = (req as AuthenticatedRequest).user.userId;
-    const updated = await UsersSvc.disableUser(req.params.id, actor, reason);
+    const updated = await UsersSvc.disableUser((req.params.id as string), actor, reason);
     res.status(200).json({ success: true, data: updated });
   } catch (err) {
     next(err);
@@ -334,7 +334,7 @@ export async function disableUser(req: Request, res: Response, next: NextFunctio
 export async function enableUser(req: Request, res: Response, next: NextFunction) {
   try {
     const actor = (req as AuthenticatedRequest).user.userId;
-    const updated = await UsersSvc.enableUser(req.params.id, actor);
+    const updated = await UsersSvc.enableUser((req.params.id as string), actor);
     res.status(200).json({ success: true, data: updated });
   } catch (err) {
     next(err);
@@ -344,7 +344,7 @@ export async function enableUser(req: Request, res: Response, next: NextFunction
 export async function forceResetPassword(req: Request, res: Response, next: NextFunction) {
   try {
     const actor = (req as AuthenticatedRequest).user.userId;
-    const result = await UsersSvc.forceResetPassword(req.params.id, actor);
+    const result = await UsersSvc.forceResetPassword((req.params.id as string), actor);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
@@ -366,7 +366,7 @@ export async function listPlansAdmin(req: Request, res: Response, next: NextFunc
 
 export async function getPlanAdmin(req: Request, res: Response, next: NextFunction) {
   try {
-    const plan = await PlansSvc.getPlan(req.params.id);
+    const plan = await PlansSvc.getPlan((req.params.id as string));
     res.status(200).json({ success: true, data: plan });
   } catch (err) {
     next(err);
@@ -377,7 +377,7 @@ export async function updatePlanAdmin(req: Request, res: Response, next: NextFun
   try {
     const dto = updatePlanSchema.parse(req.body);
     const actor = (req as AuthenticatedRequest).user.userId;
-    const updated = await PlansSvc.updatePlan(req.params.id, actor, dto);
+    const updated = await PlansSvc.updatePlan((req.params.id as string), actor, dto);
     res.status(200).json({ success: true, data: updated });
   } catch (err) {
     next(err);
@@ -413,7 +413,7 @@ export async function grantOverride(req: Request, res: Response, next: NextFunct
 export async function revokeOverride(req: Request, res: Response, next: NextFunction) {
   try {
     const actor = (req as AuthenticatedRequest).user.userId;
-    const result = await PlansSvc.revokeOverride(req.params.id, actor);
+    const result = await PlansSvc.revokeOverride((req.params.id as string), actor);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
