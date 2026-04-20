@@ -16,6 +16,7 @@ import quoteRoutes from "./routes/quote.routes";
 import loyaltyRoutes from "./routes/loyalty.routes";
 import taxRoutes from "./routes/tax.routes";
 import cashflowRoutes from "./routes/cashflow.routes";
+import followupRoutes from "./routes/followup.routes";
 import whatsappRoutes from "./routes/whatsapp.routes";
 import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
@@ -86,6 +87,7 @@ app.get("/api", (_req, res) => {
       loyalty: "/api/loyalty",
       tax: "/api/tax",
       cashflow: "/api/cashflow",
+      followup: "/api/followup",
       whatsapp: "/api/whatsapp",
       admin: "/api/admin",
       public: "/api/public",
@@ -103,6 +105,7 @@ app.use("/api/quotes", quoteRoutes);
 app.use("/api/loyalty", loyaltyRoutes);
 app.use("/api/tax", taxRoutes);
 app.use("/api/cashflow", cashflowRoutes);
+app.use("/api/followup", followupRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);

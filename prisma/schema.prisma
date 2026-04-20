@@ -43,6 +43,7 @@ model Company {
   loyaltyProgram LoyaltyProgram?
   loyaltyTxns    LoyaltyTransaction[]
   taxRates       TaxRate[]
+  followupSettings FollowupSettings?
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -731,4 +732,25 @@ model TaxRate {
   @@index([isActive])
   @@index([countryCode])
   @@map("tax_rates")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SMART FOLLOW-UP SETTINGS
+// ─────────────────────────────────────────────────────────────────────────
+model FollowupSettings {
+  id        String @id @default(uuid())
+  companyId String @unique
+
+  isEnabled       Boolean @default(true)
+  warningDays     Int     @default(5)
+  criticalDays    Int     @default(10)
+  includeStatuses Json?
+  excludeInactive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("followup_settings")
 }
