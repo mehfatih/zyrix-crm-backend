@@ -13,6 +13,7 @@ import dealRoutes from "./routes/deal.routes";
 import activityRoutes from "./routes/activity.routes";
 import taskRoutes from "./routes/task.routes";
 import quoteRoutes from "./routes/quote.routes";
+import loyaltyRoutes from "./routes/loyalty.routes";
 import whatsappRoutes from "./routes/whatsapp.routes";
 import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
@@ -80,6 +81,7 @@ app.get("/api", (_req, res) => {
       activities: "/api/activities",
       tasks: "/api/tasks",
       quotes: "/api/quotes",
+      loyalty: "/api/loyalty",
       whatsapp: "/api/whatsapp",
       admin: "/api/admin",
       public: "/api/public",
@@ -94,6 +96,7 @@ app.use("/api/deals", dealRoutes);
 app.use("/api/activities", activityRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/quotes", quoteRoutes);
+app.use("/api/loyalty", loyaltyRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);

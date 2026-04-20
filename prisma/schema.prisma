@@ -40,6 +40,8 @@ model Company {
   activities     Activity[]
   tasks          Task[]
   quotes         Quote[]
+  loyaltyProgram LoyaltyProgram?
+  loyaltyTxns    LoyaltyTransaction[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -92,6 +94,7 @@ model User {
   assignedTasks   Task[]          @relation("TaskAssignee")
   createdTasks    Task[]          @relation("TaskCreator")
   createdQuotes   Quote[]         @relation("QuoteCreator")
+  loyaltyTxns     LoyaltyTransaction[] @relation("LoyaltyTxnCreator")
 
   @@index([email])
   @@index([googleId])
@@ -155,6 +158,7 @@ model Customer {
   activities    Activity[]
   tasks         Task[]
   quotes        Quote[]
+  loyaltyTxns   LoyaltyTransaction[]
   tags          CustomerTag[]
   whatsappChats WhatsappChat[]
 
@@ -646,4 +650,58 @@ model QuoteItem {
 
   @@index([quoteId])
   @@map("quote_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CUSTOMER LOYALTY
+// ─────────────────────────────────────────────────────────────────────────
+model LoyaltyProgram {
+  id        String @id @default(uuid())
+  companyId String @unique
+
+  name          String  @default("Loyalty Program")
+  isActive      Boolean @default(true)
+  pointsPerUnit Decimal @default(1) @db.Decimal(10, 4)
+  currency      String  @default("TRY")
+  minRedeem     Int     @default(0)
+  redeemValue   Decimal @default(0.01) @db.Decimal(10, 4)
+
+  tiers Json?
+  rules Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions LoyaltyTransaction[]
+
+  @@map("loyalty_programs")
+}
+
+model LoyaltyTransaction {
+  id          String  @id @default(uuid())
+  companyId   String
+  customerId  String
+  programId   String
+  createdById String?
+
+  points        Int
+  type          String  @default("earn") // earn | redeem | adjust | expire
+  reason        String?
+  referenceType String?
+  referenceId   String?
+
+  createdAt DateTime @default(now())
+
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer  Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  program   LoyaltyProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation("LoyaltyTxnCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([customerId])
+  @@index([programId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("loyalty_transactions")
 }
