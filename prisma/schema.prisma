@@ -42,6 +42,7 @@ model Company {
   quotes         Quote[]
   loyaltyProgram LoyaltyProgram?
   loyaltyTxns    LoyaltyTransaction[]
+  taxRates       TaxRate[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -704,4 +705,30 @@ model LoyaltyTransaction {
   @@index([type])
   @@index([createdAt])
   @@map("loyalty_transactions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TAX ENGINE
+// ─────────────────────────────────────────────────────────────────────────
+model TaxRate {
+  id          String  @id @default(uuid())
+  companyId   String
+
+  name        String
+  code        String?
+  countryCode String?
+  ratePercent Decimal @default(0) @db.Decimal(6, 3)
+  isDefault   Boolean @default(false)
+  isActive    Boolean @default(true)
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([isActive])
+  @@index([countryCode])
+  @@map("tax_rates")
 }
