@@ -31,6 +31,19 @@ const envSchema = z.object({
 
   GEMINI_API_KEY: z.string().optional(),
 
+  // Admin Panel Bootstrap
+  ADMIN_BOOTSTRAP_TOKEN: z.string().optional(),
+  SUPER_ADMIN_EMAILS: z.string().optional(),
+  SUPER_ADMIN_PASSWORD: z.string().optional(),
+
+  // Payment Gateways
+  IYZICO_API_KEY: z.string().optional(),
+  IYZICO_SECRET_KEY: z.string().optional(),
+  IYZICO_BASE_URL: z.string().default("https://sandbox-api.iyzipay.com"),
+  HYPERPAY_ACCESS_TOKEN: z.string().optional(),
+  HYPERPAY_ENTITY_ID: z.string().optional(),
+  HYPERPAY_BASE_URL: z.string().default("https://test.oppwa.com"),
+
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(100),

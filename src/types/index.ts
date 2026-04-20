@@ -7,11 +7,13 @@ import type { Request } from "express";
 // Used in route handlers that require authentication.
 // ============================================================================
 
+export type UserRole = "super_admin" | "owner" | "admin" | "manager" | "member";
+
 export interface AuthUser {
   userId: string;
   companyId: string;
   email: string;
-  role: "owner" | "admin" | "manager" | "member";
+  role: UserRole;
 }
 
 export interface AuthenticatedRequest extends Request {

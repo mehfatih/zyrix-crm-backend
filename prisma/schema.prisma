@@ -1,5 +1,5 @@
 // ============================================================================
-// ZYRIX CRM — Prisma Schema (Full CRM)
+// ZYRIX CRM — Prisma Schema (Full CRM + Admin Panel)
 // ============================================================================
 
 generator client {
@@ -15,20 +15,39 @@ datasource db {
 // COMPANIES — Multi-tenant root
 // ─────────────────────────────────────────────────────────────────────────
 model Company {
-  id          String   @id @default(uuid())
-  name        String
-  slug        String   @unique
-  plan        String   @default("free")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique
+  plan          String    @default("free")
 
-  users       User[]
-  customers   Customer[]
-  deals       Deal[]
-  activities  Activity[]
-  tags        Tag[]
-  whatsappChats WhatsappChat[]
+  status        String    @default("active")
+  trialEndsAt   DateTime?
+  suspendedAt   DateTime?
+  suspendReason String?
+  deletedAt     DateTime?
 
+  billingEmail String?
+  country      String?
+  industry     String?
+  size         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  customers      Customer[]
+  deals          Deal[]
+  activities     Activity[]
+  tags           Tag[]
+  whatsappChats  WhatsappChat[]
+  subscriptions  Subscription[]
+  payments       Payment[]
+  planOverrides  PlanOverride[]
+  supportTickets SupportTicket[]
+  auditLogs      AuditLog[]
+
+  @@index([status])
+  @@index([plan])
   @@map("companies")
 }
 
@@ -36,34 +55,44 @@ model Company {
 // USERS
 // ─────────────────────────────────────────────────────────────────────────
 model User {
-  id              String    @id @default(uuid())
-  companyId       String
-  email           String    @unique
-  passwordHash    String?
-  fullName        String
-  phone           String?
-  role            String    @default("member")
-  googleId        String?   @unique
-  emailVerified   Boolean   @default(false)
-  twoFactorSecret String?
-  twoFactorEnabled Boolean  @default(false)
+  id                       String    @id @default(uuid())
+  companyId                String
+  email                    String    @unique
+  passwordHash             String?
+  fullName                 String
+  phone                    String?
+  role                     String    @default("member")
+  googleId                 String?   @unique
+  emailVerified            Boolean   @default(false)
+  twoFactorSecret          String?
+  twoFactorEnabled         Boolean   @default(false)
   emailVerificationToken   String?   @unique
   emailVerificationExpires DateTime?
   passwordResetToken       String?   @unique
   passwordResetExpires     DateTime?
-  lastLoginAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  lastLoginAt              DateTime?
 
-  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  status         String    @default("active")
+  disabledAt     DateTime?
+  disabledReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   refreshTokens   RefreshToken[]
-  ownedCustomers  Customer[] @relation("CustomerOwner")
-  ownedDeals      Deal[]     @relation("DealOwner")
+  ownedCustomers  Customer[]      @relation("CustomerOwner")
+  ownedDeals      Deal[]          @relation("DealOwner")
   activities      Activity[]
+  auditLogs       AuditLog[]
+  assignedTickets SupportTicket[] @relation("TicketAssignee")
+  createdTickets  SupportTicket[] @relation("TicketCreator")
 
   @@index([email])
   @@index([googleId])
   @@index([companyId])
+  @@index([role])
+  @@index([status])
   @@map("users")
 }
 
@@ -71,14 +100,14 @@ model User {
 // REFRESH TOKENS
 // ─────────────────────────────────────────────────────────────────────────
 model RefreshToken {
-  id          String   @id @default(uuid())
-  userId      String
-  token       String   @unique
-  expiresAt   DateTime
-  createdAt   DateTime @default(now())
-  revokedAt   DateTime?
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([token])
@@ -86,14 +115,13 @@ model RefreshToken {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// CUSTOMERS — CRM contacts
+// CUSTOMERS
 // ─────────────────────────────────────────────────────────────────────────
 model Customer {
-  id            String   @id @default(uuid())
+  id            String  @id @default(uuid())
   companyId     String
   ownerId       String?
 
-  // Basic info
   fullName      String
   email         String?
   phone         String?
@@ -101,26 +129,23 @@ model Customer {
   companyName   String?
   position      String?
 
-  // Location
-  country       String?
-  city          String?
-  address       String?
+  country String?
+  city    String?
+  address String?
 
-  // CRM fields
-  source        String?   // "website", "whatsapp", "referral", "cold", etc.
-  status        String   @default("new") // new, qualified, customer, lost
-  lifetimeValue Decimal  @default(0) @db.Decimal(12, 2)
+  source        String?
+  status        String  @default("new")
+  lifetimeValue Decimal @default(0) @db.Decimal(12, 2)
   notes         String?
 
-  // AI-extracted data (from WhatsApp)
-  aiExtracted   Json?    // { intent, budget, preferences, etc. }
+  aiExtracted   Json?
   lastContactAt DateTime?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  owner         User?     @relation("CustomerOwner", fields: [ownerId], references: [id])
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  owner         User?          @relation("CustomerOwner", fields: [ownerId], references: [id])
   deals         Deal[]
   activities    Activity[]
   tags          CustomerTag[]
@@ -135,31 +160,31 @@ model Customer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// DEALS — Sales pipeline entries
+// DEALS
 // ─────────────────────────────────────────────────────────────────────────
 model Deal {
-  id            String   @id @default(uuid())
-  companyId     String
-  customerId    String
-  ownerId       String?
+  id         String  @id @default(uuid())
+  companyId  String
+  customerId String
+  ownerId    String?
 
-  title         String
-  value         Decimal  @default(0) @db.Decimal(12, 2)
-  currency      String   @default("USD")
-  stage         String   @default("lead") // lead, qualified, proposal, negotiation, won, lost
-  probability   Int      @default(0) // 0-100
+  title             String
+  value             Decimal   @default(0) @db.Decimal(12, 2)
+  currency          String    @default("USD")
+  stage             String    @default("lead")
+  probability       Int       @default(0)
   expectedCloseDate DateTime?
   actualCloseDate   DateTime?
-  description   String?
-  lostReason    String?
+  description       String?
+  lostReason        String?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  owner         User?     @relation("DealOwner", fields: [ownerId], references: [id])
-  activities    Activity[]
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  owner      User?      @relation("DealOwner", fields: [ownerId], references: [id])
+  activities Activity[]
 
   @@index([companyId])
   @@index([customerId])
@@ -169,29 +194,29 @@ model Deal {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// ACTIVITIES — Call/Email/Note/Task logs
+// ACTIVITIES
 // ─────────────────────────────────────────────────────────────────────────
 model Activity {
-  id            String   @id @default(uuid())
-  companyId     String
-  userId        String
-  customerId    String?
-  dealId        String?
+  id         String  @id @default(uuid())
+  companyId  String
+  userId     String
+  customerId String?
+  dealId     String?
 
-  type          String   // "note", "call", "email", "meeting", "task", "whatsapp"
-  title         String
-  content       String?
-  metadata      Json?    // { phoneNumber, duration, emailSubject, etc. }
-  completedAt   DateTime?
-  dueDate       DateTime?
+  type        String
+  title       String
+  content     String?
+  metadata    Json?
+  completedAt DateTime?
+  dueDate     DateTime?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  deal          Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  deal     Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
   @@index([customerId])
@@ -205,14 +230,14 @@ model Activity {
 // TAGS
 // ─────────────────────────────────────────────────────────────────────────
 model Tag {
-  id            String   @id @default(uuid())
-  companyId     String
-  name          String
-  color         String   @default("#0891B2")
-  createdAt     DateTime @default(now())
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  color     String   @default("#0891B2")
+  createdAt DateTime @default(now())
 
-  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customers     CustomerTag[]
+  company   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customers CustomerTag[]
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -220,12 +245,12 @@ model Tag {
 }
 
 model CustomerTag {
-  customerId    String
-  tagId         String
-  createdAt     DateTime @default(now())
+  customerId String
+  tagId      String
+  createdAt  DateTime @default(now())
 
-  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  tag           Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([customerId, tagId])
   @@map("customer_tags")
@@ -235,27 +260,269 @@ model CustomerTag {
 // WHATSAPP CHATS
 // ─────────────────────────────────────────────────────────────────────────
 model WhatsappChat {
-  id            String   @id @default(uuid())
-  companyId     String
-  customerId    String?
+  id         String  @id @default(uuid())
+  companyId  String
+  customerId String?
 
-  phoneNumber   String
-  messageText   String
-  direction     String   // "inbound", "outbound"
-  messageId     String?  @unique  // WhatsApp Business API message ID
-  mediaUrl      String?
-  aiProcessed   Boolean  @default(false)
-  aiExtracted   Json?    // { intent, entities, sentiment, etc. }
+  phoneNumber String
+  messageText String
+  direction   String
+  messageId   String? @unique
+  mediaUrl    String?
+  aiProcessed Boolean @default(false)
+  aiExtracted Json?
 
-  timestamp     DateTime @default(now())
-  createdAt     DateTime @default(now())
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
   @@index([customerId])
   @@index([phoneNumber])
   @@index([timestamp])
   @@map("whatsapp_chats")
+}
+
+// ============================================================================
+// ADMIN PANEL MODELS
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────────────────
+// PLANS
+// ─────────────────────────────────────────────────────────────────────────
+model Plan {
+  id            String  @id @default(uuid())
+  slug          String  @unique
+  name          String
+  nameAr        String
+  nameTr        String
+  description   String?
+  descriptionAr String?
+  descriptionTr String?
+
+  priceMonthlyUsd Decimal @default(0) @db.Decimal(10, 2)
+  priceYearlyUsd  Decimal @default(0) @db.Decimal(10, 2)
+  priceMonthlyTry Decimal @default(0) @db.Decimal(10, 2)
+  priceYearlyTry  Decimal @default(0) @db.Decimal(10, 2)
+  priceMonthlySar Decimal @default(0) @db.Decimal(10, 2)
+  priceYearlySar  Decimal @default(0) @db.Decimal(10, 2)
+
+  maxUsers       Int @default(1)
+  maxCustomers   Int @default(100)
+  maxDeals       Int @default(100)
+  maxStorageGb   Int @default(1)
+  maxWhatsappMsg Int @default(100)
+  maxAiTokens    Int @default(10000)
+
+  features Json @default("[]")
+
+  isActive   Boolean @default(true)
+  isFeatured Boolean @default(false)
+  sortOrder  Int     @default(0)
+  color      String  @default("#0891B2")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PLAN OVERRIDES
+// ─────────────────────────────────────────────────────────────────────────
+model PlanOverride {
+  id          String    @id @default(uuid())
+  companyId   String
+  featureSlug String
+  enabled     Boolean   @default(true)
+  expiresAt   DateTime?
+  reason      String?
+  grantedBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, featureSlug])
+  @@index([companyId])
+  @@index([featureSlug])
+  @@map("plan_overrides")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SUBSCRIPTIONS
+// ─────────────────────────────────────────────────────────────────────────
+model Subscription {
+  id        String @id @default(uuid())
+  companyId String
+  planId    String
+
+  status String @default("active")
+
+  billingCycle String  @default("monthly")
+  currency     String  @default("USD")
+  amount       Decimal @db.Decimal(10, 2)
+
+  currentPeriodStart DateTime  @default(now())
+  currentPeriodEnd   DateTime
+  cancelAt           DateTime?
+  cancelledAt        DateTime?
+  trialStart         DateTime?
+  trialEnd           DateTime?
+
+  gateway           String?
+  gatewayCustomerId String?
+  gatewaySubId      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id])
+  payments Payment[]
+
+  @@index([companyId])
+  @@index([planId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PAYMENTS
+// ─────────────────────────────────────────────────────────────────────────
+model Payment {
+  id             String  @id @default(uuid())
+  companyId      String
+  subscriptionId String?
+
+  amount   Decimal @db.Decimal(10, 2)
+  currency String  @default("USD")
+  status   String  @default("pending")
+
+  gateway          String
+  gatewayPaymentId String?
+  gatewayReference String?
+
+  method    String?
+  last4     String?
+  cardBrand String?
+
+  description   String?
+  failureReason String?
+  metadata      Json?
+
+  paidAt     DateTime?
+  refundedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([companyId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([gateway])
+  @@index([gatewayPaymentId])
+  @@map("payments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AUDIT LOGS
+// ─────────────────────────────────────────────────────────────────────────
+model AuditLog {
+  id        String  @id @default(uuid())
+  userId    String?
+  companyId String?
+
+  action     String
+  entityType String?
+  entityId   String?
+
+  changes  Json?
+  metadata Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ANNOUNCEMENTS
+// ─────────────────────────────────────────────────────────────────────────
+model Announcement {
+  id String @id @default(uuid())
+
+  title     String
+  titleAr   String?
+  titleTr   String?
+  content   String
+  contentAr String?
+  contentTr String?
+
+  type        String  @default("info")
+  target      String  @default("all")
+  targetValue String?
+
+  startsAt DateTime  @default(now())
+  endsAt   DateTime?
+  isActive Boolean   @default(true)
+
+  createdBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([target])
+  @@map("announcements")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SUPPORT TICKETS
+// ─────────────────────────────────────────────────────────────────────────
+model SupportTicket {
+  id          String @id @default(uuid())
+  companyId   String
+  createdById String
+
+  subject     String
+  description String
+  category    String @default("general")
+  priority    String @default("medium")
+  status      String @default("open")
+
+  assignedToId String?
+
+  resolvedAt DateTime?
+  closedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy  User    @relation("TicketCreator", fields: [createdById], references: [id])
+  assignedTo User?   @relation("TicketAssignee", fields: [assignedToId], references: [id])
+
+  @@index([companyId])
+  @@index([status])
+  @@index([priority])
+  @@index([assignedToId])
+  @@map("support_tickets")
 }
