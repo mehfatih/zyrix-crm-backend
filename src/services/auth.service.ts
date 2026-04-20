@@ -431,3 +431,131 @@ async function generateAuthTokens(
     expiresIn: accessTokenExpiresInSeconds,
   };
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// PROFILE MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface UpdateProfileDto {
+  fullName?: string;
+  phone?: string;
+}
+
+export async function updateProfile(
+  userId: string,
+  dto: UpdateProfileDto
+): Promise<{ user: any }> {
+  const updateData: any = {};
+  if (dto.fullName !== undefined) updateData.fullName = dto.fullName;
+  if (dto.phone !== undefined) updateData.phone = dto.phone;
+
+  if (Object.keys(updateData).length === 0) {
+    throw badRequest("No fields to update", "NO_FIELDS");
+  }
+
+  updateData.updatedAt = new Date();
+
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: updateData,
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      phone: true,
+      role: true,
+      companyId: true,
+      emailVerified: true,
+      twoFactorEnabled: true,
+      lastLoginAt: true,
+      createdAt: true,
+    },
+  });
+
+  return { user };
+}
+
+export interface UpdateCompanyDto {
+  name?: string;
+}
+
+export async function updateCompany(
+  companyId: string,
+  userRole: string,
+  dto: UpdateCompanyDto
+): Promise<{ company: any }> {
+  if (userRole !== "owner" && userRole !== "admin") {
+    throw unauthorized("Only owners and admins can update company settings");
+  }
+
+  const updateData: any = {};
+  if (dto.name !== undefined) updateData.name = dto.name;
+
+  if (Object.keys(updateData).length === 0) {
+    throw badRequest("No fields to update", "NO_FIELDS");
+  }
+
+  updateData.updatedAt = new Date();
+
+  const company = await prisma.company.update({
+    where: { id: companyId },
+    data: updateData,
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      plan: true,
+    },
+  });
+
+  return { company };
+}
+
+export interface ChangePasswordDto {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export async function changePassword(
+  userId: string,
+  dto: ChangePasswordDto
+): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, passwordHash: true, email: true, fullName: true },
+  });
+
+  if (!user) {
+    throw notFound("User");
+  }
+
+  if (!user.passwordHash) {
+    throw badRequest("This account uses Google Sign-in. Password cannot be changed.", "GOOGLE_ACCOUNT");
+  }
+
+  const valid = await comparePassword(dto.currentPassword, user.passwordHash);
+  if (!valid) {
+    throw badRequest("Current password is incorrect", "INVALID_PASSWORD");
+  }
+
+  if (dto.newPassword.length < 8) {
+    throw badRequest("New password must be at least 8 characters", "WEAK_PASSWORD");
+  }
+
+  const newHash = await hashPassword(dto.newPassword);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash: newHash,
+      updatedAt: new Date(),
+    },
+  });
+
+  // Invalidate all refresh tokens so user must sign in again on other devices
+  await prisma.refreshToken.deleteMany({
+    where: { userId },
+  });
+}
+

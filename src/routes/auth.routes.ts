@@ -92,4 +92,24 @@ router.post("/reset-password", generalLimiter, authController.resetPassword);
 // ─────────────────────────────────────────────────────────────────────────
 router.get("/me", authenticateToken, authController.me);
 
+// Profile management
+router.patch(
+  "/profile",
+  authenticateToken,
+  generalLimiter,
+  authController.updateProfile
+);
+router.patch(
+  "/company",
+  authenticateToken,
+  generalLimiter,
+  authController.updateCompany
+);
+router.post(
+  "/change-password",
+  authenticateToken,
+  passwordResetLimiter,
+  authController.changePassword
+);
+
 export default router;

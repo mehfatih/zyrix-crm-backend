@@ -54,6 +54,21 @@ const resetPasswordSchema = z.object({
 // ─────────────────────────────────────────────────────────────────────────
 // POST /api/auth/signup
 // ─────────────────────────────────────────────────────────────────────────
+
+const updateProfileSchema = z.object({
+  fullName: z.string().min(2).max(100).optional(),
+  phone: z.string().optional(),
+});
+
+const updateCompanySchema = z.object({
+  name: z.string().min(2).max(100).optional(),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(8, "New password must be at least 8 characters"),
+});
+
 export async function signup(
   req: Request,
   res: Response,
@@ -294,3 +309,69 @@ export async function me(
     next(error);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// PROFILE MANAGEMENT HANDLERS
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function updateProfile(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const data = updateProfileSchema.parse(req.body);
+    const result = await authService.updateProfile(authReq.user.userId, data);
+    res.json({
+      success: true,
+      data: result,
+      message: "Profile updated successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateCompany(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const data = updateCompanySchema.parse(req.body);
+    const result = await authService.updateCompany(
+      authReq.user.companyId,
+      authReq.user.role,
+      data
+    );
+    res.json({
+      success: true,
+      data: result,
+      message: "Company updated successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function changePassword(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const data = changePasswordSchema.parse(req.body);
+    await authService.changePassword(authReq.user.userId, data);
+    res.json({
+      success: true,
+      data: { changed: true },
+      message: "Password changed successfully. Please sign in again on other devices.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
