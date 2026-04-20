@@ -14,6 +14,7 @@ import activityRoutes from "./routes/activity.routes";
 import whatsappRoutes from "./routes/whatsapp.routes";
 import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
+import paymentRoutes from "./routes/payment.routes";
 
 const app: Express = express();
 
@@ -43,7 +44,7 @@ if (isDevelopment) {
 app.get("/", (_req, res) => {
   res.json({
     name: "Zyrix CRM API",
-    version: "0.4.0",
+    version: "0.5.0",
     status: "operational",
     environment: env.NODE_ENV,
     timestamp: new Date().toISOString(),
@@ -69,7 +70,7 @@ app.get("/health", async (_req, res) => {
 
 app.get("/api", (_req, res) => {
   res.json({
-    message: "Zyrix CRM API v0.4.0",
+    message: "Zyrix CRM API v0.5.0",
     endpoints: {
       auth: "/api/auth",
       customers: "/api/customers",
@@ -78,6 +79,7 @@ app.get("/api", (_req, res) => {
       whatsapp: "/api/whatsapp",
       admin: "/api/admin",
       public: "/api/public",
+      payments: "/api/payments",
     },
   });
 });
@@ -89,6 +91,7 @@ app.use("/api/activities", activityRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
+app.use("/api/payments", paymentRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -96,11 +99,14 @@ app.use(errorHandler);
 const server = app.listen(env.PORT, () => {
   console.log("");
   console.log("╔══════════════════════════════════════════════════╗");
-  console.log("║          🚀 Zyrix CRM Backend v0.4.0             ║");
+  console.log("║          🚀 Zyrix CRM Backend v0.5.0             ║");
   console.log("╚══════════════════════════════════════════════════╝");
   console.log(`  Environment:  ${env.NODE_ENV}`);
   console.log(`  Port:         ${env.PORT}`);
   console.log(`  AI:           ${env.GEMINI_API_KEY ? "✓ Gemini ready" : "✗ Not configured"}`);
+  console.log(
+    `  Payments:     Iyzico ${env.IYZICO_API_KEY ? "✓" : "✗"}  HyperPay ${env.HYPERPAY_ACCESS_TOKEN ? "✓" : "✗"}`
+  );
   console.log("");
   console.log("  Modules loaded:");
   console.log("    ✓ Auth");
@@ -109,6 +115,7 @@ const server = app.listen(env.PORT, () => {
   console.log("    ✓ Activities");
   console.log("    ✓ WhatsApp + AI");
   console.log("    ✓ Admin Panel (Super Admin)");
+  console.log("    ✓ Payments (Iyzico + HyperPay)");
   console.log("");
 });
 
