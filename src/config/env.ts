@@ -26,6 +26,9 @@ const envSchema = z.object({
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().optional(),
 
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().optional(),
+
   GEMINI_API_KEY: z.string().optional(),
 
   CORS_ORIGINS: z.string().default("http://localhost:3000"),

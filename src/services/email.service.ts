@@ -1,22 +1,13 @@
-import nodemailer from "nodemailer";
-import type { Transporter } from "nodemailer";
+import { Resend } from "resend";
 import { env } from "../config/env";
 
-let transporter: Transporter | null = null;
+const resend = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
+const FROM_EMAIL = env.EMAIL_FROM || "Zyrix CRM <noreply@zyrix.co>";
 
-if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASSWORD) {
-  transporter = nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port: env.SMTP_PORT || 587,
-    secure: env.SMTP_SECURE || false,
-    auth: {
-      user: env.SMTP_USER,
-      pass: env.SMTP_PASSWORD,
-    },
-  });
-  console.log("[Email] SMTP transporter configured");
+if (resend) {
+  console.log("[Email] Resend configured");
 } else {
-  console.warn("[Email] SMTP not configured - emails will not be sent");
+  console.warn("[Email] Resend not configured - emails will not be sent");
 }
 
 export interface SendEmailOptions {
@@ -27,20 +18,26 @@ export interface SendEmailOptions {
 }
 
 export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
-  if (!transporter) {
-    console.warn("[Email] SMTP not configured, skipping email to:", options.to);
+  if (!resend) {
+    console.warn("[Email] Resend not configured, skipping email to:", options.to);
     return false;
   }
 
   try {
-    await transporter.sendMail({
-      from: env.SMTP_FROM || `"Zyrix CRM" <${env.SMTP_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
       to: options.to,
       subject: options.subject,
       html: options.html,
       text: options.text,
     });
-    console.log("[Email] Sent to:", options.to);
+
+    if (error) {
+      console.error("[Email] Resend error:", error);
+      return false;
+    }
+
+    console.log("[Email] Sent to:", options.to, "ID:", data?.id);
     return true;
   } catch (error) {
     console.error("[Email] Send failed:", error);
