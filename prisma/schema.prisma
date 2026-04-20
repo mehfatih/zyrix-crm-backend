@@ -38,6 +38,7 @@ model Company {
   customers      Customer[]
   deals          Deal[]
   activities     Activity[]
+  tasks          Task[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -87,6 +88,8 @@ model User {
   auditLogs       AuditLog[]
   assignedTickets SupportTicket[] @relation("TicketAssignee")
   createdTickets  SupportTicket[] @relation("TicketCreator")
+  assignedTasks   Task[]          @relation("TaskAssignee")
+  createdTasks    Task[]          @relation("TaskCreator")
 
   @@index([email])
   @@index([googleId])
@@ -148,6 +151,7 @@ model Customer {
   owner         User?          @relation("CustomerOwner", fields: [ownerId], references: [id])
   deals         Deal[]
   activities    Activity[]
+  tasks         Task[]
   tags          CustomerTag[]
   whatsappChats WhatsappChat[]
 
@@ -185,6 +189,7 @@ model Deal {
   customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
   owner      User?      @relation("DealOwner", fields: [ownerId], references: [id])
   activities Activity[]
+  tasks      Task[]
 
   @@index([companyId])
   @@index([customerId])
@@ -224,6 +229,47 @@ model Activity {
   @@index([userId])
   @@index([type])
   @@map("activities")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TASKS — dedicated task management (separate from Activities timeline)
+// ─────────────────────────────────────────────────────────────────────────
+model Task {
+  id           String  @id @default(uuid())
+  companyId    String
+  createdById  String
+  assignedToId String?
+  customerId   String?
+  dealId       String?
+
+  title       String
+  description String?
+  status      String  @default("todo") // todo | in_progress | done | cancelled
+  priority    String  @default("medium") // low | medium | high | urgent
+
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy  User      @relation("TaskCreator", fields: [createdById], references: [id])
+  assignedTo User?     @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  deal       Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([assignedToId])
+  @@index([createdById])
+  @@index([customerId])
+  @@index([dealId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@map("tasks")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

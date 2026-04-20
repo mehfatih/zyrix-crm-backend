@@ -11,6 +11,7 @@ import authRoutes from "./routes/auth.routes";
 import customerRoutes from "./routes/customer.routes";
 import dealRoutes from "./routes/deal.routes";
 import activityRoutes from "./routes/activity.routes";
+import taskRoutes from "./routes/task.routes";
 import whatsappRoutes from "./routes/whatsapp.routes";
 import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
@@ -76,6 +77,7 @@ app.get("/api", (_req, res) => {
       customers: "/api/customers",
       deals: "/api/deals",
       activities: "/api/activities",
+      tasks: "/api/tasks",
       whatsapp: "/api/whatsapp",
       admin: "/api/admin",
       public: "/api/public",
@@ -88,6 +90,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/deals", dealRoutes);
 app.use("/api/activities", activityRoutes);
+app.use("/api/tasks", taskRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
