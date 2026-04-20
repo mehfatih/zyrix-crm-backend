@@ -6,6 +6,9 @@ import { adminSignin } from "../services/admin-auth.service";
 import * as CompaniesSvc from "../services/admin-companies.service";
 import * as UsersSvc from "../services/admin-users.service";
 import * as PlansSvc from "../services/admin-plans.service";
+import * as AnnouncementsSvc from "../services/admin-announcements.service";
+import * as SupportSvc from "../services/admin-support.service";
+import * as SettingsSvc from "../services/admin-settings.service";
 import type { AuthenticatedRequest } from "../types";
 
 // ============================================================================
@@ -449,6 +452,236 @@ export async function listAuditLogs(req: Request, res: Response, next: NextFunct
         pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       },
     });
+  } catch (err) {
+    next(err);
+  }
+}
+// ────────────────────────────────────────────────────────
+// Announcements
+// ────────────────────────────────────────────────────────
+const createAnnouncementSchema = z.object({
+  title: z.string().min(1),
+  titleAr: z.string().optional(),
+  titleTr: z.string().optional(),
+  content: z.string().min(1),
+  contentAr: z.string().optional(),
+  contentTr: z.string().optional(),
+  type: z.enum(["info", "warning", "critical", "success"]).optional(),
+  target: z.enum(["all", "plan", "company"]).optional(),
+  targetValue: z.string().optional(),
+  startsAt: z.coerce.date().optional(),
+  endsAt: z.coerce.date().optional().nullable(),
+  isActive: z.boolean().optional(),
+});
+
+const updateAnnouncementSchema = createAnnouncementSchema.partial();
+
+const listAnnouncementsSchema = z.object({
+  page: z.coerce.number().optional(),
+  limit: z.coerce.number().optional(),
+  active: z.coerce.boolean().optional(),
+  target: z.string().optional(),
+});
+
+export async function listAnnouncements(req: Request, res: Response, next: NextFunction) {
+  try {
+    const q = listAnnouncementsSchema.parse(req.query);
+    const data = await AnnouncementsSvc.listAnnouncements(q);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getAnnouncement(req: Request, res: Response, next: NextFunction) {
+  try {
+    const data = await AnnouncementsSvc.getAnnouncement(req.params.id as string);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function createAnnouncement(req: Request, res: Response, next: NextFunction) {
+  try {
+    const dto = createAnnouncementSchema.parse(req.body);
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const data = await AnnouncementsSvc.createAnnouncement(
+      actor,
+      dto as AnnouncementsSvc.CreateAnnouncementDto
+    );
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateAnnouncement(req: Request, res: Response, next: NextFunction) {
+  try {
+    const dto = updateAnnouncementSchema.parse(req.body);
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const data = await AnnouncementsSvc.updateAnnouncement(
+      req.params.id as string,
+      actor,
+      dto
+    );
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteAnnouncement(req: Request, res: Response, next: NextFunction) {
+  try {
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const data = await AnnouncementsSvc.deleteAnnouncement(
+      req.params.id as string,
+      actor
+    );
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ────────────────────────────────────────────────────────
+// Support Tickets
+// ────────────────────────────────────────────────────────
+const listTicketsSchema = z.object({
+  page: z.coerce.number().optional(),
+  limit: z.coerce.number().optional(),
+  status: z.string().optional(),
+  priority: z.string().optional(),
+  category: z.string().optional(),
+  companyId: z.string().optional(),
+  assignedToId: z.string().optional(),
+});
+
+const updateTicketSchema = z.object({
+  status: z.enum(["open", "in_progress", "resolved", "closed"]).optional(),
+  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  category: z.string().optional(),
+  assignedToId: z.string().nullable().optional(),
+});
+
+const assignTicketSchema = z.object({ assigneeId: z.string().min(1) });
+
+export async function listTickets(req: Request, res: Response, next: NextFunction) {
+  try {
+    const q = listTicketsSchema.parse(req.query);
+    const data = await SupportSvc.listTickets(q);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getTicket(req: Request, res: Response, next: NextFunction) {
+  try {
+    const data = await SupportSvc.getTicket(req.params.id as string);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateTicket(req: Request, res: Response, next: NextFunction) {
+  try {
+    const dto = updateTicketSchema.parse(req.body);
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const data = await SupportSvc.updateTicket(req.params.id as string, actor, dto);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function assignTicket(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { assigneeId } = assignTicketSchema.parse(req.body);
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const data = await SupportSvc.assignTicket(req.params.id as string, actor, assigneeId);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function closeTicket(req: Request, res: Response, next: NextFunction) {
+  try {
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const data = await SupportSvc.closeTicket(req.params.id as string, actor);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function ticketStats(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const data = await SupportSvc.getTicketStats();
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ────────────────────────────────────────────────────────
+// Settings — super admins management
+// ────────────────────────────────────────────────────────
+const inviteSuperAdminSchema = z.object({
+  email: z.string().email(),
+  fullName: z.string().optional(),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
+export async function listSuperAdmins(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const data = await SettingsSvc.listSuperAdmins();
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function inviteSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const dto = inviteSuperAdminSchema.parse(req.body);
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const data = await SettingsSvc.inviteSuperAdmin(
+      actor,
+      dto as SettingsSvc.InviteSuperAdminDto
+    );
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function revokeSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const data = await SettingsSvc.revokeSuperAdmin(actor, req.params.id as string);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function changeAdminPassword(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const data = await SettingsSvc.changeAdminPassword(
+      actor,
+      currentPassword,
+      newPassword
+    );
+    res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);
   }

@@ -74,4 +74,25 @@ router.delete("/plan-overrides/:id", AdminCtrl.revokeOverride);
 // Audit Logs
 router.get("/audit-logs", AdminCtrl.listAuditLogs);
 
+// Announcements
+router.get("/announcements", AdminCtrl.listAnnouncements);
+router.get("/announcements/:id", AdminCtrl.getAnnouncement);
+router.post("/announcements", AdminCtrl.createAnnouncement);
+router.patch("/announcements/:id", AdminCtrl.updateAnnouncement);
+router.delete("/announcements/:id", AdminCtrl.deleteAnnouncement);
+
+// Support Tickets
+router.get("/tickets/stats", AdminCtrl.ticketStats);
+router.get("/tickets", AdminCtrl.listTickets);
+router.get("/tickets/:id", AdminCtrl.getTicket);
+router.patch("/tickets/:id", AdminCtrl.updateTicket);
+router.post("/tickets/:id/assign", AdminCtrl.assignTicket);
+router.post("/tickets/:id/close", AdminCtrl.closeTicket);
+
+// Settings — super admins
+router.get("/super-admins", AdminCtrl.listSuperAdmins);
+router.post("/super-admins/invite", AdminCtrl.inviteSuperAdmin);
+router.delete("/super-admins/:id", AdminCtrl.revokeSuperAdmin);
+router.post("/change-password", AdminCtrl.changeAdminPassword);
+
 export default router;
