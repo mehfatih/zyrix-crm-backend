@@ -290,6 +290,23 @@ export async function impersonateCompany(req: Request, res: Response, next: Next
   }
 }
 
+export async function impersonateCompanyToken(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const result = await CompaniesSvc.impersonateCompanyToken(
+      (req.params.id as string),
+      actor
+    );
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ────────────────────────────────────────────────────────
 // Users
 // ────────────────────────────────────────────────────────

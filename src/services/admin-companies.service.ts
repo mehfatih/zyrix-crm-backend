@@ -288,6 +288,74 @@ export async function impersonateCompanyOwner(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Impersonate — issue a short-lived access token
+// ─────────────────────────────────────────────────────────────────────────
+// Returns a real user-scoped JWT (5 minutes) with an `imp: true` claim so
+// the frontend can render a persistent "Impersonating" banner. Does NOT
+// issue a refresh token — the session is intentionally bounded.
+// ─────────────────────────────────────────────────────────────────────────
+export async function impersonateCompanyToken(
+  companyId: string,
+  actorUserId: string
+) {
+  const { targetUser } = await impersonateCompanyOwner(companyId, actorUserId);
+
+  const targetUserFull = await prisma.user.findUnique({
+    where: { id: targetUser.id },
+    include: { company: true },
+  });
+  if (!targetUserFull) {
+    throw notFound("Impersonation target user");
+  }
+
+  // 5-minute impersonation token. We sign directly with jsonwebtoken so we
+  // can embed the `imp` + `impBy` claims without changing the shared types.
+  const jwt = (await import("jsonwebtoken")).default;
+  const { env } = await import("../config/env");
+
+  const accessToken = jwt.sign(
+    {
+      userId: targetUserFull.id,
+      companyId: targetUserFull.companyId,
+      email: targetUserFull.email,
+      role: targetUserFull.role,
+      type: "access",
+      imp: true,
+      impBy: actorUserId,
+    },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: "5m" }
+  );
+
+  await logAdminAction(
+    actorUserId,
+    "user.impersonate_token",
+    "user",
+    targetUser.id,
+    { companyId, expiresIn: "5m" }
+  );
+
+  return {
+    accessToken,
+    expiresIn: 300,
+    targetUser: {
+      id: targetUserFull.id,
+      email: targetUserFull.email,
+      fullName: targetUserFull.fullName,
+      role: targetUserFull.role,
+      companyId: targetUserFull.companyId,
+      emailVerified: targetUserFull.emailVerified,
+    },
+    company: {
+      id: targetUserFull.company.id,
+      name: targetUserFull.company.name,
+      slug: targetUserFull.company.slug,
+      plan: targetUserFull.company.plan,
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Helper: admin audit logging
 // ─────────────────────────────────────────────────────────────────────────
 async function logAdminAction(

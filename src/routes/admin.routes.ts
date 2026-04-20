@@ -52,6 +52,10 @@ router.post("/companies/:id/suspend", AdminCtrl.suspendCompany);
 router.post("/companies/:id/resume", AdminCtrl.resumeCompany);
 router.delete("/companies/:id", AdminCtrl.deleteCompany);
 router.post("/companies/:id/impersonate", AdminCtrl.impersonateCompany);
+router.post(
+  "/companies/:id/impersonate-token",
+  AdminCtrl.impersonateCompanyToken
+);
 
 // Users
 router.get("/users", AdminCtrl.listUsers);
