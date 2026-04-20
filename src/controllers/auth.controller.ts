@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as authService from "../services/auth.service";
+import * as googleService from "../services/google-oauth.service";
 import type { AuthenticatedRequest } from "../types";
 import { prisma } from "../config/database";
 import { notFound } from "../middleware/errorHandler";
@@ -29,6 +30,27 @@ const refreshSchema = z.object({
   refreshToken: z.string().min(1, "Refresh token is required"),
 });
 
+const googleAuthSchema = z.object({
+  idToken: z.string().min(10, "Google ID token is required"),
+});
+
+const verifyEmailSchema = z.object({
+  token: z.string().min(10, "Verification token is required"),
+});
+
+const resendVerificationSchema = z.object({
+  email: z.string().email("Invalid email format"),
+});
+
+const requestPasswordResetSchema = z.object({
+  email: z.string().email("Invalid email format"),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(10, "Reset token is required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 // POST /api/auth/signup
 // ─────────────────────────────────────────────────────────────────────────
@@ -44,7 +66,7 @@ export async function signup(
     res.status(201).json({
       success: true,
       data: result,
-      message: "Account created successfully",
+      message: "Account created. Please verify your email.",
     });
   } catch (error) {
     next(error);
@@ -67,6 +89,28 @@ export async function signin(
       success: true,
       data: result,
       message: "Signed in successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /api/auth/google
+// ─────────────────────────────────────────────────────────────────────────
+export async function googleAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { idToken } = googleAuthSchema.parse(req.body);
+    const result = await googleService.googleSignInOrSignUp(idToken);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: "Signed in with Google successfully",
     });
   } catch (error) {
     next(error);
@@ -118,7 +162,95 @@ export async function logout(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// GET /api/auth/me — Get current authenticated user
+// POST /api/auth/verify-email
+// ─────────────────────────────────────────────────────────────────────────
+export async function verifyEmail(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { token } = verifyEmailSchema.parse(req.body);
+    const result = await authService.verifyEmail(token);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: "Email verified successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /api/auth/resend-verification
+// ─────────────────────────────────────────────────────────────────────────
+export async function resendVerification(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { email } = resendVerificationSchema.parse(req.body);
+    const result = await authService.resendVerification(email);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: "Verification email sent",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /api/auth/request-password-reset
+// ─────────────────────────────────────────────────────────────────────────
+export async function requestPasswordReset(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { email } = requestPasswordResetSchema.parse(req.body);
+    const result = await authService.requestPasswordReset(email);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: "If an account exists for this email, a reset link was sent.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /api/auth/reset-password
+// ─────────────────────────────────────────────────────────────────────────
+export async function resetPassword(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { token, password } = resetPasswordSchema.parse(req.body);
+    const result = await authService.resetPassword(token, password);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: "Password reset successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// GET /api/auth/me
 // ─────────────────────────────────────────────────────────────────────────
 export async function me(
   req: Request,
