@@ -12,6 +12,7 @@ import customerRoutes from "./routes/customer.routes";
 import dealRoutes from "./routes/deal.routes";
 import activityRoutes from "./routes/activity.routes";
 import taskRoutes from "./routes/task.routes";
+import quoteRoutes from "./routes/quote.routes";
 import whatsappRoutes from "./routes/whatsapp.routes";
 import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
@@ -45,7 +46,7 @@ if (isDevelopment) {
 app.get("/", (_req, res) => {
   res.json({
     name: "Zyrix CRM API",
-    version: "0.5.0",
+    version: "0.6.0",
     status: "operational",
     environment: env.NODE_ENV,
     timestamp: new Date().toISOString(),
@@ -71,13 +72,14 @@ app.get("/health", async (_req, res) => {
 
 app.get("/api", (_req, res) => {
   res.json({
-    message: "Zyrix CRM API v0.5.0",
+    message: "Zyrix CRM API v0.6.0",
     endpoints: {
       auth: "/api/auth",
       customers: "/api/customers",
       deals: "/api/deals",
       activities: "/api/activities",
       tasks: "/api/tasks",
+      quotes: "/api/quotes",
       whatsapp: "/api/whatsapp",
       admin: "/api/admin",
       public: "/api/public",
@@ -91,6 +93,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/deals", dealRoutes);
 app.use("/api/activities", activityRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/quotes", quoteRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
@@ -102,7 +105,7 @@ app.use(errorHandler);
 const server = app.listen(env.PORT, () => {
   console.log("");
   console.log("╔══════════════════════════════════════════════════╗");
-  console.log("║          🚀 Zyrix CRM Backend v0.5.0             ║");
+  console.log("║          🚀 Zyrix CRM Backend v0.6.0             ║");
   console.log("╚══════════════════════════════════════════════════╝");
   console.log(`  Environment:  ${env.NODE_ENV}`);
   console.log(`  Port:         ${env.PORT}`);

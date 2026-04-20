@@ -39,6 +39,7 @@ model Company {
   deals          Deal[]
   activities     Activity[]
   tasks          Task[]
+  quotes         Quote[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -90,6 +91,7 @@ model User {
   createdTickets  SupportTicket[] @relation("TicketCreator")
   assignedTasks   Task[]          @relation("TaskAssignee")
   createdTasks    Task[]          @relation("TaskCreator")
+  createdQuotes   Quote[]         @relation("QuoteCreator")
 
   @@index([email])
   @@index([googleId])
@@ -152,6 +154,7 @@ model Customer {
   deals         Deal[]
   activities    Activity[]
   tasks         Task[]
+  quotes        Quote[]
   tags          CustomerTag[]
   whatsappChats WhatsappChat[]
 
@@ -190,6 +193,7 @@ model Deal {
   owner      User?      @relation("DealOwner", fields: [ownerId], references: [id])
   activities Activity[]
   tasks      Task[]
+  quotes     Quote[]
 
   @@index([companyId])
   @@index([customerId])
@@ -571,4 +575,75 @@ model SupportTicket {
   @@index([priority])
   @@index([assignedToId])
   @@map("support_tickets")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// QUOTES & PROPOSALS
+// ─────────────────────────────────────────────────────────────────────────
+model Quote {
+  id          String @id @default(uuid())
+  companyId   String
+  customerId  String
+  dealId      String?
+  createdById String
+
+  quoteNumber String
+  title       String
+  status      String @default("draft") // draft | sent | viewed | accepted | rejected | expired
+
+  issuedAt   DateTime?
+  validUntil DateTime?
+  acceptedAt DateTime?
+  rejectedAt DateTime?
+  sentAt     DateTime?
+
+  currency       String  @default("TRY")
+  subtotal       Decimal @default(0) @db.Decimal(12, 2)
+  discountAmount Decimal @default(0) @db.Decimal(12, 2)
+  taxAmount      Decimal @default(0) @db.Decimal(12, 2)
+  total          Decimal @default(0) @db.Decimal(12, 2)
+
+  notes String?
+  terms String?
+
+  publicToken String?   @unique
+  viewedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer  Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  deal      Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  createdBy User      @relation("QuoteCreator", fields: [createdById], references: [id])
+  items     QuoteItem[]
+
+  @@unique([companyId, quoteNumber])
+  @@index([companyId])
+  @@index([customerId])
+  @@index([dealId])
+  @@index([status])
+  @@index([createdById])
+  @@index([validUntil])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id              String  @id @default(uuid())
+  quoteId         String
+  name            String
+  description     String?
+  quantity        Decimal @default(1) @db.Decimal(12, 3)
+  unitPrice       Decimal @default(0) @db.Decimal(12, 2)
+  discountPercent Decimal @default(0) @db.Decimal(5, 2)
+  taxPercent      Decimal @default(0) @db.Decimal(5, 2)
+  lineTotal       Decimal @default(0) @db.Decimal(12, 2)
+  position        Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+  @@map("quote_items")
 }

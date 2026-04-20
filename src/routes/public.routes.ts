@@ -4,6 +4,8 @@ import rateLimit from "express-rate-limit";
 import { getPublicPlans } from "../services/public-plans.service";
 import { getActivePublicAnnouncements } from "../services/admin-announcements.service";
 import { sendEmail } from "../services/email.service";
+import { getQuoteByPublicToken, acceptQuote, rejectQuote } from "../services/quote.service";
+import { prisma } from "../config/database";
 import { env } from "../config/env";
 
 // ============================================================================
@@ -136,5 +138,80 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Public quote view (customer-facing)
+// ─────────────────────────────────────────────────────────────────────────
+router.get(
+  "/quotes/:token",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await getQuoteByPublicToken(req.params.token as string);
+      res.status(200).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  "/quotes/:token/accept",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const q = await prisma.quote.findUnique({
+        where: { publicToken: req.params.token as string },
+        select: { id: true, companyId: true, status: true },
+      });
+      if (!q) {
+        res.status(404).json({
+          success: false,
+          error: { code: "NOT_FOUND", message: "Quote not found" },
+        });
+        return;
+      }
+      if (q.status === "accepted" || q.status === "rejected") {
+        res.status(400).json({
+          success: false,
+          error: { code: "INVALID_STATUS", message: "Quote already resolved" },
+        });
+        return;
+      }
+      const data = await acceptQuote(q.companyId, q.id);
+      res.status(200).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  "/quotes/:token/reject",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const q = await prisma.quote.findUnique({
+        where: { publicToken: req.params.token as string },
+        select: { id: true, companyId: true, status: true },
+      });
+      if (!q) {
+        res.status(404).json({
+          success: false,
+          error: { code: "NOT_FOUND", message: "Quote not found" },
+        });
+        return;
+      }
+      if (q.status === "accepted" || q.status === "rejected") {
+        res.status(400).json({
+          success: false,
+          error: { code: "INVALID_STATUS", message: "Quote already resolved" },
+        });
+        return;
+      }
+      const data = await rejectQuote(q.companyId, q.id);
+      res.status(200).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 export default router;
