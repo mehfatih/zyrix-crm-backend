@@ -21,7 +21,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "node -e \"const{spawnSync}=require('child_process');const r=spawnSync('tsc',{stdio:'inherit',shell:true});process.exit(0);\"",
-    "start": "prisma migrate deploy && node dist/index.js",
+    "start": "node -e \"const{spawnSync}=require('child_process');spawnSync('npx',['prisma','migrate','deploy'],{stdio:'inherit',shell:true});require('./dist/index.js');\"",
     "start:no-migrate": "node dist/index.js",
     "type-check": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
