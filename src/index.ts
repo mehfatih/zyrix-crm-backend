@@ -15,6 +15,9 @@ import whatsappRoutes from "./routes/whatsapp.routes";
 
 const app: Express = express();
 
+// Trust Railway/Cloudflare proxy (for correct IP in rate-limit + logs)
+app.set("trust proxy", 1);
+
 app.use(helmet());
 
 app.use(
