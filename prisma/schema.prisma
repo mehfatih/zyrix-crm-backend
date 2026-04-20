@@ -44,6 +44,8 @@ model Company {
   loyaltyTxns    LoyaltyTransaction[]
   taxRates       TaxRate[]
   followupSettings FollowupSettings?
+  commissionRules   CommissionRule[]
+  commissionEntries CommissionEntry[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -97,6 +99,7 @@ model User {
   createdTasks    Task[]          @relation("TaskCreator")
   createdQuotes   Quote[]         @relation("QuoteCreator")
   loyaltyTxns     LoyaltyTransaction[] @relation("LoyaltyTxnCreator")
+  commissionEntries CommissionEntry[]
 
   @@index([email])
   @@index([googleId])
@@ -200,6 +203,7 @@ model Deal {
   activities Activity[]
   tasks      Task[]
   quotes     Quote[]
+  commissions CommissionEntry[]
 
   @@index([companyId])
   @@index([customerId])
@@ -753,4 +757,67 @@ model FollowupSettings {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("followup_settings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// COMMISSION ENGINE
+// ─────────────────────────────────────────────────────────────────────────
+model CommissionRule {
+  id          String  @id @default(uuid())
+  companyId   String
+
+  name        String
+  description String?
+  type        String  @default("percent") // flat | percent | tiered
+  config      Json    // { rate } for percent, { amount } for flat, { tiers: [{ from, to?, rate }] } for tiered
+  appliesTo   String  @default("all") // all | deal_stage | min_value
+  appliesToValue String?
+
+  isActive Boolean @default(true)
+  priority Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entries CommissionEntry[]
+
+  @@index([companyId])
+  @@index([isActive])
+  @@index([priority])
+  @@map("commission_rules")
+}
+
+model CommissionEntry {
+  id        String @id @default(uuid())
+  companyId String
+  ruleId    String
+  userId    String
+  dealId    String
+
+  baseValue Decimal @default(0) @db.Decimal(12, 2)
+  rate      Decimal @default(0) @db.Decimal(8, 4)
+  amount    Decimal @default(0) @db.Decimal(12, 2)
+  currency  String  @default("TRY")
+
+  status     String    @default("pending") // pending | approved | paid | cancelled
+  approvedAt DateTime?
+  paidAt     DateTime?
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rule    CommissionRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deal    Deal           @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@unique([dealId, ruleId, userId])
+  @@index([companyId])
+  @@index([userId])
+  @@index([dealId])
+  @@index([ruleId])
+  @@index([status])
+  @@map("commission_entries")
 }

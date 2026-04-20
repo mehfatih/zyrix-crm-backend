@@ -234,6 +234,19 @@ export async function updateDeal(
       customer: { select: { id: true, fullName: true, companyName: true } },
       owner: { select: { id: true, fullName: true } },
     },
+  }).then(async (updated) => {
+    // Auto-create commission entries when deal transitions to 'won'
+    if (dto.stage === "won" && existing.stage !== "won") {
+      try {
+        const { createEntriesForWonDeal } = await import(
+          "./commission.service"
+        );
+        await createEntriesForWonDeal(companyId, dealId);
+      } catch {
+        // Non-fatal: deal update should succeed even if commission fails
+      }
+    }
+    return updated;
   });
 }
 
