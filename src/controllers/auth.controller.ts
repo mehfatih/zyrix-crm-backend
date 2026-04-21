@@ -370,6 +370,8 @@ export async function me(
           name: user.company.name,
           slug: user.company.slug,
           plan: user.company.plan,
+          country: user.company.country,
+          baseCurrency: user.company.baseCurrency,
         },
       },
     });

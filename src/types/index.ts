@@ -100,6 +100,8 @@ export interface AuthResponse {
     name: string;
     slug: string;
     plan: string;
+    country?: string | null;
+    baseCurrency?: string | null;
   };
   tokens: AuthTokens;
 }

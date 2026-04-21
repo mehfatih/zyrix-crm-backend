@@ -140,6 +140,8 @@ export async function signup(dto: SignupDto): Promise<AuthResponse> {
       name: result.company.name,
       slug: result.company.slug,
       plan: result.company.plan,
+      country: result.company.country,
+      baseCurrency: result.company.baseCurrency,
     },
     tokens,
   };
@@ -212,6 +214,8 @@ export async function signin(dto: SigninDto): Promise<SigninResult> {
       name: user.company.name,
       slug: user.company.slug,
       plan: user.company.plan,
+      country: user.company.country,
+      baseCurrency: user.company.baseCurrency,
     },
     tokens,
   };
@@ -273,6 +277,8 @@ export async function complete2FAChallenge(
       name: user.company.name,
       slug: user.company.slug,
       plan: user.company.plan,
+      country: user.company.country,
+      baseCurrency: user.company.baseCurrency,
     },
     tokens,
   };
