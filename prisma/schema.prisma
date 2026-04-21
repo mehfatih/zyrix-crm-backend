@@ -1548,3 +1548,36 @@ model AiMessage {
   @@index([threadId, createdAt])
   @@map("ai_messages")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// OAUTH INSTALL STATES
+// ─────────────────────────────────────────────────────────────────────────
+// Transient rows that track pending OAuth install flows. When a merchant
+// clicks 'Install Zyrix' on Salla/Shopify/etc., we:
+//   1. Generate a random state nonce + record this row with the merchant's
+//      companyId + userId + provider + returnUrl
+//   2. Redirect to the provider's consent screen with ?state=<nonce>
+//   3. On callback, we look up the row by state, verify expiry, exchange
+//      the code for a token, then delete the row
+// The 15-minute expiry prevents stale/replayed auth grants.
+model OAuthState {
+  id        String   @id @default(uuid())
+  state     String   @unique
+  provider  String   // 'salla' | 'shopify' | future: 'zid' | 'ikas' | etc.
+  companyId String
+  userId    String
+  // Where to redirect the user after successful install. Defaults to
+  // /integrations so they see the freshly-connected store. Validated
+  // server-side — must be a relative path on the same origin.
+  returnUrl String   @default("/integrations")
+  // Provider-specific context captured at init time (e.g. shop domain
+  // for Shopify where we need the merchant's myshopify.com domain in
+  // the callback handler).
+  metadata  Json     @default("{}")
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([state])
+  @@index([expiresAt])
+  @@map("oauth_states")
+}

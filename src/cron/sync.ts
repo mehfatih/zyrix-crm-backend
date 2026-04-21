@@ -156,4 +156,25 @@ export function startSyncScheduler(): void {
   console.log(
     `[cron] webhook retry scheduler registered — "${WEBHOOK_RETRY_CRON}" (every 2 min)`
   );
+
+  // ─── OAuth state pruner ──────────────────────────────────────────────
+  // Clean up abandoned/expired install states every hour so the
+  // oauth_states table stays tiny. Failed pruning is non-critical.
+  const OAUTH_PRUNE_CRON = "17 * * * *"; // :17 past every hour
+  if (cron.validate(OAUTH_PRUNE_CRON)) {
+    cron.schedule(OAUTH_PRUNE_CRON, async () => {
+      try {
+        const { pruneExpiredStates } = await import(
+          "../services/oauth-state.service"
+        );
+        const n = await pruneExpiredStates();
+        if (n > 0) console.log(`[cron] pruned ${n} expired OAuth states`);
+      } catch (e: any) {
+        console.error("[cron] oauth prune failed:", e?.message || e);
+      }
+    });
+    console.log(
+      `[cron] oauth state pruner registered — "${OAUTH_PRUNE_CRON}" (hourly)`
+    );
+  }
 }

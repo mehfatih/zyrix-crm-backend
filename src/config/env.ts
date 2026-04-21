@@ -32,6 +32,15 @@ const envSchema = z.object({
 
   GEMINI_API_KEY: z.string().optional(),
 
+  // E-commerce OAuth providers. All optional — the corresponding
+  // install/callback routes short-circuit with a 501 if the env vars
+  // for that provider aren't set, so one provider can be live while
+  // the other is still pending partner-portal review.
+  SALLA_CLIENT_ID: z.string().optional(),
+  SALLA_CLIENT_SECRET: z.string().optional(),
+  SHOPIFY_CLIENT_ID: z.string().optional(),
+  SHOPIFY_CLIENT_SECRET: z.string().optional(),
+
   // Admin Panel Bootstrap
   ADMIN_BOOTSTRAP_TOKEN: z.string().optional(),
   SUPER_ADMIN_EMAILS: z.string().optional(),
