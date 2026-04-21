@@ -1,6 +1,7 @@
 import { prisma } from "../config/database";
 import { notFound } from "../middleware/errorHandler";
 import { getPlatform, PLATFORMS, listPlatforms, type PlatformDefinition } from "./ecommerce-platforms.registry";
+import { fetchWithLimit } from "../utils/rateLimiter";
 
 // ============================================================================
 // GENERALIZED E-COMMERCE INTEGRATION SERVICE
@@ -244,7 +245,9 @@ async function verifyCredentials(
   try {
     switch (platform.id) {
       case "shopify": {
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "shopify",
+          domain,
           `https://${domain}/admin/api/2024-10/shop.json`,
           {
             headers: {
@@ -257,7 +260,9 @@ async function verifyCredentials(
       }
       case "salla": {
         // Salla: Bearer token to /admin/v2/store/info
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "salla",
+          undefined,
           "https://api.salla.dev/admin/v2/store/info",
           {
             headers: {
@@ -270,7 +275,9 @@ async function verifyCredentials(
       }
       case "zid": {
         // Zid OAuth: /v1/managers/account/profile
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "zid",
+          undefined,
           `https://api.zid.sa/v1/managers/account/profile`,
           {
             headers: {
@@ -283,7 +290,9 @@ async function verifyCredentials(
       }
       case "youcan": {
         // YouCan API: Bearer token
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "youcan",
+          undefined,
           `https://api.youcan.shop/me`,
           {
             headers: {
@@ -298,7 +307,9 @@ async function verifyCredentials(
         // WooCommerce: Basic auth with consumer_key:consumer_secret
         if (!dto.apiSecret) return false;
         const auth = Buffer.from(`${dto.apiKey}:${dto.apiSecret}`).toString("base64");
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "woocommerce",
+          domain,
           `https://${domain}/wp-json/wc/v3/system_status`,
           {
             headers: {
@@ -311,7 +322,9 @@ async function verifyCredentials(
       }
       case "easyorders": {
         // EasyOrders API key header
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "easyorders",
+          undefined,
           `https://app.easy-orders.net/api/v1/external-apps/users/me`,
           {
             headers: {
@@ -323,7 +336,9 @@ async function verifyCredentials(
         return resp.ok || resp.status === 401; // 401 means endpoint exists
       }
       case "expandcart": {
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "expandcart",
+          domain,
           `https://${domain}/api/rest/store`,
           {
             headers: {
@@ -336,7 +351,9 @@ async function verifyCredentials(
       }
       case "ticimax": {
         // Ticimax uses SOAP or REST with API key
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "ticimax",
+          domain,
           `https://${domain}/Servis/UrunServis.svc/urunler?wt=json`,
           {
             headers: {
@@ -348,7 +365,9 @@ async function verifyCredentials(
         return resp?.ok || resp?.status === 401 || false;
       }
       case "ideasoft": {
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "ideasoft",
+          domain,
           `https://${domain}/api/me`,
           {
             headers: {
@@ -360,7 +379,9 @@ async function verifyCredentials(
         return resp?.ok || false;
       }
       case "tsoft": {
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "tsoft",
+          domain,
           `https://${domain}/rest1/user/tokenCheck`,
           {
             headers: {
@@ -372,7 +393,9 @@ async function verifyCredentials(
         return resp?.ok || false;
       }
       case "ikas": {
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "ikas",
+          undefined,
           `https://api.myikas.com/api/v1/admin/graphql`,
           {
             method: "POST",
@@ -389,7 +412,9 @@ async function verifyCredentials(
       }
       case "turhost": {
         // Turhost - generic API
-        const resp = await fetch(
+        const resp = await fetchWithLimit(
+          "turhost",
+          domain,
           `https://${domain}/api/auth/verify`,
           {
             headers: {
@@ -589,7 +614,7 @@ async function syncShopify(
     const url: string = pageInfo
       ? `https://${domain}/admin/api/2024-10/customers.json?limit=250&page_info=${encodeURIComponent(pageInfo)}`
       : `https://${domain}/admin/api/2024-10/customers.json?limit=250`;
-    const resp = await fetch(url, {
+    const resp = await fetchWithLimit("shopify", domain, url, {
       headers: {
         "X-Shopify-Access-Token": creds.accessToken,
         "Content-Type": "application/json",
@@ -653,7 +678,7 @@ async function syncShopifyOrders(
       ? `https://${domain}/admin/api/2024-10/orders.json?limit=250&status=any&page_info=${encodeURIComponent(pageInfo)}`
       : `https://${domain}/admin/api/2024-10/orders.json?limit=250&status=any&created_at_min=${encodeURIComponent(since)}`;
 
-    const resp = await fetch(url, {
+    const resp = await fetchWithLimit("shopify", domain, url, {
       headers: {
         "X-Shopify-Access-Token": creds.accessToken,
         "Content-Type": "application/json",
@@ -719,7 +744,9 @@ async function syncSalla(creds: SyncCreds, companyId: string): Promise<SyncResul
   const maxPages = 20;
 
   while (page <= maxPages) {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "salla",
+      undefined,
       `https://api.salla.dev/admin/v2/customers?page=${page}&per_page=50`,
       {
         headers: {
@@ -765,7 +792,9 @@ async function syncSallaOrders(
   const maxPages = 20;
 
   while (page <= maxPages) {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "salla",
+      undefined,
       `https://api.salla.dev/admin/v2/orders?page=${page}&per_page=50`,
       {
         headers: {
@@ -833,7 +862,9 @@ async function syncZid(creds: SyncCreds, companyId: string): Promise<SyncResult>
   const maxPages = 20;
 
   while (page <= maxPages) {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "zid",
+      undefined,
       `https://api.zid.sa/v1/managers/store/customers?page=${page}&page_size=50`,
       {
         headers: {
@@ -878,7 +909,9 @@ async function syncZidOrders(
   const PAID_STATUSES = new Set(["paid"]);
 
   while (page <= maxPages) {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "zid",
+      undefined,
       `https://api.zid.sa/v1/managers/store/orders?page=${page}&page_size=50`,
       {
         headers: {
@@ -940,7 +973,9 @@ async function syncYouCan(creds: SyncCreds, companyId: string): Promise<SyncResu
   const maxPages = 20;
 
   while (page <= maxPages) {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "youcan",
+      undefined,
       `https://api.youcan.shop/customers?page=${page}&per_page=50`,
       {
         headers: {
@@ -988,7 +1023,9 @@ async function syncYouCanOrders(
   const PAID_STATUSES = new Set(["paid", "completed"]);
 
   while (page <= maxPages) {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "youcan",
+      undefined,
       `https://api.youcan.shop/orders?page=${page}&per_page=50`,
       {
         headers: {
@@ -1061,7 +1098,9 @@ async function syncWooCommerce(
   const maxPages = 20;
 
   while (page <= maxPages) {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "woocommerce",
+      domain,
       `https://${domain}/wp-json/wc/v3/customers?per_page=50&page=${page}`,
       {
         headers: {
@@ -1113,7 +1152,9 @@ async function syncWooCommerceOrders(
   const PAID_STATUSES = new Set(["processing", "completed"]);
 
   while (page <= maxPages) {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "woocommerce",
+      domain,
       `https://${domain}/wp-json/wc/v3/orders?per_page=50&page=${page}&orderby=date&order=desc`,
       {
         headers: {
@@ -1178,7 +1219,9 @@ async function syncEasyOrders(creds: SyncCreds, companyId: string): Promise<Sync
   let imported = 0;
   try {
     // EasyOrders API pattern: /external-apps/customers
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "easyorders",
+      undefined,
       `https://app.easy-orders.net/api/v1/external-apps/customers?limit=500`,
       {
         headers: {
@@ -1224,7 +1267,9 @@ async function syncEasyOrdersOrders(
   // EasyOrders statuses include: confirmed, delivered, paid, cancelled, returned
   const PAID_STATUSES = new Set(["paid", "delivered", "confirmed"]);
   try {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "easyorders",
+      undefined,
       `https://app.easy-orders.net/api/v1/external-apps/orders?limit=500`,
       {
         headers: {
@@ -1292,7 +1337,9 @@ async function syncExpandCart(
   companyId: string
 ): Promise<SyncResult> {
   let imported = 0;
-  const resp = await fetch(
+  const resp = await fetchWithLimit(
+    "expandcart",
+    domain,
     `https://${domain}/api/rest/customers?limit=500`,
     {
       headers: { "X-API-KEY": creds.accessToken, "Content-Type": "application/json" },
@@ -1326,7 +1373,9 @@ async function syncExpandCartOrders(
   // ExpandCart order_status_id 2=processing, 3=shipped, 5=complete
   // and payment_status 'paid' — both contribute to paid classification.
   const PAID_STATUSES = new Set(["complete", "shipped", "paid", "delivered"]);
-  const resp = await fetch(
+  const resp = await fetchWithLimit(
+    "expandcart",
+    domain,
     `https://${domain}/api/rest/orders?limit=500`,
     {
       headers: { "X-API-KEY": creds.accessToken, "Content-Type": "application/json" },
@@ -1378,7 +1427,9 @@ async function syncTicimax(
 ): Promise<SyncResult> {
   let imported = 0;
   // Ticimax SOAP/JSON endpoint: /Servis/UyeServis.svc/GetUyeList
-  const resp = await fetch(
+  const resp = await fetchWithLimit(
+    "ticimax",
+    domain,
     `https://${domain}/Servis/UyeServis.svc/GetUyeList`,
     {
       method: "POST",
@@ -1425,7 +1476,9 @@ async function syncTicimaxOrders(
     "odemealindi",
   ]);
 
-  const resp = await fetch(
+  const resp = await fetchWithLimit(
+    "ticimax",
+    domain,
     `https://${domain}/Servis/SiparisServis.svc/SiparisleriGetir`,
     {
       method: "POST",
@@ -1489,7 +1542,9 @@ async function syncIdeasoft(
   const maxPages = 10;
 
   while (page <= maxPages) {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "ideasoft",
+      domain,
       `https://${domain}/api/customers?limit=50&page=${page}`,
       {
         headers: {
@@ -1532,7 +1587,9 @@ async function syncIdeasoftOrders(
   const PAID_STATUSES = new Set(["approved", "shipping", "shipped", "completed"]);
 
   while (page <= maxPages) {
-    const resp = await fetch(
+    const resp = await fetchWithLimit(
+      "ideasoft",
+      domain,
       `https://${domain}/api/orders?limit=50&page=${page}`,
       {
         headers: {
@@ -1595,7 +1652,9 @@ async function syncTSoft(
   companyId: string
 ): Promise<SyncResult> {
   let imported = 0;
-  const resp = await fetch(
+  const resp = await fetchWithLimit(
+    "tsoft",
+    domain,
     `https://${domain}/rest1/customer/getList`,
     {
       method: "POST",
@@ -1642,7 +1701,9 @@ async function syncTSoftOrders(
     "odemealindi",
   ]);
 
-  const resp = await fetch(
+  const resp = await fetchWithLimit(
+    "tsoft",
+    domain,
     `https://${domain}/rest1/order/getList`,
     {
       method: "POST",
@@ -1709,7 +1770,9 @@ async function syncIkas(creds: SyncCreds, companyId: string): Promise<SyncResult
       }
     }
   }`;
-  const resp = await fetch(
+  const resp = await fetchWithLimit(
+    "ikas",
+    undefined,
     `https://api.myikas.com/api/v1/admin/graphql`,
     {
       method: "POST",
@@ -1770,7 +1833,9 @@ async function syncIkasOrders(
       }
     }
   }`;
-  const resp = await fetch(
+  const resp = await fetchWithLimit(
+    "ikas",
+    undefined,
     `https://api.myikas.com/api/v1/admin/graphql`,
     {
       method: "POST",
@@ -1829,7 +1894,9 @@ async function syncTurhost(
   companyId: string
 ): Promise<SyncResult> {
   let imported = 0;
-  const resp = await fetch(
+  const resp = await fetchWithLimit(
+    "turhost",
+    domain,
     `https://${domain}/api/customers?limit=500`,
     {
       headers: {
@@ -1872,7 +1939,9 @@ async function syncTurhostOrders(
     "tamamlandi",
   ]);
 
-  const resp = await fetch(
+  const resp = await fetchWithLimit(
+    "turhost",
+    domain,
     `https://${domain}/api/orders?limit=500`,
     {
       headers: {
