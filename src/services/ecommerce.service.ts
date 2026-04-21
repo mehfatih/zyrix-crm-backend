@@ -862,7 +862,75 @@ async function syncZid(creds: SyncCreds, companyId: string): Promise<SyncResult>
     if (rows.length < 50) break;
     page++;
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncZidOrders(creds, companyId);
+  return { imported, orders };
+}
+
+async function syncZidOrders(
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  let page = 1;
+  const maxPages = 20;
+  // Zid payment_status values: paid, unpaid, partially_paid, refunded
+  const PAID_STATUSES = new Set(["paid"]);
+
+  while (page <= maxPages) {
+    const resp = await fetch(
+      `https://api.zid.sa/v1/managers/store/orders?page=${page}&page_size=50`,
+      {
+        headers: {
+          Authorization: `Bearer ${creds.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    ).catch(() => null);
+    if (!resp || !resp.ok) break;
+    const body = (await resp.json()) as { orders?: any[]; results?: any[] };
+    const rows = body.orders || body.results || [];
+    if (rows.length === 0) break;
+
+    for (const order of rows) {
+      const customerRaw = order.customer;
+      if (!customerRaw?.id) continue;
+
+      const customerId = await upsertShopCustomer(
+        companyId,
+        "zid",
+        String(customerRaw.id),
+        {
+          fullName:
+            customerRaw.name ||
+            customerRaw.full_name ||
+            customerRaw.email ||
+            `Customer ${customerRaw.id}`,
+          email: customerRaw.email,
+          phone: customerRaw.mobile || customerRaw.phone,
+        }
+      );
+
+      const status = (order.payment_status || "").toString().toLowerCase();
+      const isPaid = PAID_STATUSES.has(status);
+      const value = parseFloat(order.total || order.grand_total || "0") || 0;
+      const closedAt =
+        isPaid && order.updated_at ? new Date(order.updated_at) : null;
+
+      await upsertOrderDeal(companyId, customerId, "zid", {
+        externalId: String(order.id),
+        value,
+        currency: order.currency || "SAR",
+        isPaid,
+        closedAt,
+      });
+      ordersSynced++;
+    }
+
+    if (rows.length < 50) break;
+    page++;
+  }
+  return ordersSynced;
 }
 
 // ─── YOUCAN ───────────────────────────────────────────────────────────
@@ -904,7 +972,78 @@ async function syncYouCan(creds: SyncCreds, companyId: string): Promise<SyncResu
     if (rows.length < 50) break;
     page++;
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncYouCanOrders(creds, companyId);
+  return { imported, orders };
+}
+
+async function syncYouCanOrders(
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  let page = 1;
+  const maxPages = 20;
+  // YouCan status values: pending, paid, completed, cancelled, refunded
+  const PAID_STATUSES = new Set(["paid", "completed"]);
+
+  while (page <= maxPages) {
+    const resp = await fetch(
+      `https://api.youcan.shop/orders?page=${page}&per_page=50`,
+      {
+        headers: {
+          Authorization: `Bearer ${creds.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    ).catch(() => null);
+    if (!resp || !resp.ok) break;
+    const body = (await resp.json()) as { data?: any[] };
+    const rows = body.data || [];
+    if (rows.length === 0) break;
+
+    for (const order of rows) {
+      const customer = order.customer;
+      if (!customer?.id) continue;
+
+      const customerId = await upsertShopCustomer(
+        companyId,
+        "youcan",
+        String(customer.id),
+        {
+          fullName:
+            [customer.first_name, customer.last_name]
+              .filter(Boolean)
+              .join(" ")
+              .trim() ||
+            customer.email ||
+            `Customer ${customer.id}`,
+          email: customer.email,
+          phone: customer.phone,
+        }
+      );
+
+      const status = (order.status || "").toString().toLowerCase();
+      const isPaid = PAID_STATUSES.has(status);
+      const value =
+        parseFloat(order.total || order.total_price || "0") || 0;
+      const closedAt =
+        isPaid && order.completed_at ? new Date(order.completed_at) : null;
+
+      await upsertOrderDeal(companyId, customerId, "youcan", {
+        externalId: String(order.id),
+        value,
+        currency: order.currency || "MAD",
+        isPaid,
+        closedAt,
+      });
+      ordersSynced++;
+    }
+
+    if (rows.length < 50) break;
+    page++;
+  }
+  return ordersSynced;
 }
 
 // ─── WOOCOMMERCE ──────────────────────────────────────────────────────
@@ -1072,7 +1211,78 @@ async function syncEasyOrders(creds: SyncCreds, companyId: string): Promise<Sync
   } catch (e) {
     console.error("EasyOrders sync error:", e);
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncEasyOrdersOrders(creds, companyId);
+  return { imported, orders };
+}
+
+async function syncEasyOrdersOrders(
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  // EasyOrders statuses include: confirmed, delivered, paid, cancelled, returned
+  const PAID_STATUSES = new Set(["paid", "delivered", "confirmed"]);
+  try {
+    const resp = await fetch(
+      `https://app.easy-orders.net/api/v1/external-apps/orders?limit=500`,
+      {
+        headers: {
+          "api-key": creds.accessToken,
+          "Content-Type": "application/json",
+        },
+      }
+    ).catch(() => null);
+    if (!resp || !resp.ok) return 0;
+    const body = (await resp.json()) as { data?: any[]; orders?: any[] };
+    const rows = body.data || body.orders || [];
+
+    for (const order of rows) {
+      // Customer can be either nested object or a raw id — handle both
+      const customerRaw = order.customer || order.customer_info;
+      const customerExtId = customerRaw?.id || customerRaw?._id || order.customer_id;
+      if (!customerExtId) continue;
+
+      const customerId = await upsertShopCustomer(
+        companyId,
+        "easyorders",
+        String(customerExtId),
+        {
+          fullName:
+            customerRaw?.name ||
+            customerRaw?.full_name ||
+            customerRaw?.customer_name ||
+            order.customer_name ||
+            `Customer ${customerExtId}`,
+          email: customerRaw?.email || order.customer_email,
+          phone: customerRaw?.phone || order.customer_phone,
+        }
+      );
+
+      const status = (order.status || order.order_status || "").toString().toLowerCase();
+      const isPaid = PAID_STATUSES.has(status);
+      const value =
+        parseFloat(
+          order.total || order.grand_total || order.amount || "0"
+        ) || 0;
+      const closedAt =
+        isPaid && (order.delivered_at || order.updated_at)
+          ? new Date(order.delivered_at || order.updated_at)
+          : null;
+
+      await upsertOrderDeal(companyId, customerId, "easyorders", {
+        externalId: String(order.id || order._id),
+        value,
+        currency: order.currency || "EGP",
+        isPaid,
+        closedAt,
+      });
+      ordersSynced++;
+    }
+  } catch (e) {
+    console.error("EasyOrders orders sync error:", e);
+  }
+  return ordersSynced;
 }
 
 // ─── EXPANDCART ───────────────────────────────────────────────────────
@@ -1102,7 +1312,62 @@ async function syncExpandCart(
     });
     imported++;
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncExpandCartOrders(domain, creds, companyId);
+  return { imported, orders };
+}
+
+async function syncExpandCartOrders(
+  domain: string,
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  // ExpandCart order_status_id 2=processing, 3=shipped, 5=complete
+  // and payment_status 'paid' — both contribute to paid classification.
+  const PAID_STATUSES = new Set(["complete", "shipped", "paid", "delivered"]);
+  const resp = await fetch(
+    `https://${domain}/api/rest/orders?limit=500`,
+    {
+      headers: { "X-API-KEY": creds.accessToken, "Content-Type": "application/json" },
+    }
+  ).catch(() => null);
+  if (!resp || !resp.ok) return 0;
+  const data = (await resp.json()) as { orders?: any[] };
+  const rows = data.orders || [];
+
+  for (const order of rows) {
+    const customerExtId = order.customer_id;
+    if (!customerExtId) continue;
+
+    const customerId = await upsertShopCustomer(
+      companyId,
+      "expandcart",
+      String(customerExtId),
+      {
+        fullName:
+          [order.firstname, order.lastname].filter(Boolean).join(" ").trim() ||
+          order.email ||
+          `Customer ${customerExtId}`,
+        email: order.email,
+        phone: order.telephone,
+      }
+    );
+
+    const statusName = (order.status || order.order_status || "").toString().toLowerCase();
+    const isPaid = PAID_STATUSES.has(statusName);
+    const value = parseFloat(order.total || "0") || 0;
+
+    await upsertOrderDeal(companyId, customerId, "expandcart", {
+      externalId: String(order.order_id || order.id),
+      value,
+      currency: order.currency_code || order.currency || "EGP",
+      isPaid,
+      closedAt: isPaid && order.date_modified ? new Date(order.date_modified) : null,
+    });
+    ordersSynced++;
+  }
+  return ordersSynced;
 }
 
 // ─── TICIMAX ──────────────────────────────────────────────────────────
@@ -1135,11 +1400,82 @@ async function syncTicimax(
       email: c.Eposta,
       phone: c.Telefon || c.CepTelefonu,
       city: c.Sehir,
-      country: c.Ulke || "Turkey",
+      country: c.Ulke || "Türkiye",
     });
     imported++;
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncTicimaxOrders(domain, creds, companyId);
+  return { imported, orders };
+}
+
+async function syncTicimaxOrders(
+  domain: string,
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  // Ticimax statuses (Turkish): Onaylandi (approved), Kargoya Verildi (shipped),
+  // TeslimEdildi (delivered), IptalEdildi (cancelled).
+  // OdemeDurumu=1 typically means paid. We treat approved/shipped/delivered as paid.
+  const PAID_STATUS_NAMES = new Set([
+    "onaylandi",
+    "kargoyaverildi",
+    "teslimedildi",
+    "odemealindi",
+  ]);
+
+  const resp = await fetch(
+    `https://${domain}/Servis/SiparisServis.svc/SiparisleriGetir`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ApiKey: creds.accessToken,
+        Adet: 500,
+      }),
+    }
+  ).catch(() => null);
+  if (!resp || !resp.ok) return 0;
+  const body = (await resp.json()) as any;
+  const rows = body.d || body.Siparisler || [];
+
+  for (const order of rows) {
+    const customerExtId = order.UyeID || order.UyeId || order.MusteriID;
+    if (!customerExtId) continue;
+
+    const customerId = await upsertShopCustomer(
+      companyId,
+      "ticimax",
+      String(customerExtId),
+      {
+        fullName:
+          [order.UyeAdi, order.UyeSoyadi].filter(Boolean).join(" ").trim() ||
+          order.UyeEposta ||
+          `Müşteri ${customerExtId}`,
+        email: order.UyeEposta,
+        phone: order.UyeTelefon,
+      }
+    );
+
+    const statusName = (order.DurumAdi || order.Durum || "")
+      .toString()
+      .toLowerCase()
+      .replace(/\s+/g, "");
+    const paymentFlag = order.OdemeDurumu === 1 || order.OdemeDurumu === true;
+    const isPaid = paymentFlag || PAID_STATUS_NAMES.has(statusName);
+    const value = parseFloat(order.ToplamTutar || order.Tutar || "0") || 0;
+
+    await upsertOrderDeal(companyId, customerId, "ticimax", {
+      externalId: String(order.ID || order.Id || order.SiparisID),
+      value,
+      currency: order.ParaBirimi || "TRY",
+      isPaid,
+      closedAt: isPaid && order.TeslimTarihi ? new Date(order.TeslimTarihi) : null,
+    });
+    ordersSynced++;
+  }
+  return ordersSynced;
 }
 
 // ─── IDEASOFT ─────────────────────────────────────────────────────────
@@ -1179,7 +1515,77 @@ async function syncIdeasoft(
     if (rows.length < 50) break;
     page++;
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncIdeasoftOrders(domain, creds, companyId);
+  return { imported, orders };
+}
+
+async function syncIdeasoftOrders(
+  domain: string,
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  let page = 1;
+  const maxPages = 10;
+  // İdeasoft status values observed: approved, shipping, shipped, completed, cancelled
+  const PAID_STATUSES = new Set(["approved", "shipping", "shipped", "completed"]);
+
+  while (page <= maxPages) {
+    const resp = await fetch(
+      `https://${domain}/api/orders?limit=50&page=${page}`,
+      {
+        headers: {
+          Authorization: `Bearer ${creds.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    ).catch(() => null);
+    if (!resp || !resp.ok) break;
+    const rows = (await resp.json()) as any[];
+    if (!Array.isArray(rows) || rows.length === 0) break;
+
+    for (const order of rows) {
+      const customerExt = order.customer?.id || order.customerId || order.customer_id;
+      if (!customerExt) continue;
+
+      const customerId = await upsertShopCustomer(
+        companyId,
+        "ideasoft",
+        String(customerExt),
+        {
+          fullName:
+            order.customer?.fullName ||
+            [order.customer?.firstname, order.customer?.lastname]
+              .filter(Boolean)
+              .join(" ")
+              .trim() ||
+            order.customer?.email ||
+            `Customer ${customerExt}`,
+          email: order.customer?.email,
+          phone: order.customer?.phone,
+        }
+      );
+
+      const status = (order.status || order.orderStatus || "").toString().toLowerCase();
+      const isPaid = PAID_STATUSES.has(status);
+      const value =
+        parseFloat(order.totalAmount || order.total || order.grandTotal || "0") || 0;
+
+      await upsertOrderDeal(companyId, customerId, "ideasoft", {
+        externalId: String(order.id),
+        value,
+        currency: order.currency || "TRY",
+        isPaid,
+        closedAt: isPaid && order.updatedAt ? new Date(order.updatedAt) : null,
+      });
+      ordersSynced++;
+    }
+
+    if (rows.length < 50) break;
+    page++;
+  }
+  return ordersSynced;
 }
 
 // ─── T-SOFT ───────────────────────────────────────────────────────────
@@ -1214,7 +1620,79 @@ async function syncTSoft(
     });
     imported++;
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncTSoftOrders(domain, creds, companyId);
+  return { imported, orders };
+}
+
+async function syncTSoftOrders(
+  domain: string,
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  // T-Soft order_status_id mapping varies per store, but status_name usually in
+  // Turkish. We match common paid/fulfilled names.
+  const PAID_STATUS_NAMES = new Set([
+    "onaylandi",
+    "hazirlaniyor",
+    "kargolandi",
+    "teslimedildi",
+    "tamamlandi",
+    "odemealindi",
+  ]);
+
+  const resp = await fetch(
+    `https://${domain}/rest1/order/getList`,
+    {
+      method: "POST",
+      headers: {
+        Token: creds.accessToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ start: 0, limit: 500 }),
+    }
+  ).catch(() => null);
+  if (!resp || !resp.ok) return 0;
+  const body = (await resp.json()) as { data?: any[] };
+  const rows = body.data || [];
+
+  for (const order of rows) {
+    const customerExtId = order.customer_id || order.member_id;
+    if (!customerExtId) continue;
+
+    const customerId = await upsertShopCustomer(
+      companyId,
+      "tsoft",
+      String(customerExtId),
+      {
+        fullName:
+          [order.customer_name, order.customer_surname].filter(Boolean).join(" ").trim() ||
+          order.email ||
+          `Müşteri ${customerExtId}`,
+        email: order.email,
+        phone: order.phone || order.gsm,
+      }
+    );
+
+    const status = (order.status_name || order.status || "")
+      .toString()
+      .toLowerCase()
+      .replace(/\s+/g, "");
+    const paidFlag = order.is_paid === "1" || order.is_paid === 1 || order.is_paid === true;
+    const isPaid = paidFlag || PAID_STATUS_NAMES.has(status);
+    const value = parseFloat(order.total || order.grand_total || "0") || 0;
+
+    await upsertOrderDeal(companyId, customerId, "tsoft", {
+      externalId: String(order.id || order.order_id),
+      value,
+      currency: order.currency || "TRY",
+      isPaid,
+      closedAt: isPaid && order.last_update ? new Date(order.last_update) : null,
+    });
+    ordersSynced++;
+  }
+  return ordersSynced;
 }
 
 // ─── IKAS ─────────────────────────────────────────────────────────────
@@ -1255,7 +1733,93 @@ async function syncIkas(creds: SyncCreds, companyId: string): Promise<SyncResult
     });
     imported++;
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncIkasOrders(creds, companyId);
+  return { imported, orders };
+}
+
+async function syncIkasOrders(
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  // İkas order statuses (enum): CREATED, CANCELLED, FULFILLED, PARTIALLY_FULFILLED,
+  // REFUNDED, PARTIALLY_REFUNDED. paymentStatus: PAID, FAILED, PENDING, REFUNDED.
+  const PAID_ORDER_STATUSES = new Set([
+    "FULFILLED",
+    "PARTIALLY_FULFILLED",
+  ]);
+  const query = `{
+    listOrder(pagination: { limit: 100 }) {
+      data {
+        id
+        orderNumber
+        status
+        paymentStatus
+        totalFinalPrice
+        currencyCode
+        createdAt
+        orderedAt
+        customer {
+          id
+          email
+          firstName
+          lastName
+          phone
+        }
+      }
+    }
+  }`;
+  const resp = await fetch(
+    `https://api.myikas.com/api/v1/admin/graphql`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${creds.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    }
+  ).catch(() => null);
+  if (!resp || !resp.ok) return 0;
+  const body = (await resp.json()) as any;
+  const rows = body?.data?.listOrder?.data || [];
+
+  for (const order of rows) {
+    const customer = order.customer;
+    if (!customer?.id) continue;
+
+    const customerId = await upsertShopCustomer(
+      companyId,
+      "ikas",
+      String(customer.id),
+      {
+        fullName:
+          [customer.firstName, customer.lastName].filter(Boolean).join(" ").trim() ||
+          customer.email ||
+          `Customer ${customer.id}`,
+        email: customer.email,
+        phone: customer.phone,
+      }
+    );
+
+    const paymentStatus = (order.paymentStatus || "").toString().toUpperCase();
+    const orderStatus = (order.status || "").toString().toUpperCase();
+    const isPaid =
+      paymentStatus === "PAID" || PAID_ORDER_STATUSES.has(orderStatus);
+    const value =
+      parseFloat(order.totalFinalPrice?.toString() || "0") || 0;
+
+    await upsertOrderDeal(companyId, customerId, "ikas", {
+      externalId: String(order.id),
+      value,
+      currency: order.currencyCode || "TRY",
+      isPaid,
+      closedAt: isPaid && order.orderedAt ? new Date(order.orderedAt) : null,
+    });
+    ordersSynced++;
+  }
+  return ordersSynced;
 }
 
 // ─── TURHOST ──────────────────────────────────────────────────────────
@@ -1287,5 +1851,78 @@ async function syncTurhost(
     });
     imported++;
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncTurhostOrders(domain, creds, companyId);
+  return { imported, orders };
+}
+
+async function syncTurhostOrders(
+  domain: string,
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  // Turhost statuses (generic e-commerce): paid, completed, shipped, delivered
+  const PAID_STATUSES = new Set([
+    "paid",
+    "completed",
+    "shipped",
+    "delivered",
+    "odendi",
+    "tamamlandi",
+  ]);
+
+  const resp = await fetch(
+    `https://${domain}/api/orders?limit=500`,
+    {
+      headers: {
+        Authorization: `Bearer ${creds.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    }
+  ).catch(() => null);
+  if (!resp || !resp.ok) return 0;
+  const data = (await resp.json()) as any;
+  const rows = data.data || data.orders || [];
+
+  for (const order of rows) {
+    const customerExtId = order.customerId || order.customer_id || order.customer?.id;
+    if (!customerExtId) continue;
+
+    const customerId = await upsertShopCustomer(
+      companyId,
+      "turhost",
+      String(customerExtId),
+      {
+        fullName:
+          order.customer?.name ||
+          [order.customer?.firstName, order.customer?.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim() ||
+          order.customer?.email ||
+          order.customerName ||
+          `Customer ${customerExtId}`,
+        email: order.customer?.email || order.customerEmail,
+        phone: order.customer?.phone || order.customerPhone,
+      }
+    );
+
+    const status = (order.status || order.orderStatus || "")
+      .toString()
+      .toLowerCase()
+      .replace(/\s+/g, "");
+    const isPaid = PAID_STATUSES.has(status);
+    const value = parseFloat(order.total || order.grandTotal || "0") || 0;
+
+    await upsertOrderDeal(companyId, customerId, "turhost", {
+      externalId: String(order.id || order.orderId),
+      value,
+      currency: order.currency || "TRY",
+      isPaid,
+      closedAt: isPaid && order.updatedAt ? new Date(order.updatedAt) : null,
+    });
+    ordersSynced++;
+  }
+  return ordersSynced;
 }
