@@ -1,0 +1,758 @@
+// ============================================================================
+// E-COMMERCE PLATFORM REGISTRY
+// Catalog of 40+ e-commerce platforms with auth schemes, API endpoints,
+// and sync capability flags for MENA region + Turkey
+// ============================================================================
+
+export type PlatformRegion = "mena" | "turkey" | "global";
+
+export type AuthScheme =
+  | "access_token"
+  | "api_key"
+  | "api_key_secret"
+  | "oauth"
+  | "basic_auth";
+
+export interface PlatformDefinition {
+  id: string;
+  name: string;
+  region: PlatformRegion;
+  country: string;
+  website: string;
+  // Authentication
+  authScheme: AuthScheme;
+  authHelpUrl?: string;
+  // API characteristics
+  apiBase?: string | null;
+  apiDocs?: string;
+  // Supported sync features
+  supports: {
+    customers: boolean;
+    orders: boolean;
+    products: boolean;
+    webhooks: boolean;
+  };
+  // UI hints
+  brandColor: string;
+  logo?: string;
+  description: { en: string; ar: string; tr: string };
+  // Integration status in our system
+  status: "native" | "api" | "csv_only" | "planned";
+  popularity: number; // 1-100
+}
+
+export const PLATFORMS: PlatformDefinition[] = [
+  // ──────────────────────────────────────────────────────────────────────
+  // MENA / ARAB PLATFORMS
+  // ──────────────────────────────────────────────────────────────────────
+  {
+    id: "salla",
+    name: "Salla",
+    region: "mena",
+    country: "Saudi Arabia",
+    website: "https://salla.sa",
+    authScheme: "access_token",
+    authHelpUrl: "https://docs.salla.dev/docs/merchant-api/authentication",
+    apiBase: null, // Store-specific
+    apiDocs: "https://docs.salla.dev",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#004CFF",
+    description: {
+      en: "Leading Saudi Shopify-alternative with 80,000+ merchants. Arabic-first.",
+      ar: "المنصة السعودية الأولى لإنشاء المتاجر الإلكترونية. أكثر من 80 ألف تاجر.",
+      tr: "80.000+ satıcılı lider Suudi Shopify alternatifi. Arapça öncelikli.",
+    },
+    status: "native",
+    popularity: 95,
+  },
+  {
+    id: "zid",
+    name: "Zid",
+    region: "mena",
+    country: "Saudi Arabia",
+    website: "https://zid.sa",
+    authScheme: "oauth",
+    authHelpUrl: "https://docs.zid.sa/docs/authentication",
+    apiBase: "https://api.zid.sa",
+    apiDocs: "https://docs.zid.sa",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#6D28D9",
+    description: {
+      en: "Saudi e-commerce platform with strong analytics and Gulf-wide reach.",
+      ar: "منصة تجارة إلكترونية سعودية قوية مع تحليلات متقدمة.",
+      tr: "Güçlü analitik ve Körfez erişimiyle Suudi e-ticaret platformu.",
+    },
+    status: "api",
+    popularity: 90,
+  },
+  {
+    id: "youcan",
+    name: "YouCan",
+    region: "mena",
+    country: "Morocco",
+    website: "https://youcan.shop",
+    authScheme: "api_key",
+    apiBase: null,
+    apiDocs: "https://developer.youcan.shop",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#10B981",
+    description: {
+      en: "Morocco-focused platform with integrated payment and shipping.",
+      ar: "منصة مغربية متكاملة للمدفوعات والشحن.",
+      tr: "Entegre ödeme ve kargo ile Fas odaklı platform.",
+    },
+    status: "api",
+    popularity: 75,
+  },
+  {
+    id: "shopyan",
+    name: "Shopyan",
+    region: "mena",
+    country: "Morocco",
+    website: "https://shopyan.com",
+    authScheme: "api_key",
+    apiBase: null,
+    supports: { customers: true, orders: true, products: false, webhooks: false },
+    brandColor: "#F59E0B",
+    description: {
+      en: "Moroccan builder with local shipping and COD support.",
+      ar: "منصة مغربية مع شحن محلي ودعم الدفع عند الاستلام.",
+      tr: "Yerel kargo ve COD destekli Fas platformu.",
+    },
+    status: "csv_only",
+    popularity: 60,
+  },
+  {
+    id: "storeino",
+    name: "Storeino",
+    region: "mena",
+    country: "Morocco",
+    website: "https://storeino.com",
+    authScheme: "api_key",
+    apiBase: null,
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#EF4444",
+    description: {
+      en: "Moroccan e-commerce with integrated fulfillment.",
+      ar: "تجارة إلكترونية مغربية مع تنفيذ متكامل.",
+      tr: "Entegre kargo ile Fas e-ticaret.",
+    },
+    status: "csv_only",
+    popularity: 55,
+  },
+  {
+    id: "easyorders",
+    name: "EasyOrders",
+    region: "mena",
+    country: "Egypt",
+    website: "https://easy-orders.net",
+    authScheme: "api_key",
+    apiBase: null,
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#3B82F6",
+    description: {
+      en: "Egypt-focused order management and e-commerce platform.",
+      ar: "منصة مصرية لإدارة الطلبات والتجارة الإلكترونية.",
+      tr: "Mısır odaklı sipariş yönetimi ve e-ticaret platformu.",
+    },
+    status: "api",
+    popularity: 80,
+  },
+  {
+    id: "zvendo",
+    name: "Zvendo",
+    region: "mena",
+    country: "Egypt",
+    website: "https://zvendo.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#EC4899",
+    description: {
+      en: "Egyptian platform with EGP subscriptions and local payment.",
+      ar: "منصة مصرية باشتراكات بالجنيه ومدفوعات محلية.",
+      tr: "EGP abonelikleri ve yerel ödemeli Mısır platformu.",
+    },
+    status: "csv_only",
+    popularity: 50,
+  },
+  {
+    id: "expandcart",
+    name: "ExpandCart",
+    region: "mena",
+    country: "Egypt",
+    website: "https://expandcart.com",
+    authScheme: "api_key",
+    apiDocs: "https://developers.expandcart.com",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#06B6D4",
+    description: {
+      en: "Arabic e-commerce platform serving Egypt, Saudi, UAE.",
+      ar: "منصة عربية تخدم مصر والسعودية والإمارات.",
+      tr: "Mısır, Suudi Arabistan ve BAE'ye hizmet veren Arapça e-ticaret.",
+    },
+    status: "api",
+    popularity: 65,
+  },
+  {
+    id: "ecomz",
+    name: "Ecomz",
+    region: "mena",
+    country: "Lebanon",
+    website: "https://ecomz.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#8B5CF6",
+    description: {
+      en: "Lebanese Shopify-alternative with strong MENA presence.",
+      ar: "بديل Shopify اللبناني مع انتشار قوي في MENA.",
+      tr: "Güçlü MENA varlığı olan Lübnan Shopify alternatifi.",
+    },
+    status: "csv_only",
+    popularity: 55,
+  },
+  {
+    id: "maroof",
+    name: "Maroof",
+    region: "mena",
+    country: "Saudi Arabia",
+    website: "https://maroof.sa",
+    authScheme: "api_key",
+    supports: { customers: false, orders: false, products: false, webhooks: false },
+    brandColor: "#0891B2",
+    description: {
+      en: "Saudi Ministry of Commerce merchant verification platform.",
+      ar: "منصة التحقق من التجار التابعة لوزارة التجارة السعودية.",
+      tr: "Suudi Ticaret Bakanlığı satıcı doğrulama platformu.",
+    },
+    status: "planned",
+    popularity: 40,
+  },
+  {
+    id: "woocommerce",
+    name: "WooCommerce",
+    region: "global",
+    country: "Global",
+    website: "https://woocommerce.com",
+    authScheme: "api_key_secret",
+    apiDocs: "https://woocommerce.github.io/woocommerce-rest-api-docs",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#7F54B3",
+    description: {
+      en: "WordPress e-commerce plugin used by 30% of online stores.",
+      ar: "إضافة ووردبريس للتجارة الإلكترونية مستخدمة في 30% من المتاجر.",
+      tr: "Çevrimiçi mağazaların %30'unda kullanılan WordPress e-ticaret eklentisi.",
+    },
+    status: "api",
+    popularity: 88,
+  },
+  {
+    id: "shopify",
+    name: "Shopify",
+    region: "global",
+    country: "Global",
+    website: "https://shopify.com",
+    authScheme: "access_token",
+    apiBase: null,
+    apiDocs: "https://shopify.dev/docs/api",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#008060",
+    description: {
+      en: "World's leading e-commerce platform. 4M+ stores globally.",
+      ar: "منصة التجارة الإلكترونية الأولى عالمياً. أكثر من 4 ملايين متجر.",
+      tr: "Dünyanın önde gelen e-ticaret platformu. Küresel 4M+ mağaza.",
+    },
+    status: "native",
+    popularity: 100,
+  },
+  {
+    id: "magento",
+    name: "Magento",
+    region: "global",
+    country: "Global",
+    website: "https://magento.com",
+    authScheme: "oauth",
+    apiDocs: "https://developer.adobe.com/commerce/webapi",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#F37F38",
+    description: {
+      en: "Adobe-owned enterprise e-commerce platform (Adobe Commerce).",
+      ar: "منصة تجارة إلكترونية مؤسسية مملوكة لأدوبي.",
+      tr: "Adobe'ye ait kurumsal e-ticaret platformu.",
+    },
+    status: "csv_only",
+    popularity: 70,
+  },
+  {
+    id: "bigcommerce",
+    name: "BigCommerce",
+    region: "global",
+    country: "Global",
+    website: "https://bigcommerce.com",
+    authScheme: "access_token",
+    apiDocs: "https://developer.bigcommerce.com",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#000000",
+    description: {
+      en: "Enterprise-grade SaaS e-commerce platform.",
+      ar: "منصة SaaS للتجارة الإلكترونية للمؤسسات.",
+      tr: "Kurumsal SaaS e-ticaret platformu.",
+    },
+    status: "csv_only",
+    popularity: 55,
+  },
+  {
+    id: "wix",
+    name: "Wix Stores",
+    region: "global",
+    country: "Global",
+    website: "https://wix.com",
+    authScheme: "oauth",
+    apiDocs: "https://dev.wix.com",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#0C6EFC",
+    description: {
+      en: "Drag-and-drop website builder with e-commerce features.",
+      ar: "منشئ مواقع بالسحب والإفلات مع ميزات التجارة الإلكترونية.",
+      tr: "E-ticaret özellikleri olan sürükle-bırak web oluşturucu.",
+    },
+    status: "csv_only",
+    popularity: 60,
+  },
+  {
+    id: "prestashop",
+    name: "PrestaShop",
+    region: "global",
+    country: "Global",
+    website: "https://prestashop.com",
+    authScheme: "api_key",
+    apiDocs: "https://devdocs.prestashop-project.org/8/webservice/",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#DF0067",
+    description: {
+      en: "Open-source PHP e-commerce popular in MENA + Europe.",
+      ar: "نظام تجارة إلكترونية PHP مفتوح المصدر شائع في MENA.",
+      tr: "MENA ve Avrupa'da popüler açık kaynaklı PHP e-ticaret.",
+    },
+    status: "csv_only",
+    popularity: 65,
+  },
+  {
+    id: "opencart",
+    name: "OpenCart",
+    region: "global",
+    country: "Global",
+    website: "https://opencart.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#2ECC71",
+    description: {
+      en: "Free open-source PHP e-commerce platform.",
+      ar: "منصة تجارة إلكترونية PHP مجانية مفتوحة المصدر.",
+      tr: "Ücretsiz açık kaynaklı PHP e-ticaret platformu.",
+    },
+    status: "csv_only",
+    popularity: 55,
+  },
+  {
+    id: "tray",
+    name: "Tray Commerce",
+    region: "mena",
+    country: "UAE",
+    website: "https://tray.sa",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#0284C7",
+    description: {
+      en: "UAE-based MENA e-commerce for mid-market.",
+      ar: "منصة إماراتية للتجارة الإلكترونية في الشرق الأوسط.",
+      tr: "Orta pazar için BAE merkezli MENA e-ticaret.",
+    },
+    status: "planned",
+    popularity: 40,
+  },
+  {
+    id: "souqcart",
+    name: "SouqCart",
+    region: "mena",
+    country: "UAE",
+    website: "https://souqcart.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: false, webhooks: false },
+    brandColor: "#F97316",
+    description: {
+      en: "MENA-focused store builder with Arabic checkout.",
+      ar: "منشئ متاجر MENA مع دفع بالعربية.",
+      tr: "Arapça ödemeli MENA odaklı mağaza oluşturucu.",
+    },
+    status: "planned",
+    popularity: 35,
+  },
+  {
+    id: "webkul_mena",
+    name: "Webkul MENA",
+    region: "mena",
+    country: "UAE",
+    website: "https://webkul.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#7C3AED",
+    description: {
+      en: "Multi-vendor marketplace solution for MENA.",
+      ar: "حل أسواق متعددة البائعين لمنطقة MENA.",
+      tr: "MENA için çok satıcılı pazar yeri çözümü.",
+    },
+    status: "planned",
+    popularity: 30,
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // TURKISH PLATFORMS
+  // ──────────────────────────────────────────────────────────────────────
+  {
+    id: "ticimax",
+    name: "Ticimax",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://ticimax.com",
+    authScheme: "api_key",
+    apiDocs: "https://ticimax.com.tr/api",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#FF6600",
+    description: {
+      en: "Leading Turkish e-commerce platform with local marketplace integrations.",
+      ar: "منصة تركية رائدة مع تكاملات الأسواق المحلية.",
+      tr: "Yerel pazar yeri entegrasyonları olan lider Türk e-ticaret platformu.",
+    },
+    status: "api",
+    popularity: 90,
+  },
+  {
+    id: "ideasoft",
+    name: "İdeasoft",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://ideasoft.com.tr",
+    authScheme: "api_key",
+    apiDocs: "https://dev.ideasoft.com.tr",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#E31837",
+    description: {
+      en: "Turkish e-commerce with 8,600+ merchants. Strong B2B features.",
+      ar: "تجارة إلكترونية تركية بأكثر من 8600 تاجر. ميزات B2B قوية.",
+      tr: "8.600+ satıcılı Türk e-ticaret. Güçlü B2B özellikleri.",
+    },
+    status: "api",
+    popularity: 85,
+  },
+  {
+    id: "tsoft",
+    name: "T-Soft",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://tsoft.com.tr",
+    authScheme: "api_key",
+    apiDocs: "https://api.tsoft.com.tr",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#0066CC",
+    description: {
+      en: "Customizable Turkish e-commerce with marketing tools.",
+      ar: "تجارة إلكترونية تركية قابلة للتخصيص مع أدوات تسويق.",
+      tr: "Pazarlama araçlarıyla özelleştirilebilir Türk e-ticaret.",
+    },
+    status: "api",
+    popularity: 75,
+  },
+  {
+    id: "ikas",
+    name: "İkas",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://ikas.com",
+    authScheme: "api_key",
+    apiDocs: "https://developer.ikas.com",
+    supports: { customers: true, orders: true, products: true, webhooks: true },
+    brandColor: "#FF1744",
+    description: {
+      en: "Next-gen Turkish e-commerce with one-click marketplace integration.",
+      ar: "تجارة إلكترونية تركية متقدمة مع تكامل الأسواق بنقرة واحدة.",
+      tr: "Tek tıkla pazar yeri entegrasyonlu yeni nesil Türk e-ticaret.",
+    },
+    status: "api",
+    popularity: 80,
+  },
+  {
+    id: "shopier",
+    name: "Shopier",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://shopier.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: false, webhooks: false },
+    brandColor: "#FF5A00",
+    description: {
+      en: "Turkish social commerce platform popular with influencers.",
+      ar: "منصة تجارة اجتماعية تركية شائعة بين المؤثرين.",
+      tr: "Influencer'lar arasında popüler Türk sosyal ticaret platformu.",
+    },
+    status: "csv_only",
+    popularity: 60,
+  },
+  {
+    id: "platinmarket",
+    name: "PlatinMarket",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://platinmarket.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#2196F3",
+    description: {
+      en: "Turkish e-commerce infrastructure for SMEs.",
+      ar: "بنية تجارة إلكترونية تركية للشركات المتوسطة.",
+      tr: "KOBİ'ler için Türk e-ticaret altyapısı.",
+    },
+    status: "csv_only",
+    popularity: 50,
+  },
+  {
+    id: "epttavm",
+    name: "ePttAVM",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://epttavm.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#FFCC00",
+    description: {
+      en: "Turkish Post's official e-commerce marketplace.",
+      ar: "السوق الرسمي للبريد التركي للتجارة الإلكترونية.",
+      tr: "Türkiye Postası'nın resmi e-ticaret pazar yeri.",
+    },
+    status: "planned",
+    popularity: 65,
+  },
+  {
+    id: "turhost",
+    name: "Turhost",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://turhost.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#00A859",
+    description: {
+      en: "Turkish hosting and e-commerce provider with integrated store builder.",
+      ar: "مزود استضافة وتجارة إلكترونية تركي مع منشئ متاجر متكامل.",
+      tr: "Entegre mağaza oluşturuculu Türk hosting ve e-ticaret sağlayıcısı.",
+    },
+    status: "api",
+    popularity: 55,
+  },
+  {
+    id: "faprika",
+    name: "Faprika",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://faprika.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#E91E63",
+    description: {
+      en: "Turkish e-commerce platform focused on SME growth.",
+      ar: "منصة تجارة إلكترونية تركية تركز على نمو الشركات المتوسطة.",
+      tr: "KOBİ büyümesine odaklanan Türk e-ticaret platformu.",
+    },
+    status: "planned",
+    popularity: 45,
+  },
+  {
+    id: "pazaryerim",
+    name: "Pazaryerim",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://pazaryerim.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: false, webhooks: false },
+    brandColor: "#FF9800",
+    description: {
+      en: "Turkish multi-vendor marketplace builder.",
+      ar: "منشئ أسواق متعددة البائعين التركي.",
+      tr: "Türk çok satıcılı pazar yeri oluşturucu.",
+    },
+    status: "planned",
+    popularity: 40,
+  },
+  {
+    id: "shopiroller",
+    name: "Shopiroller",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://shopiroller.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#7B1FA2",
+    description: {
+      en: "Mobile-first Turkish e-commerce with app builder.",
+      ar: "تجارة إلكترونية تركية أولاً للموبايل مع منشئ تطبيقات.",
+      tr: "Uygulama oluşturuculu mobil öncelikli Türk e-ticaret.",
+    },
+    status: "planned",
+    popularity: 40,
+  },
+  {
+    id: "eticaretpro",
+    name: "eTicaret Pro",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://eticaretpro.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#3F51B5",
+    description: {
+      en: "Turkish professional e-commerce infrastructure.",
+      ar: "بنية تجارة إلكترونية تركية احترافية.",
+      tr: "Türk profesyonel e-ticaret altyapısı.",
+    },
+    status: "planned",
+    popularity: 35,
+  },
+  {
+    id: "akinsoft",
+    name: "Akinsoft",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://akinsoft.com.tr",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#D32F2F",
+    description: {
+      en: "Turkish ERP + e-commerce integrated software.",
+      ar: "برنامج ERP وتجارة إلكترونية متكامل تركي.",
+      tr: "Türk ERP + e-ticaret entegre yazılımı.",
+    },
+    status: "planned",
+    popularity: 40,
+  },
+  {
+    id: "logo_commerce",
+    name: "Logo Commerce",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://logo.com.tr",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#FF5722",
+    description: {
+      en: "Logo Yazılım's e-commerce and ERP solution (Turkey's largest).",
+      ar: "حل Logo Yazılım للتجارة الإلكترونية و ERP (الأكبر في تركيا).",
+      tr: "Logo Yazılım'ın e-ticaret ve ERP çözümü (Türkiye'nin en büyüğü).",
+    },
+    status: "planned",
+    popularity: 70,
+  },
+  {
+    id: "netsis",
+    name: "Netsis",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://logo.com.tr/netsis",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: false, webhooks: false },
+    brandColor: "#37474F",
+    description: {
+      en: "Turkish enterprise ERP with e-commerce module.",
+      ar: "ERP مؤسسي تركي مع وحدة تجارة إلكترونية.",
+      tr: "E-ticaret modüllü Türk kurumsal ERP.",
+    },
+    status: "planned",
+    popularity: 55,
+  },
+  {
+    id: "bulutfon",
+    name: "Bulutfon Commerce",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://bulutfon.com",
+    authScheme: "api_key",
+    supports: { customers: false, orders: true, products: false, webhooks: false },
+    brandColor: "#1976D2",
+    description: {
+      en: "Turkish cloud telephony + commerce tools.",
+      ar: "أدوات الاتصالات السحابية والتجارة التركية.",
+      tr: "Türk bulut telefon + ticaret araçları.",
+    },
+    status: "planned",
+    popularity: 30,
+  },
+  {
+    id: "ventor",
+    name: "Ventor",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://ventor.com.tr",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#673AB7",
+    description: {
+      en: "Turkish WMS + e-commerce fulfillment platform.",
+      ar: "منصة إدارة مستودعات وتنفيذ تجارة إلكترونية تركية.",
+      tr: "Türk WMS + e-ticaret yerine getirme platformu.",
+    },
+    status: "planned",
+    popularity: 35,
+  },
+  {
+    id: "ankarart",
+    name: "Ankarart",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://ankarart.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: true, products: true, webhooks: false },
+    brandColor: "#009688",
+    description: {
+      en: "Ankara-based Turkish e-commerce for local SMEs.",
+      ar: "تجارة إلكترونية تركية من أنقرة للشركات المتوسطة.",
+      tr: "Yerel KOBİ'ler için Ankara merkezli Türk e-ticaret.",
+    },
+    status: "planned",
+    popularity: 25,
+  },
+  {
+    id: "b2metric",
+    name: "B2Metric",
+    region: "turkey",
+    country: "Turkey",
+    website: "https://b2metric.com",
+    authScheme: "api_key",
+    supports: { customers: true, orders: false, products: false, webhooks: false },
+    brandColor: "#FF4081",
+    description: {
+      en: "Turkish B2B analytics + e-commerce intelligence.",
+      ar: "تحليلات B2B تركية وذكاء تجارة إلكترونية.",
+      tr: "Türk B2B analitik + e-ticaret zekası.",
+    },
+    status: "planned",
+    popularity: 30,
+  },
+];
+
+// ──────────────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────────────
+
+export function getPlatform(id: string): PlatformDefinition | null {
+  return PLATFORMS.find((p) => p.id === id) || null;
+}
+
+export function listPlatforms(region?: PlatformRegion): PlatformDefinition[] {
+  let list = PLATFORMS;
+  if (region) list = list.filter((p) => p.region === region);
+  return list.sort((a, b) => b.popularity - a.popularity);
+}
+
+export function getActivePlatforms(): PlatformDefinition[] {
+  return PLATFORMS.filter(
+    (p) => p.status === "native" || p.status === "api"
+  ).sort((a, b) => b.popularity - a.popularity);
+}

@@ -7,6 +7,7 @@ import * as ExportSvc from "../services/export.service";
 import * as ImportSvc from "../services/import.service";
 import * as TimelineSvc from "../services/timeline.service";
 import * as ShopifySvc from "../services/shopify.service";
+import * as EcommerceSvc from "../services/ecommerce.service";
 import * as SearchSvc from "../services/search.service";
 import type { AuthenticatedRequest } from "../types";
 
@@ -304,5 +305,60 @@ export async function advancedFilter(req: Request, res: Response, next: NextFunc
 export async function getAllowedFields(req: Request, res: Response, next: NextFunction) {
   try {
     res.status(200).json({ success: true, data: SearchSvc.ALLOWED_FIELDS });
+  } catch (err) { next(err); }
+}
+
+// ============================================================================
+// E-COMMERCE GENERAL (multi-platform)
+// ============================================================================
+const connectEcommerceSchema = z.object({
+  platform: z.string().min(1).max(50),
+  shopDomain: z.string().min(3).max(200),
+  accessToken: z.string().min(1).max(500),
+  apiKey: z.string().max(500).optional(),
+  apiSecret: z.string().max(500).optional(),
+  region: z.string().max(50).optional(),
+  currency: z.string().max(10).optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
+export async function ecommerceListCatalog(req: Request, res: Response, next: NextFunction) {
+  try {
+    const region = req.query.region as "mena" | "turkey" | "global" | undefined;
+    const data = EcommerceSvc.getCatalog(region);
+    res.status(200).json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+export async function ecommerceListStores(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const data = await EcommerceSvc.listStores(companyId);
+    res.status(200).json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+export async function ecommerceConnect(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const dto = connectEcommerceSchema.parse(req.body);
+    const data = await EcommerceSvc.connectStore(companyId, dto as EcommerceSvc.ConnectStoreDto);
+    res.status(200).json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+export async function ecommerceDisconnect(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const data = await EcommerceSvc.disconnectStore(companyId, req.params.id as string);
+    res.status(200).json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+export async function ecommerceSync(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const data = await EcommerceSvc.syncStore(companyId, req.params.id as string);
+    res.status(200).json({ success: true, data });
   } catch (err) { next(err); }
 }

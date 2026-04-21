@@ -52,6 +52,15 @@ router.delete("/shopify/stores/:id", controller.shopifyDisconnect);
 router.post("/shopify/stores/:id/sync", controller.shopifySync);
 
 // ──────────────────────────────────────────────────────────────────────
+// E-COMMERCE GENERAL (multi-platform: Shopify, Salla, Zid, YouCan, Ticimax, etc.)
+// ──────────────────────────────────────────────────────────────────────
+router.get("/ecommerce/catalog", controller.ecommerceListCatalog);
+router.get("/ecommerce/stores", controller.ecommerceListStores);
+router.post("/ecommerce/connect", controller.ecommerceConnect);
+router.delete("/ecommerce/stores/:id", controller.ecommerceDisconnect);
+router.post("/ecommerce/stores/:id/sync", controller.ecommerceSync);
+
+// ──────────────────────────────────────────────────────────────────────
 // ADVANCED SEARCH & FILTERS
 // ──────────────────────────────────────────────────────────────────────
 router.get("/search", controller.globalSearch);

@@ -53,7 +53,7 @@ model Company {
   exchangeRates     ExchangeRate[]
   emailTemplates    EmailTemplate[]
   customFields      CustomField[]
-  shopifyStores     ShopifyStore[]
+  ecommerceStores   EcommerceStore[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -1106,14 +1106,22 @@ model CustomField {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// SHOPIFY STORE CONNECTION
+// ECOMMERCE STORE CONNECTIONS — generalized for 40+ platforms
+// (Shopify, Salla, Zid, YouCan, Ticimax, ikas, Ideasoft, T-Soft, etc.)
 // ─────────────────────────────────────────────────────────────────────────
-model ShopifyStore {
+model EcommerceStore {
   id          String  @id @default(uuid())
   companyId   String
 
+  platform    String  @default("shopify")
   shopDomain  String
   accessToken String
+  apiKey      String?
+  apiSecret   String?
+  region      String?
+  currency    String?
+  metadata    Json    @default("{}")
+
   isActive    Boolean @default(true)
 
   lastSyncAt              DateTime?
@@ -1127,7 +1135,8 @@ model ShopifyStore {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@unique([companyId, shopDomain])
+  @@unique([companyId, platform, shopDomain])
   @@index([companyId])
-  @@map("shopify_stores")
+  @@index([platform])
+  @@map("ecommerce_stores")
 }
