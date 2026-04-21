@@ -186,3 +186,234 @@ async function getFirstOwnerId(companyId: string): Promise<string> {
   }
   return owner.id;
 }
+// ============================================================================
+// META CLOUD API INTEGRATION
+// ============================================================================
+
+export interface MetaWebhookMessage {
+  from: string;
+  id: string;
+  timestamp: string;
+  text?: { body: string };
+  image?: { id: string; mime_type: string; caption?: string };
+  type: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// INBOX — grouped list of active conversations (one per phone number)
+// ─────────────────────────────────────────────────────────────────────────
+export async function getInbox(companyId: string) {
+  // All distinct phone numbers with most-recent message info
+  const allChats = await prisma.whatsappChat.findMany({
+    where: { companyId },
+    orderBy: { timestamp: "desc" },
+    take: 500,
+    select: {
+      phoneNumber: true,
+      messageText: true,
+      direction: true,
+      timestamp: true,
+      customerId: true,
+    },
+  });
+
+  const byPhone = new Map<
+    string,
+    {
+      phoneNumber: string;
+      lastMessage: string;
+      lastDirection: string;
+      lastTimestamp: Date;
+      customerId: string | null;
+      messageCount: number;
+    }
+  >();
+
+  for (const c of allChats) {
+    if (!byPhone.has(c.phoneNumber)) {
+      byPhone.set(c.phoneNumber, {
+        phoneNumber: c.phoneNumber,
+        lastMessage: c.messageText,
+        lastDirection: c.direction,
+        lastTimestamp: c.timestamp,
+        customerId: c.customerId,
+        messageCount: 1,
+      });
+    } else {
+      byPhone.get(c.phoneNumber)!.messageCount++;
+    }
+  }
+
+  const phones = Array.from(byPhone.keys());
+  const customerIds = Array.from(byPhone.values())
+    .map((v) => v.customerId)
+    .filter((v): v is string => !!v);
+
+  const customers = customerIds.length
+    ? await prisma.customer.findMany({
+        where: { id: { in: customerIds }, companyId },
+        select: {
+          id: true,
+          fullName: true,
+          companyName: true,
+          email: true,
+          status: true,
+        },
+      })
+    : [];
+  const customerMap = new Map(customers.map((c) => [c.id, c]));
+
+  return Array.from(byPhone.values())
+    .map((v) => ({
+      ...v,
+      lastTimestamp: v.lastTimestamp.toISOString(),
+      customer: v.customerId ? customerMap.get(v.customerId) || null : null,
+    }))
+    .sort(
+      (a, b) =>
+        new Date(b.lastTimestamp).getTime() -
+        new Date(a.lastTimestamp).getTime()
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// THREAD — messages for a specific phone number
+// ─────────────────────────────────────────────────────────────────────────
+export async function getThread(companyId: string, phoneNumber: string) {
+  const messages = await prisma.whatsappChat.findMany({
+    where: { companyId, phoneNumber },
+    orderBy: { timestamp: "asc" },
+    take: 500,
+  });
+
+  const customerId = messages.find((m) => m.customerId)?.customerId ?? null;
+  let customer: any = null;
+  if (customerId) {
+    customer = await prisma.customer.findFirst({
+      where: { id: customerId, companyId },
+      select: {
+        id: true,
+        fullName: true,
+        companyName: true,
+        email: true,
+        phone: true,
+        whatsappPhone: true,
+        status: true,
+      },
+    });
+  }
+
+  return { phoneNumber, customer, messages };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// META CLOUD API — send message (requires env vars WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID)
+// ─────────────────────────────────────────────────────────────────────────
+export async function sendViaMetaCloud(
+  companyId: string,
+  phoneNumber: string,
+  text: string
+): Promise<{ success: boolean; messageId: string | null; error?: string }> {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+  if (!token || !phoneId) {
+    // Stub mode — just log to DB
+    const msg = await logOutgoingMessage(companyId, {
+      phoneNumber,
+      messageText: text,
+      messageId: `stub-${Date.now()}`,
+    });
+    return {
+      success: false,
+      messageId: msg.messageId ?? null,
+      error: "Meta Cloud not configured — message saved locally only",
+    };
+  }
+
+  try {
+    const resp = await fetch(
+      `https://graph.facebook.com/v20.0/${phoneId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: phoneNumber,
+          type: "text",
+          text: { body: text },
+        }),
+      }
+    );
+    const data: any = await resp.json();
+
+    if (!resp.ok) {
+      return {
+        success: false,
+        messageId: null,
+        error: data?.error?.message || "Meta API error",
+      };
+    }
+
+    const metaId = data?.messages?.[0]?.id ?? null;
+    await logOutgoingMessage(companyId, {
+      phoneNumber,
+      messageText: text,
+      messageId: metaId ?? undefined,
+    });
+    return { success: true, messageId: metaId };
+  } catch (e: any) {
+    return {
+      success: false,
+      messageId: null,
+      error: e?.message || "Network error",
+    };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// META CLOUD WEBHOOK — process incoming from Meta
+// ─────────────────────────────────────────────────────────────────────────
+export async function handleMetaWebhook(
+  companyId: string,
+  webhookBody: any
+): Promise<{ processed: number }> {
+  let processed = 0;
+
+  try {
+    const entries = webhookBody?.entry ?? [];
+    for (const entry of entries) {
+      const changes = entry?.changes ?? [];
+      for (const change of changes) {
+        const value = change?.value;
+        const messages: MetaWebhookMessage[] = value?.messages ?? [];
+        for (const m of messages) {
+          const text =
+            m.text?.body ||
+            (m.type === "image" && m.image?.caption) ||
+            `[${m.type} message]`;
+          try {
+            await processIncomingMessage(companyId, {
+              phoneNumber: m.from,
+              messageText: text,
+              messageId: m.id,
+              timestamp: m.timestamp
+                ? new Date(Number(m.timestamp) * 1000)
+                : new Date(),
+            });
+            processed++;
+          } catch {
+            /* continue on individual message errors */
+          }
+        }
+      }
+    }
+  } catch {
+    /* swallow top-level errors — webhook must return 200 to Meta */
+  }
+
+  return { processed };
+}

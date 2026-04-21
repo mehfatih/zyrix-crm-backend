@@ -159,3 +159,102 @@ export async function aiSummarize(
     next(error);
   }
 }
+// ============================================================================
+// INBOX / THREAD / META CLOUD
+// ============================================================================
+
+const sendMetaSchema = z.object({
+  phoneNumber: z.string().min(5).max(30),
+  text: z.string().min(1).max(4000),
+});
+
+export async function getInbox(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId } = (req as AuthenticatedRequest).user;
+    const data = await whatsappService.getInbox(companyId);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getThread(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId } = (req as AuthenticatedRequest).user;
+    const phoneNumber = decodeURIComponent(req.params.phoneNumber as string);
+    const data = await whatsappService.getThread(companyId, phoneNumber);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function sendMetaMessage(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId } = (req as AuthenticatedRequest).user;
+    const dto = sendMetaSchema.parse(req.body);
+    const result = await whatsappService.sendViaMetaCloud(
+      companyId,
+      dto.phoneNumber,
+      dto.text
+    );
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PUBLIC webhook — Meta verification (GET) + message delivery (POST)
+export function metaWebhookVerify(req: Request, res: Response) {
+  const mode = req.query["hub.mode"];
+  const verifyToken = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  const expected = process.env.WHATSAPP_VERIFY_TOKEN || "zyrix-verify-change-me";
+  if (mode === "subscribe" && verifyToken === expected) {
+    res.status(200).send(String(challenge));
+  } else {
+    res.status(403).json({ error: "verification_failed" });
+  }
+}
+
+// PUBLIC webhook — receives messages from Meta. companyId identified via
+// phone_number_id mapping (for MVP: single tenant — we read DEFAULT_COMPANY_ID
+// from env or the first active company)
+export async function metaWebhookReceive(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    // Always acknowledge 200 to Meta quickly
+    res.status(200).send("EVENT_RECEIVED");
+
+    const explicit = process.env.WHATSAPP_DEFAULT_COMPANY_ID;
+    let companyId = explicit;
+    if (!companyId) {
+      const first = await prisma.company.findFirst({
+        where: { status: "active" },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
+      companyId = first?.id;
+    }
+    if (!companyId) return;
+
+    await whatsappService.handleMetaWebhook(companyId, req.body);
+  } catch (err) {
+    next(err);
+  }
+}
