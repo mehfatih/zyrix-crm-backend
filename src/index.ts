@@ -36,6 +36,7 @@ import securityRoutes from "./routes/security.routes";
 import billingRoutes from "./routes/billing.routes";
 import dashboardLayoutRoutes from "./routes/dashboard-layout.routes";
 import templatesRoutes from "./routes/templates.routes";
+import workflowsRoutes from "./routes/workflows.routes";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
 
@@ -158,6 +159,7 @@ app.use("/api/security", securityRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/dashboard", dashboardLayoutRoutes);
 app.use("/api/templates", templatesRoutes);
+app.use("/api/workflows", workflowsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

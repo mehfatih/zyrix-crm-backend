@@ -1334,3 +1334,103 @@ model TemplateApplication {
   @@index([companyId, appliedAt])
   @@map("template_applications")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// WORKFLOW AUTOMATION — Zapier-style automations
+// ─────────────────────────────────────────────────────────────────────────
+// A Workflow is one trigger + an ordered chain of actions, optionally
+// gated by conditions. When a trigger event fires, the engine creates a
+// WorkflowExecution row, evaluates each step's conditions, runs each
+// enabled action, and records the outcome. Executions are durable —
+// they persist across restarts, retry transient failures, and dead-letter
+// after too many attempts so ops can inspect what broke.
+//
+// Trigger + action specs live in JSON because their shape varies: a
+// schedule trigger has cron strings, a stage-change trigger has a
+// stageSlug + direction, an email action has a template id, etc.
+// Strict typing happens in the service layer where zod schemas validate
+// each type's expected fields.
+model Workflow {
+  id        String @id @default(uuid())
+  companyId String
+  createdById String
+
+  name        String
+  description String?
+  // Overall on/off switch — triggers ignore disabled workflows entirely.
+  isEnabled Boolean @default(true)
+
+  // Trigger: one per workflow in this MVP. Shape:
+  //   { type: "customer.created" | "deal.stage_changed" | "schedule.daily" | ...,
+  //     config: { ...type-specific fields } }
+  trigger Json
+
+  // Ordered action chain. Each item:
+  //   { id, type, config, stopOnError?, delaySeconds? }
+  // Actions run sequentially; if one fails and stopOnError is true
+  // (default), remaining actions in the chain are skipped.
+  actions Json @default("[]")
+
+  // Optional AND-filters evaluated against the trigger payload before
+  // the action chain runs. Shape:
+  //   [{ field: "deal.value", operator: "gte", value: 1000 }, ...]
+  conditions Json @default("[]")
+
+  // Lightweight stats, updated on each execution completion
+  runCount        Int       @default(0)
+  successCount    Int       @default(0)
+  failureCount    Int       @default(0)
+  lastRunAt       DateTime?
+  lastSuccessAt   DateTime?
+  lastFailureAt   DateTime?
+  lastError       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  executions WorkflowExecution[]
+
+  @@index([companyId])
+  @@index([companyId, isEnabled])
+  @@map("workflows")
+}
+
+// One row per run. Pending rows are claimed by the worker; on completion
+// the row transitions to 'completed' / 'failed' with the outcome +
+// action-by-action step log captured in stepResults.
+model WorkflowExecution {
+  id         String @id @default(uuid())
+  workflowId String
+  companyId  String
+
+  // Context snapshot: the trigger event payload the workflow saw when
+  // it was queued. Actions can reference fields from this via {{trigger.customer.email}}
+  // or similar templating (interpolation is implemented service-side).
+  triggerPayload Json
+
+  status String @default("pending")
+  // pending | running | completed | failed | skipped_conditions
+
+  // Action-by-action log. Shape:
+  //   [{ actionId, actionType, status: 'success'|'failed'|'skipped',
+  //      startedAt, finishedAt, error?, output? }, ...]
+  stepResults Json @default("[]")
+
+  // Retry tracking — same pattern as WebhookEvent
+  attempts   Int       @default(0)
+  lastError  String?
+  nextRetryAt DateTime?
+
+  queuedAt    DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+  @@index([companyId])
+  @@index([status])
+  @@index([status, nextRetryAt])
+  @@index([companyId, queuedAt])
+  @@map("workflow_executions")
+}
