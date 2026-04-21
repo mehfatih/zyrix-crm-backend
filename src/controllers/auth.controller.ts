@@ -372,6 +372,7 @@ export async function me(
           plan: user.company.plan,
           country: user.company.country,
           baseCurrency: user.company.baseCurrency,
+          enabledFeatures: user.company.enabledFeatures,
         },
       },
     });

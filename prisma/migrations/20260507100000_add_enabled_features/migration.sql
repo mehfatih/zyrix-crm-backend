@@ -1,0 +1,1 @@
+ALTER TABLE "companies" ADD COLUMN IF NOT EXISTS "enabledFeatures" JSONB NOT NULL DEFAULT '{}';

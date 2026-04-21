@@ -1,10 +1,12 @@
 import { Router } from "express";
 import * as controller from "../controllers/loyalty.controller";
 import { authenticateToken } from "../middleware/auth";
+import { gateFeature } from "../middleware/feature-gate";
 
 const router = Router();
 
 router.use(authenticateToken);
+router.use(gateFeature("loyalty"));
 
 // Program config
 router.get("/program", controller.getProgram);

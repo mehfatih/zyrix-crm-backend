@@ -32,6 +32,15 @@ model Company {
   size         String?
   baseCurrency String?  // default currency for reports & quotes (USD/SAR/TRY/AED...)
 
+  // Per-merchant feature gating. Owner/admin of the Zyrix platform
+  // (not the merchant themselves) can toggle individual features on
+  // or off for any company from the admin panel. Shape:
+  //   { "quotes": true, "contracts": false, "loyalty": true, ... }
+  // When a key is absent, the feature defaults to ENABLED — so new
+  // features automatically turn on for existing merchants without
+  // requiring a data migration each time we add one.
+  enabledFeatures Json @default("{}")
+
   // Onboarding wizard — null means the user still needs to complete it.
   // When the wizard calls POST /api/onboarding/complete, we set this
   // timestamp, which flips the dashboard banner off and stops the

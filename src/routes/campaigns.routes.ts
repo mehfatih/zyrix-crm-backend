@@ -1,10 +1,12 @@
 import { Router } from "express";
 import * as controller from "../controllers/campaigns.controller";
 import { authenticateToken } from "../middleware/auth";
+import { gateFeature } from "../middleware/feature-gate";
 
 const router = Router();
 
 router.use(authenticateToken);
+router.use(gateFeature("marketing_automation"));
 
 router.get("/stats", controller.stats);
 router.get("/", controller.list);

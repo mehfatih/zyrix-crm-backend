@@ -2,6 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { requireSuperAdmin } from "../middleware/superAdmin";
 import * as AdminCtrl from "../controllers/admin.controller";
+import * as FeatureCtrl from "../controllers/feature-flags.controller";
 
 // ============================================================================
 // ADMIN ROUTES — /api/admin/*
@@ -52,6 +53,12 @@ router.post("/companies/:id/suspend", AdminCtrl.suspendCompany);
 router.post("/companies/:id/resume", AdminCtrl.resumeCompany);
 router.delete("/companies/:id", AdminCtrl.deleteCompany);
 router.post("/companies/:id/impersonate", AdminCtrl.impersonateCompany);
+
+// Per-company feature flags — platform owner controls which features
+// each merchant has enabled.
+router.get("/companies/:id/features", FeatureCtrl.adminGetCompanyFlags);
+router.post("/companies/:id/features", FeatureCtrl.adminSetBulk);
+router.post("/companies/:id/features/toggle", FeatureCtrl.adminSetFlag);
 router.post(
   "/companies/:id/impersonate-token",
   AdminCtrl.impersonateCompanyToken
