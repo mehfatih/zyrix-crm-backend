@@ -25,6 +25,7 @@ import portalRoutes from "./routes/portal.routes";
 import chatRoutes from "./routes/chat.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import reportsRoutes from "./routes/reports.routes";
+import advancedRoutes from "./routes/advanced.routes";
 import whatsappRoutes from "./routes/whatsapp.routes";
 import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
@@ -104,6 +105,7 @@ app.get("/api", (_req, res) => {
       chat: "/api/chat",
       dashboard: "/api/dashboard",
       reports: "/api/reports",
+      advanced: "/api/advanced",
       whatsapp: "/api/whatsapp",
       admin: "/api/admin",
       public: "/api/public",
@@ -130,6 +132,7 @@ app.use("/api/portal", portalRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/reports", reportsRoutes);
+app.use("/api/advanced", advancedRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);

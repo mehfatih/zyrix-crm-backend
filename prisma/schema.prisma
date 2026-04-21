@@ -51,6 +51,9 @@ model Company {
   portalTokens      PortalToken[]
   chatMessages      ChatMessage[]
   exchangeRates     ExchangeRate[]
+  emailTemplates    EmailTemplate[]
+  customFields      CustomField[]
+  shopifyStores     ShopifyStore[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -109,6 +112,7 @@ model User {
   createdContracts Contract[] @relation("ContractCreator")
   sentMessages     ChatMessage[] @relation("ChatSender")
   receivedMessages ChatMessage[] @relation("ChatRecipient")
+  createdEmailTemplates EmailTemplate[]
 
   @@index([email])
   @@index([googleId])
@@ -156,9 +160,11 @@ model Customer {
   address String?
 
   source        String?
+  externalId    String?
   status        String  @default("new")
   lifetimeValue Decimal @default(0) @db.Decimal(12, 2)
   notes         String?
+  customFields  Json    @default("{}")
 
   aiExtracted   Json?
   lastContactAt DateTime?
@@ -184,6 +190,8 @@ model Customer {
   @@index([email])
   @@index([phone])
   @@index([status])
+  @@index([source])
+  @@index([externalId])
   @@map("customers")
 }
 
@@ -205,6 +213,7 @@ model Deal {
   actualCloseDate   DateTime?
   description       String?
   lostReason        String?
+  customFields      Json      @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1036,4 +1045,89 @@ model ExchangeRate {
   @@index([fromCurrency])
   @@index([toCurrency])
   @@map("exchange_rates")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// EMAIL TEMPLATES — reusable templates for campaigns
+// ─────────────────────────────────────────────────────────────────────────
+model EmailTemplate {
+  id          String  @id @default(uuid())
+  companyId   String
+  createdById String
+
+  name        String
+  description String?
+  category    String  @default("general")
+  subject     String
+  bodyHtml    String
+  bodyText    String?
+
+  variables   Json    @default("[]")
+  isShared    Boolean @default(true)
+  usageCount  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id], onDelete: NoAction)
+
+  @@index([companyId])
+  @@index([category])
+  @@map("email_templates")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CUSTOM FIELDS — company-defined fields for customers + deals
+// ─────────────────────────────────────────────────────────────────────────
+model CustomField {
+  id           String  @id @default(uuid())
+  companyId    String
+
+  entityType   String
+  fieldKey     String
+  label        String
+  fieldType    String  @default("text")
+  options      Json?
+  required     Boolean @default(false)
+  defaultValue String?
+  position     Int     @default(0)
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, entityType, fieldKey])
+  @@index([companyId])
+  @@index([entityType])
+  @@map("custom_fields")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SHOPIFY STORE CONNECTION
+// ─────────────────────────────────────────────────────────────────────────
+model ShopifyStore {
+  id          String  @id @default(uuid())
+  companyId   String
+
+  shopDomain  String
+  accessToken String
+  isActive    Boolean @default(true)
+
+  lastSyncAt              DateTime?
+  syncStatus              String    @default("idle")
+  syncError               String?
+  totalCustomersImported  Int       @default(0)
+  totalOrdersImported     Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, shopDomain])
+  @@index([companyId])
+  @@map("shopify_stores")
 }
