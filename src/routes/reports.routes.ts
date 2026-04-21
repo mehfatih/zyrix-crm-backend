@@ -17,5 +17,7 @@ router.get("/pipeline", controller.pipeline);
 router.get("/summary", controller.summary);
 router.get("/ecommerce", controller.ecommerce);
 router.get("/ecommerce/export", controller.ecommerceExport);
+router.get("/cohort", controller.cohort);
+router.get("/funnel", controller.funnel);
 
 export default router;

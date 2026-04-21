@@ -206,3 +206,49 @@ export async function ecommerceExport(
     next(err);
   }
 }
+
+// ============================================================================
+// COHORT + FUNNEL
+// ============================================================================
+import {
+  getCohortReport,
+  getFunnelReport,
+} from "../services/analytics-advanced.service";
+
+const cohortQuerySchema = z.object({
+  monthsBack: z.coerce.number().int().positive().max(24).optional(),
+});
+
+export async function cohort(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId } = auth(req);
+    const q = cohortQuerySchema.parse(req.query);
+    const data = await getCohortReport(companyId, q.monthsBack);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const funnelQuerySchema = z.object({
+  windowDays: z.coerce.number().int().positive().max(365).optional(),
+});
+
+export async function funnel(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId } = auth(req);
+    const q = funnelQuerySchema.parse(req.query);
+    const data = await getFunnelReport(companyId, q.windowDays);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
