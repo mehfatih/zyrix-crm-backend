@@ -82,7 +82,11 @@ export async function install(
         metadata: { provider: "salla" },
         ...extractRequestMeta(req),
       });
-      return res.redirect(url);
+      // Return JSON so the frontend can do window.location.href = url
+      // (XHR with Bearer can't follow a 302 across origin boundaries to
+      // accounts.salla.sa, so we hand the URL to the client and let the
+      // browser navigate directly).
+      return res.status(200).json({ success: true, data: { url } });
     }
 
     if (provider === "shopify") {
@@ -127,7 +131,7 @@ export async function install(
         metadata: { provider: "shopify", shopDomain },
         ...extractRequestMeta(req),
       });
-      return res.redirect(url);
+      return res.status(200).json({ success: true, data: { url } });
     }
 
     return res.status(400).json({
