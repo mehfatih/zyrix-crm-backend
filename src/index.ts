@@ -30,6 +30,7 @@ import whatsappRoutes from "./routes/whatsapp.routes";
 import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
 import paymentRoutes from "./routes/payment.routes";
+import { webhookReceiverRouter, webhookAdminRouter } from "./routes/webhook.routes";
 
 const app: Express = express();
 
@@ -46,6 +47,13 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
+
+// ──────────────────────────────────────────────────────────────────────
+// Webhook RECEIVER must come BEFORE express.json() so HMAC verification
+// sees the exact bytes the platform signed. Its own router applies
+// express.raw() scoped to the receiver path only.
+// ──────────────────────────────────────────────────────────────────────
+app.use("/api/webhooks", webhookReceiverRouter);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -137,6 +145,7 @@ app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/webhooks", webhookAdminRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

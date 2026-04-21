@@ -54,6 +54,8 @@ model Company {
   emailTemplates    EmailTemplate[]
   customFields      CustomField[]
   ecommerceStores   EcommerceStore[]
+  webhookSubscriptions WebhookSubscription[]
+  webhookEvents        WebhookEvent[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -1139,4 +1141,65 @@ model EcommerceStore {
   @@index([companyId])
   @@index([platform])
   @@map("ecommerce_stores")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// WEBHOOKS — per-store inbound subscriptions + event log
+// ─────────────────────────────────────────────────────────────────────────
+model WebhookSubscription {
+  id          String  @id @default(uuid())
+  companyId   String
+  storeId     String? // null = company-wide (rare); usually tied to an EcommerceStore
+  platform    String  // shopify | salla | zid | woocommerce | youcan | ...
+  topic       String  // customers/create, orders/updated, etc.
+  secret      String  // HMAC signing secret; regenerable
+  isActive    Boolean @default(true)
+
+  // Operational stats
+  lastReceivedAt DateTime?
+  receivedCount  Int       @default(0)
+  failedCount    Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  events WebhookEvent[]
+
+  @@unique([companyId, platform, storeId, topic])
+  @@index([companyId])
+  @@index([platform])
+  @@index([storeId])
+  @@map("webhook_subscriptions")
+}
+
+model WebhookEvent {
+  id             String  @id @default(uuid())
+  companyId      String
+  subscriptionId String?
+  platform       String
+  topic          String
+  externalId     String? // platform's event id (e.g. Shopify X-Shopify-Webhook-Id)
+
+  status    String @default("pending") // pending | processing | done | failed | skipped
+  attempts  Int    @default(0)
+  lastError String?
+
+  payloadRaw  String  @db.Text         // raw body as received (for retries + forensics)
+  payloadJson Json    @default("{}")
+
+  // Verification telemetry
+  signatureOk Boolean @default(true)
+  receivedAt  DateTime @default(now())
+  processedAt DateTime?
+
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  subscription WebhookSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([platform, topic])
+  @@index([status])
+  @@index([receivedAt])
+  @@map("webhook_events")
 }

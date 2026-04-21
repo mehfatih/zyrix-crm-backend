@@ -461,7 +461,8 @@ async function syncByPlatform(
 }
 
 // Generic customer upsert with deduplication by externalId
-async function upsertShopCustomer(
+// Exported so webhook handlers (services/webhook.service.ts) can reuse it.
+export async function upsertShopCustomer(
   companyId: string,
   source: string,
   externalId: string,
