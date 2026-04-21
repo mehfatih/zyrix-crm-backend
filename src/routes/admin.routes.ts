@@ -99,4 +99,7 @@ router.post("/super-admins/invite", AdminCtrl.inviteSuperAdmin);
 router.delete("/super-admins/:id", AdminCtrl.revokeSuperAdmin);
 router.post("/change-password", AdminCtrl.changeAdminPassword);
 
+// Operations — manually kick off the scheduled sync
+router.post("/trigger-sync", AdminCtrl.triggerSyncCron);
+
 export default router;

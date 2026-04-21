@@ -31,6 +31,7 @@ import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
 import paymentRoutes from "./routes/payment.routes";
 import { webhookReceiverRouter, webhookAdminRouter } from "./routes/webhook.routes";
+import { startSyncScheduler } from "./cron/sync";
 
 const app: Express = express();
 
@@ -171,6 +172,10 @@ const server = app.listen(env.PORT, () => {
   console.log("    ✓ Admin Panel (Super Admin)");
   console.log("    ✓ Payments (Iyzico + HyperPay)");
   console.log("");
+
+  // Register scheduled jobs after the server is listening so cron output
+  // is never lost to missed log buffering on cold boots.
+  startSyncScheduler();
 });
 
 const shutdown = async (signal: string) => {

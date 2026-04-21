@@ -9,6 +9,7 @@ import * as PlansSvc from "../services/admin-plans.service";
 import * as AnnouncementsSvc from "../services/admin-announcements.service";
 import * as SupportSvc from "../services/admin-support.service";
 import * as SettingsSvc from "../services/admin-settings.service";
+import { runScheduledSync } from "../cron/sync";
 import type { AuthenticatedRequest } from "../types";
 
 // ============================================================================
@@ -699,6 +700,26 @@ export async function changeAdminPassword(req: Request, res: Response, next: Nex
       newPassword
     );
     res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ============================================================================
+// CRON — manual trigger for the scheduled e-commerce sync
+// ============================================================================
+export async function triggerSyncCron(_req: Request, res: Response, next: NextFunction) {
+  try {
+    // Fire-and-forget: return immediately so the admin UI doesn't hang on
+    // a long sync sweep. The response tells them it's been kicked off and
+    // they can watch the per-store status on /settings/integrations.
+    runScheduledSync().catch((e) => {
+      console.error("[admin] manual sync trigger failed:", e?.message || e);
+    });
+    res.status(202).json({
+      success: true,
+      data: { triggered: true, message: "Scheduled sync started in background" },
+    });
   } catch (err) {
     next(err);
   }
