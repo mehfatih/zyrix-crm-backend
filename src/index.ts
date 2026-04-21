@@ -31,6 +31,7 @@ import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
 import paymentRoutes from "./routes/payment.routes";
 import { webhookReceiverRouter, webhookAdminRouter } from "./routes/webhook.routes";
+import onboardingRoutes from "./routes/onboarding.routes";
 import { startSyncScheduler } from "./cron/sync";
 
 const app: Express = express();
@@ -147,6 +148,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/webhooks", webhookAdminRouter);
+app.use("/api/onboarding", onboardingRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

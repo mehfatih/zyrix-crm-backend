@@ -28,6 +28,7 @@ const envSchema = z.object({
 
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
+  APP_URL: z.string().optional(), // frontend base URL for building claim/reset links
 
   GEMINI_API_KEY: z.string().optional(),
 

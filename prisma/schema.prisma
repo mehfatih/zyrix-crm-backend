@@ -30,6 +30,13 @@ model Company {
   country      String?
   industry     String?
   size         String?
+  baseCurrency String?  // default currency for reports & quotes (USD/SAR/TRY/AED...)
+
+  // Onboarding wizard — null means the user still needs to complete it.
+  // When the wizard calls POST /api/onboarding/complete, we set this
+  // timestamp, which flips the dashboard banner off and stops the
+  // /onboarding redirect.
+  onboardingCompletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -89,6 +96,10 @@ model User {
   passwordResetToken       String?   @unique
   passwordResetExpires     DateTime?
   lastLoginAt              DateTime?
+
+  // 'en' | 'ar' | 'tr' — set via the onboarding wizard or /settings/profile.
+  // Null means 'infer from browser Accept-Language' (existing behavior).
+  preferredLocale String?
 
   status         String    @default("active")
   disabledAt     DateTime?
