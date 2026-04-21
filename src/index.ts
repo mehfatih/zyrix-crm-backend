@@ -35,6 +35,8 @@ import onboardingRoutes from "./routes/onboarding.routes";
 import securityRoutes from "./routes/security.routes";
 import billingRoutes from "./routes/billing.routes";
 import dashboardLayoutRoutes from "./routes/dashboard-layout.routes";
+import templatesRoutes from "./routes/templates.routes";
+import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
 
 const app: Express = express();
@@ -155,6 +157,7 @@ app.use("/api/onboarding", onboardingRoutes);
 app.use("/api/security", securityRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/dashboard", dashboardLayoutRoutes);
+app.use("/api/templates", templatesRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -184,6 +187,14 @@ const server = app.listen(env.PORT, () => {
   // Register scheduled jobs after the server is listening so cron output
   // is never lost to missed log buffering on cold boots.
   startSyncScheduler();
+
+  // Seed curated templates — idempotent upsert by slug. Failures here
+  // shouldn't crash the server; template gallery will just show whatever
+  // is already in the DB (or empty on first deploy before SQL migration
+  // runs).
+  seedTemplates().catch((err) => {
+    console.error("[templates] seed failed (non-fatal):", err.message);
+  });
 });
 
 const shutdown = async (signal: string) => {

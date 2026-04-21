@@ -1253,3 +1253,84 @@ model DashboardLayout {
   @@index([companyId])
   @@map("dashboard_layouts")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// TEMPLATES — industry-specific onboarding packages
+// ─────────────────────────────────────────────────────────────────────────
+// A Template is a bundle of Zyrix data that gets applied to a merchant's
+// workspace in one click: pipeline stage names, tags, email templates,
+// quote/contract boilerplates, custom fields, optionally seed customers
+// and deals for a guided demo. Templates are global (not company-scoped)
+// and curated — authored by Anthropic/Zyrix team, not user-submitted in
+// this first version. A TemplateApplication row records each apply for
+// undo / idempotency / ops analytics.
+model Template {
+  id        String @id @default(uuid())
+  slug      String @unique // "apparel-ksa", "restaurant-istanbul", etc.
+  industry  String // "retail", "restaurants", "saas", "services"
+  region    String // "KSA", "TR", "UAE", "GLOBAL"
+  locale    String @default("en") // primary language of the seed content
+  name      String
+  nameAr    String?
+  nameTr    String?
+  tagline   String?
+  taglineAr String?
+  taglineTr String?
+  description   String?
+  descriptionAr String?
+  descriptionTr String?
+  icon      String  @default("🧩") // emoji for browse UI
+  color     String  @default("#0891B2")
+  isFeatured Boolean @default(false)
+  isActive   Boolean @default(true)
+  sortOrder  Int     @default(0)
+  // The applicable content bundle — JSON because shape varies per
+  // template type. Readers of applyTemplate() treat these keys as
+  // optional; any subset can be present. Shape:
+  //   {
+  //     pipelineStages?: string[],
+  //     tags?: string[],
+  //     customerStatuses?: string[],
+  //     dealSources?: string[],
+  //     customFields?: Array<{entityType, name, slug, type, options?}>,
+  //     emailTemplates?: Array<{subject, body, purpose}>,
+  //     quoteTemplate?: {title, items, terms},
+  //     seedCustomers?: Array<{fullName, email?, phone?, companyName?, tags?}>,
+  //     seedDeals?: Array<{title, value, currency, stage, customerIdx}>
+  //   }
+  bundle     Json
+  // Estimated time to go live after applying. Surfaced in UI to set
+  // expectations ("15 min setup" vs "2 hour walkthrough").
+  setupMinutes Int @default(15)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  applications TemplateApplication[]
+
+  @@index([industry])
+  @@index([region])
+  @@index([isActive, isFeatured])
+  @@map("templates")
+}
+
+model TemplateApplication {
+  id         String  @id @default(uuid())
+  templateId String
+  companyId  String
+  userId     String
+  // What got created when this template was applied — stored so an
+  // 'Undo' action can remove exactly those records and not accidentally
+  // delete other data the user created after applying.
+  createdRecords Json @default("{}")
+  status     String  @default("completed") // 'completed' | 'failed' | 'reverted'
+  errorMessage String?
+  appliedAt  DateTime @default(now())
+
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([templateId])
+  @@index([companyId, appliedAt])
+  @@map("template_applications")
+}
