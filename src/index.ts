@@ -48,6 +48,7 @@ import commentsRoutes from "./routes/comments.routes";
 import notificationsRoutes from "./routes/notifications.routes";
 import analyticsReportsRoutes from "./routes/analytics-reports.routes";
 import brandsRoutes from "./routes/brands.routes";
+import taxInvoicesRoutes from "./routes/tax-invoices.routes";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
 import { startWorkflowWorker } from "./cron/workflow-worker";
@@ -181,6 +182,7 @@ app.use("/api/comments", commentsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/analytics-reports", analyticsReportsRoutes);
 app.use("/api/brands", brandsRoutes);
+app.use("/api/tax-invoices", taxInvoicesRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key

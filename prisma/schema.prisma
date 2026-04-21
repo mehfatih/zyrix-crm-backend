@@ -1827,3 +1827,93 @@ model Brand {
   @@index([companyId, isArchived])
   @@map("brands")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// TAX INVOICES — ZATCA (Saudi Arabia) + e-Fatura/e-Arşiv (Turkey)
+// ─────────────────────────────────────────────────────────────────────────
+// Country-specific electronic invoicing compliance. One model covers both
+// regimes — the `regime` field discriminates which serializer/hash/submit
+// pipeline runs. Design keeps all compliance data in one row so support
+// staff can audit a single record when disputes arise.
+model TaxInvoice {
+  id        String @id @default(uuid())
+  companyId String
+
+  // Regime: 'zatca' (Saudi) | 'efatura' (Turkey B2B) | 'earsiv' (Turkey B2C)
+  regime String
+
+  // Type: 'standard' (regular tax invoice) | 'simplified' (retail <1000 SAR)
+  // | 'credit_note' | 'debit_note'. Maps to ZATCA's InvoiceTypeCode.
+  type String @default("standard")
+
+  // Sequential invoice number — required to be gapless for ZATCA.
+  // Service assigns these with row-level locking per-company.
+  invoiceNumber String
+
+  // Link to the originating business record. One of these will be set.
+  quoteId    String?
+  contractId String?
+  dealId     String?
+
+  // Party details snapshotted at issue time — MUST not change even if
+  // the source record is edited. Regulators audit the invoice as it
+  // was when issued.
+  sellerName    String
+  sellerVatNo   String?
+  sellerAddress String?
+  buyerName     String
+  buyerVatNo    String?
+  buyerAddress  String?
+
+  // Monetary totals (Decimal for financial precision)
+  currency       String   @default("SAR")
+  subtotal       Decimal  @db.Decimal(15, 2)
+  discountAmount Decimal  @default(0) @db.Decimal(15, 2)
+  taxRate        Decimal  @default(0) @db.Decimal(5, 2)   // e.g. 15.00 for 15%
+  taxAmount      Decimal  @db.Decimal(15, 2)
+  totalAmount    Decimal  @db.Decimal(15, 2)
+
+  // Line items as JSON so we don't need a separate table for a
+  // read-mostly artifact. Shape: { description, quantity, unitPrice,
+  // discount, taxRate, lineTotal }
+  lineItems Json @default("[]")
+
+  // Timestamp of issuance (frozen). ZATCA requires ISO 8601 with
+  // timezone — we store UTC and render with TZ at serialization.
+  issuedAt DateTime @default(now())
+
+  // ──────────────────────────────────────────────────────────────
+  // Compliance artifacts — populated by the regime-specific serializer
+  // ──────────────────────────────────────────────────────────────
+
+  // UBL 2.1 XML payload. Stored as text so we can re-serve it without
+  // re-generating (required for disputes + provider re-submissions).
+  xml String?
+
+  // Base64-encoded QR code TLV payload (Saudi ZATCA Phase 1 + 2).
+  // Printed on customer receipts so anyone can verify with the
+  // government-issued scanner app.
+  qrCode String?
+
+  // SHA-256 hash of the XML — part of ZATCA's hash chain. Every
+  // invoice's hash incorporates the previous invoice's hash
+  // (previousInvoiceHash) to prevent mid-stream insertions.
+  invoiceHash         String?
+  previousInvoiceHash String?
+
+  // Provider/government submission tracking
+  status         String    @default("draft") // 'draft' | 'submitted' | 'approved' | 'rejected'
+  externalId     String?   // provider-assigned ID (ZATCA cleared UUID, e.g.)
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  rejectionReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, regime, invoiceNumber])
+  @@index([companyId, regime])
+  @@index([companyId, status])
+  @@index([companyId, issuedAt])
+  @@map("tax_invoices")
+}
