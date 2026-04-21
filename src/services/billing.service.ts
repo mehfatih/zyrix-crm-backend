@@ -13,6 +13,13 @@ import { AppError, notFound } from "../middleware/errorHandler";
 // PLANS — public catalog (same for everyone, so no company scoping)
 // ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Returns the plan catalog. The schema stores per-currency price columns
+ * (priceMonthlyUsd/Try/Sar + yearly) and trilingual names/descriptions —
+ * we return the raw shape so the frontend can pick the right price based
+ * on the company's baseCurrency and the right name/description based on
+ * the user's preferredLocale.
+ */
 export async function listAvailablePlans() {
   const plans = await prisma.plan.findMany({
     where: { isActive: true },
@@ -21,12 +28,23 @@ export async function listAvailablePlans() {
       id: true,
       slug: true,
       name: true,
+      nameAr: true,
+      nameTr: true,
       description: true,
-      priceMonthly: true,
-      priceYearly: true,
-      currency: true,
+      descriptionAr: true,
+      descriptionTr: true,
+      priceMonthlyUsd: true,
+      priceYearlyUsd: true,
+      priceMonthlyTry: true,
+      priceYearlyTry: true,
+      priceMonthlySar: true,
+      priceYearlySar: true,
+      maxUsers: true,
+      maxCustomers: true,
+      maxDeals: true,
       features: true,
       isFeatured: true,
+      sortOrder: true,
       color: true,
     },
   });
@@ -64,9 +82,14 @@ export async function getCurrentBilling(companyId: string) {
           id: true,
           slug: true,
           name: true,
-          priceMonthly: true,
-          priceYearly: true,
-          currency: true,
+          nameAr: true,
+          nameTr: true,
+          priceMonthlyUsd: true,
+          priceYearlyUsd: true,
+          priceMonthlyTry: true,
+          priceYearlyTry: true,
+          priceMonthlySar: true,
+          priceYearlySar: true,
           features: true,
         },
       },
