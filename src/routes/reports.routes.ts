@@ -15,5 +15,6 @@ router.delete("/rates/:id", controller.deleteRate);
 router.get("/revenue", controller.revenue);
 router.get("/pipeline", controller.pipeline);
 router.get("/summary", controller.summary);
+router.get("/ecommerce", controller.ecommerce);
 
 export default router;

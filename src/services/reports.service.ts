@@ -306,3 +306,274 @@ export async function getFinancialSummary(
     generatedAt: new Date().toISOString(),
   };
 }
+
+// ============================================================================
+// E-COMMERCE ANALYTICS
+// ----------------------------------------------------------------------------
+// Per-platform customer and order rollups. All Deal-derived revenue is
+// normalized to the company's base currency via buildRateMap. Growth numbers
+// compare the last `windowDays` against the same-length window before that
+// so the UI can show trends without the caller needing to think in ranges.
+//
+// We key by Customer.source (populated on every upsert by ecommerce.service
+// as either 'shopify', 'salla', etc., or null for CRM-native customers) and
+// by the dedup pattern '{platform} order #{id}' on Deal.title set by
+// upsertOrderDeal, so stats stay correct regardless of whether the data
+// arrived via polling sync or webhooks.
+// ============================================================================
+
+export async function getEcommerceAnalytics(
+  companyId: string,
+  baseCurrency: string = "USD",
+  windowDays: number = 30
+) {
+  const base = baseCurrency.toUpperCase();
+  const rateMap = await buildRateMap(companyId);
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+  const priorStart = new Date(
+    now.getTime() - 2 * windowDays * 24 * 60 * 60 * 1000
+  );
+
+  // ─── Connected stores (ground truth for platform list) ─────────────
+  const stores = await prisma.ecommerceStore.findMany({
+    where: { companyId, isActive: true },
+    select: {
+      id: true,
+      platform: true,
+      shopDomain: true,
+      lastSyncAt: true,
+      syncStatus: true,
+      totalCustomersImported: true,
+      totalOrdersImported: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  // ─── Customer rollup keyed by source ───────────────────────────────
+  // Fetch all non-null source customers with essentials for LTV + top-spenders
+  const customers = await prisma.customer.findMany({
+    where: {
+      companyId,
+      source: { not: null },
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      source: true,
+      lifetimeValue: true,
+      createdAt: true,
+    },
+  });
+
+  // ─── Order-deals keyed by platform prefix in title ─────────────────
+  // Dedup pattern is '{platform} order #{id}' in upsertOrderDeal, so a
+  // simple startsWith filter is the cheap + correct way to partition.
+  const orderDeals = await prisma.deal.findMany({
+    where: {
+      companyId,
+      title: { contains: " order #" },
+    },
+    select: {
+      id: true,
+      title: true,
+      stage: true,
+      value: true,
+      currency: true,
+      actualCloseDate: true,
+      createdAt: true,
+    },
+  });
+
+  // Infer platform from title prefix
+  const platformFromTitle = (title: string): string | null => {
+    const m = title.match(/^([a-zA-Z0-9_-]+) order #/);
+    return m ? m[1] : null;
+  };
+
+  // ─── Aggregate per-platform ────────────────────────────────────────
+  interface PlatformBucket {
+    platform: string;
+    storesConnected: number;
+    customers: number;
+    customersInWindow: number;
+    customersInPriorWindow: number;
+    orders: number;
+    ordersInWindow: number;
+    wonOrders: number;
+    wonRevenue: number; // in base currency
+    avgOrderValue: number; // in base currency
+  }
+
+  const byPlatform = new Map<string, PlatformBucket>();
+  const seenPlatforms = new Set<string>();
+
+  // seed from connected stores so platforms with zero data still appear
+  for (const s of stores) {
+    seenPlatforms.add(s.platform);
+    if (!byPlatform.has(s.platform)) {
+      byPlatform.set(s.platform, {
+        platform: s.platform,
+        storesConnected: 0,
+        customers: 0,
+        customersInWindow: 0,
+        customersInPriorWindow: 0,
+        orders: 0,
+        ordersInWindow: 0,
+        wonOrders: 0,
+        wonRevenue: 0,
+        avgOrderValue: 0,
+      });
+    }
+    byPlatform.get(s.platform)!.storesConnected++;
+  }
+
+  // customers
+  for (const c of customers) {
+    const platform = c.source || "other";
+    if (!byPlatform.has(platform)) {
+      byPlatform.set(platform, {
+        platform,
+        storesConnected: 0,
+        customers: 0,
+        customersInWindow: 0,
+        customersInPriorWindow: 0,
+        orders: 0,
+        ordersInWindow: 0,
+        wonOrders: 0,
+        wonRevenue: 0,
+        avgOrderValue: 0,
+      });
+    }
+    const b = byPlatform.get(platform)!;
+    b.customers++;
+    if (c.createdAt >= windowStart) b.customersInWindow++;
+    else if (c.createdAt >= priorStart) b.customersInPriorWindow++;
+  }
+
+  // orders
+  for (const d of orderDeals) {
+    const platform = platformFromTitle(d.title);
+    if (!platform) continue;
+    if (!byPlatform.has(platform)) {
+      byPlatform.set(platform, {
+        platform,
+        storesConnected: 0,
+        customers: 0,
+        customersInWindow: 0,
+        customersInPriorWindow: 0,
+        orders: 0,
+        ordersInWindow: 0,
+        wonOrders: 0,
+        wonRevenue: 0,
+        avgOrderValue: 0,
+      });
+    }
+    const b = byPlatform.get(platform)!;
+    b.orders++;
+    const refDate = d.actualCloseDate || d.createdAt;
+    if (refDate >= windowStart) b.ordersInWindow++;
+    if (d.stage === "won") {
+      b.wonOrders++;
+      b.wonRevenue += convert(Number(d.value), d.currency, base, rateMap);
+    }
+  }
+  // avgOrderValue
+  for (const b of byPlatform.values()) {
+    b.avgOrderValue = b.wonOrders > 0 ? b.wonRevenue / b.wonOrders : 0;
+  }
+
+  // ─── Top 10 customers by LTV, cross-platform ───────────────────────
+  const topCustomers = [...customers]
+    .sort((a, b) => Number(b.lifetimeValue) - Number(a.lifetimeValue))
+    .slice(0, 10)
+    .map((c) => ({
+      id: c.id,
+      fullName: c.fullName,
+      email: c.email,
+      source: c.source,
+      lifetimeValue: Number(c.lifetimeValue),
+    }));
+
+  // ─── Daily time series (won revenue) for the last windowDays ──────
+  const dailyMap = new Map<string, number>();
+  for (let i = windowDays - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    dailyMap.set(key, 0);
+  }
+  for (const d of orderDeals) {
+    if (d.stage !== "won") continue;
+    const ref = d.actualCloseDate || d.createdAt;
+    if (ref < windowStart) continue;
+    const key = ref.toISOString().slice(0, 10);
+    if (dailyMap.has(key)) {
+      dailyMap.set(
+        key,
+        dailyMap.get(key)! + convert(Number(d.value), d.currency, base, rateMap)
+      );
+    }
+  }
+  const dailyRevenue = Array.from(dailyMap.entries()).map(([date, revenue]) => ({
+    date,
+    revenue: Math.round(revenue * 100) / 100,
+  }));
+
+  // ─── Global totals ─────────────────────────────────────────────────
+  let totalCustomers = 0;
+  let totalCustomersInWindow = 0;
+  let totalCustomersInPriorWindow = 0;
+  let totalOrders = 0;
+  let totalWonRevenue = 0;
+  for (const b of byPlatform.values()) {
+    totalCustomers += b.customers;
+    totalCustomersInWindow += b.customersInWindow;
+    totalCustomersInPriorWindow += b.customersInPriorWindow;
+    totalOrders += b.orders;
+    totalWonRevenue += b.wonRevenue;
+  }
+  const customerGrowthPct =
+    totalCustomersInPriorWindow > 0
+      ? ((totalCustomersInWindow - totalCustomersInPriorWindow) /
+          totalCustomersInPriorWindow) *
+        100
+      : totalCustomersInWindow > 0
+        ? 100
+        : 0;
+
+  return {
+    baseCurrency: base,
+    windowDays,
+    generatedAt: now.toISOString(),
+    totals: {
+      storesConnected: stores.length,
+      totalCustomers,
+      totalCustomersInWindow,
+      totalCustomersInPriorWindow,
+      customerGrowthPct: Math.round(customerGrowthPct * 10) / 10,
+      totalOrders,
+      totalWonRevenue: Math.round(totalWonRevenue * 100) / 100,
+    },
+    platforms: Array.from(byPlatform.values())
+      .map((b) => ({
+        ...b,
+        wonRevenue: Math.round(b.wonRevenue * 100) / 100,
+        avgOrderValue: Math.round(b.avgOrderValue * 100) / 100,
+      }))
+      .sort((a, b) => b.wonRevenue - a.wonRevenue),
+    topCustomers,
+    dailyRevenue,
+    stores: stores.map((s) => ({
+      id: s.id,
+      platform: s.platform,
+      shopDomain: s.shopDomain,
+      lastSyncAt: s.lastSyncAt,
+      syncStatus: s.syncStatus,
+      totalCustomersImported: s.totalCustomersImported,
+      totalOrdersImported: s.totalOrdersImported,
+    })),
+  };
+}

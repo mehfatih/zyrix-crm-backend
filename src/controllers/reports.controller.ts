@@ -124,3 +124,27 @@ export async function summary(
     next(err);
   }
 }
+
+const ecommerceSchema = z.object({
+  baseCurrency: z.string().min(2).max(8).optional(),
+  windowDays: z.coerce.number().int().positive().max(365).optional(),
+});
+
+export async function ecommerce(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId } = auth(req);
+    const q = ecommerceSchema.parse(req.query);
+    const data = await ReportsSvc.getEcommerceAnalytics(
+      companyId,
+      q.baseCurrency,
+      q.windowDays
+    );
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
