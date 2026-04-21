@@ -114,6 +114,19 @@ model User {
   // Null means 'infer from browser Accept-Language' (existing behavior).
   preferredLocale String?
 
+  // Profile expansion (UX #7). avatarUrl stores either an HTTP URL or
+  // a base64 data URL (data:image/png;base64,...) — we accept either
+  // because Option A deployment stores the image inline; future S3
+  // integration would swap in CDN URLs transparently.
+  avatarUrl          String?
+  website            String?
+  timezone           String?   // IANA TZ identifier, e.g. 'Asia/Riyadh'
+  billingEmail       String?
+  // Notification preference toggles — shape:
+  //   { email_daily_digest: true, push_new_deals: false, ... }
+  // Missing keys default to enabled (matches feature-flag semantics).
+  notificationPrefs  Json      @default("{}")
+
   status         String    @default("active")
   disabledAt     DateTime?
   disabledReason String?

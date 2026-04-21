@@ -64,6 +64,13 @@ const resetPasswordSchema = z.object({
 const updateProfileSchema = z.object({
   fullName: z.string().min(2).max(100).optional(),
   phone: z.string().optional(),
+  // UX #7 — profile expansion
+  avatarUrl: z.string().max(1_000_000).nullable().optional(), // up to ~750KB base64
+  website: z.string().url().max(500).nullable().optional(),
+  timezone: z.string().max(100).nullable().optional(),
+  billingEmail: z.string().email().max(200).nullable().optional(),
+  preferredLocale: z.enum(["en", "ar", "tr"]).nullable().optional(),
+  notificationPrefs: z.record(z.boolean()).optional(),
 });
 
 const updateCompanySchema = z.object({
@@ -364,6 +371,12 @@ export async function me(
           twoFactorEnabled: user.twoFactorEnabled,
           lastLoginAt: user.lastLoginAt,
           createdAt: user.createdAt,
+          avatarUrl: user.avatarUrl,
+          website: user.website,
+          timezone: user.timezone,
+          billingEmail: user.billingEmail,
+          preferredLocale: user.preferredLocale,
+          notificationPrefs: user.notificationPrefs,
         },
         company: {
           id: user.company.id,

@@ -531,6 +531,12 @@ async function generateAuthTokens(
 export interface UpdateProfileDto {
   fullName?: string;
   phone?: string;
+  avatarUrl?: string | null;
+  website?: string | null;
+  timezone?: string | null;
+  billingEmail?: string | null;
+  preferredLocale?: "en" | "ar" | "tr" | null;
+  notificationPrefs?: Record<string, boolean>;
 }
 
 export async function updateProfile(
@@ -540,6 +546,14 @@ export async function updateProfile(
   const updateData: any = {};
   if (dto.fullName !== undefined) updateData.fullName = dto.fullName;
   if (dto.phone !== undefined) updateData.phone = dto.phone;
+  if (dto.avatarUrl !== undefined) updateData.avatarUrl = dto.avatarUrl;
+  if (dto.website !== undefined) updateData.website = dto.website;
+  if (dto.timezone !== undefined) updateData.timezone = dto.timezone;
+  if (dto.billingEmail !== undefined) updateData.billingEmail = dto.billingEmail;
+  if (dto.preferredLocale !== undefined)
+    updateData.preferredLocale = dto.preferredLocale;
+  if (dto.notificationPrefs !== undefined)
+    updateData.notificationPrefs = dto.notificationPrefs;
 
   if (Object.keys(updateData).length === 0) {
     throw badRequest("No fields to update", "NO_FIELDS");
@@ -561,6 +575,12 @@ export async function updateProfile(
       twoFactorEnabled: true,
       lastLoginAt: true,
       createdAt: true,
+      avatarUrl: true,
+      website: true,
+      timezone: true,
+      billingEmail: true,
+      preferredLocale: true,
+      notificationPrefs: true,
     },
   });
 
