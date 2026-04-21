@@ -493,24 +493,85 @@ export async function upsertShopCustomer(
         notes: data.notes || null,
       },
     });
-  } else {
-    await prisma.customer.create({
+    return existing.id;
+  }
+  const created = await prisma.customer.create({
+    data: {
+      companyId,
+      fullName: data.fullName || `Customer ${externalId}`,
+      email: data.email?.toLowerCase() || null,
+      phone: data.phone || null,
+      address: data.address || null,
+      country: data.country || null,
+      city: data.city || null,
+      notes: data.notes || null,
+      source,
+      externalId: compoundExternalId,
+      lifetimeValue: data.lifetimeValue ?? 0,
+      status: "customer",
+    },
+  });
+  return created.id;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ORDER -> DEAL conversion
+// ──────────────────────────────────────────────────────────────────────
+// Every paid/fulfilled e-commerce order becomes a "won" Deal linked to its
+// Customer. Unpaid/pending orders become "proposal" stage so the merchant
+// sees the pipeline value even before payment.
+//
+// Idempotent: dedup key is `${platform} order #${externalId}` on the title
+// field. Re-running sync updates value/stage/probability without creating
+// duplicates.
+// ──────────────────────────────────────────────────────────────────────
+export async function upsertOrderDeal(
+  companyId: string,
+  customerId: string,
+  platform: string,
+  order: {
+    externalId: string;
+    value: number;
+    currency: string | null;
+    isPaid: boolean;
+    closedAt?: Date | null;
+  }
+) {
+  const title = `${platform} order #${order.externalId}`;
+  const existing = await prisma.deal.findFirst({
+    where: { companyId, title },
+    select: { id: true },
+  });
+  const stage = order.isPaid ? "won" : "proposal";
+  const probability = order.isPaid ? 100 : 50;
+  const actualCloseDate = order.isPaid ? (order.closedAt ?? new Date()) : null;
+
+  if (existing) {
+    await prisma.deal.update({
+      where: { id: existing.id },
       data: {
-        companyId,
-        fullName: data.fullName || `Customer ${externalId}`,
-        email: data.email?.toLowerCase() || null,
-        phone: data.phone || null,
-        address: data.address || null,
-        country: data.country || null,
-        city: data.city || null,
-        notes: data.notes || null,
-        source,
-        externalId: compoundExternalId,
-        lifetimeValue: data.lifetimeValue ?? 0,
-        status: "customer",
+        value: order.value,
+        currency: order.currency || "USD",
+        stage,
+        probability,
+        actualCloseDate,
       },
     });
+    return { id: existing.id, created: false };
   }
+  const deal = await prisma.deal.create({
+    data: {
+      companyId,
+      customerId,
+      title,
+      value: order.value,
+      currency: order.currency || "USD",
+      stage,
+      probability,
+      actualCloseDate,
+    },
+  });
+  return { id: deal.id, created: true };
 }
 
 // ─── SHOPIFY ──────────────────────────────────────────────────────────
@@ -566,7 +627,89 @@ async function syncShopify(
       page++;
     } else break;
   }
-  return { imported, orders: 0 };
+
+  // ─── ORDERS ──────────────────────────────────────────────────────────
+  // Fetch orders after customers so the customer upsert is guaranteed to
+  // exist when the deal links back. Shopify uses cursor pagination via
+  // Link headers (same as customers). Filter to last 180 days to cap
+  // initial backfill; subsequent syncs catch up from last run.
+  const orders = await syncShopifyOrders(domain, creds, companyId);
+  return { imported, orders };
+}
+
+async function syncShopifyOrders(
+  domain: string,
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  let pageInfo: string | null = null;
+  let page = 0;
+  const maxPages = 20;
+  const since = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
+
+  while (page < maxPages) {
+    const url: string = pageInfo
+      ? `https://${domain}/admin/api/2024-10/orders.json?limit=250&status=any&page_info=${encodeURIComponent(pageInfo)}`
+      : `https://${domain}/admin/api/2024-10/orders.json?limit=250&status=any&created_at_min=${encodeURIComponent(since)}`;
+
+    const resp = await fetch(url, {
+      headers: {
+        "X-Shopify-Access-Token": creds.accessToken,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!resp.ok) break;
+    const data = (await resp.json()) as { orders: any[] };
+    if (!data.orders || data.orders.length === 0) break;
+
+    for (const order of data.orders) {
+      if (!order.customer?.id) continue; // guest checkout — skip
+
+      // The customer should already exist from the customers loop above,
+      // but re-upsert defensively in case this is an order from a
+      // brand-new customer the earlier call didn't see yet.
+      const customerId = await upsertShopCustomer(
+        companyId,
+        "shopify",
+        String(order.customer.id),
+        {
+          fullName:
+            [order.customer.first_name, order.customer.last_name]
+              .filter(Boolean)
+              .join(" ")
+              .trim() ||
+            order.customer.email ||
+            `Customer ${order.customer.id}`,
+          email: order.customer.email,
+          phone: order.customer.phone,
+        }
+      );
+
+      const value = parseFloat(order.total_price || "0") || 0;
+      const isPaid = order.financial_status === "paid";
+      const closedAt = isPaid && order.closed_at
+        ? new Date(order.closed_at)
+        : null;
+
+      await upsertOrderDeal(companyId, customerId, "shopify", {
+        externalId: String(order.id),
+        value,
+        currency: order.currency || null,
+        isPaid,
+        closedAt,
+      });
+      ordersSynced++;
+    }
+
+    const linkHeader = resp.headers.get("link") || "";
+    const nextMatch = linkHeader.match(/<[^>]*page_info=([^&>]+)[^>]*>;\s*rel="next"/);
+    if (nextMatch) {
+      pageInfo = decodeURIComponent(nextMatch[1]);
+      page++;
+    } else break;
+  }
+  return ordersSynced;
 }
 
 // ─── SALLA ────────────────────────────────────────────────────────────
@@ -608,7 +751,79 @@ async function syncSalla(creds: SyncCreds, companyId: string): Promise<SyncResul
     if (data.data.length < 50) break;
     page++;
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncSallaOrders(creds, companyId);
+  return { imported, orders };
+}
+
+async function syncSallaOrders(
+  creds: SyncCreds,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  let page = 1;
+  const maxPages = 20;
+
+  while (page <= maxPages) {
+    const resp = await fetch(
+      `https://api.salla.dev/admin/v2/orders?page=${page}&per_page=50`,
+      {
+        headers: {
+          Authorization: `Bearer ${creds.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    if (!resp.ok) break;
+    const body = (await resp.json()) as { data?: any[] };
+    const orders = body.data || [];
+    if (orders.length === 0) break;
+
+    for (const order of orders) {
+      const customer = order.customer;
+      if (!customer?.id) continue;
+
+      const customerId = await upsertShopCustomer(
+        companyId,
+        "salla",
+        String(customer.id),
+        {
+          fullName:
+            [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim() ||
+            customer.full_name ||
+            customer.email ||
+            `Customer ${customer.id}`,
+          email: customer.email,
+          phone: customer.mobile,
+        }
+      );
+
+      // Salla status slugs: paid, completed, delivered → treat as paid
+      const statusSlug = (order.status?.slug || "").toString().toLowerCase();
+      const isPaid = ["paid", "completed", "delivered"].includes(statusSlug);
+      const totalRaw =
+        order.amounts?.total?.amount ?? order.total?.amount ?? order.total ?? 0;
+      const value = parseFloat(String(totalRaw)) || 0;
+      const currency =
+        order.amounts?.total?.currency || order.currency || "SAR";
+      const closedAt = isPaid && order.date
+        ? new Date(order.date)
+        : null;
+
+      await upsertOrderDeal(companyId, customerId, "salla", {
+        externalId: String(order.id),
+        value,
+        currency,
+        isPaid,
+        closedAt,
+      });
+      ordersSynced++;
+    }
+
+    if (orders.length < 50) break;
+    page++;
+  }
+  return ordersSynced;
 }
 
 // ─── ZID ──────────────────────────────────────────────────────────────
@@ -740,7 +955,83 @@ async function syncWooCommerce(
     if (rows.length < 50) break;
     page++;
   }
-  return { imported, orders: 0 };
+
+  const orders = await syncWooCommerceOrders(domain, auth, companyId);
+  return { imported, orders };
+}
+
+async function syncWooCommerceOrders(
+  domain: string,
+  auth: string,
+  companyId: string
+): Promise<number> {
+  let ordersSynced = 0;
+  let page = 1;
+  const maxPages = 20;
+
+  // WooCommerce statuses: processing, completed → treat as paid.
+  // on-hold, pending, cancelled, refunded, failed → not paid.
+  const PAID_STATUSES = new Set(["processing", "completed"]);
+
+  while (page <= maxPages) {
+    const resp = await fetch(
+      `https://${domain}/wp-json/wc/v3/orders?per_page=50&page=${page}&orderby=date&order=desc`,
+      {
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    if (!resp.ok) break;
+    const orders = (await resp.json()) as any[];
+    if (!Array.isArray(orders) || orders.length === 0) break;
+
+    for (const order of orders) {
+      // WooCommerce orders link to customer_id (0 = guest). Skip guests.
+      if (!order.customer_id || order.customer_id === 0) continue;
+
+      const customerId = await upsertShopCustomer(
+        companyId,
+        "woocommerce",
+        String(order.customer_id),
+        {
+          fullName:
+            [order.billing?.first_name, order.billing?.last_name]
+              .filter(Boolean)
+              .join(" ")
+              .trim() ||
+            order.billing?.email ||
+            `Customer ${order.customer_id}`,
+          email: order.billing?.email,
+          phone: order.billing?.phone,
+          country: order.billing?.country,
+          city: order.billing?.city,
+        }
+      );
+
+      const value = parseFloat(order.total || "0") || 0;
+      const status = (order.status || "").toLowerCase();
+      const isPaid = PAID_STATUSES.has(status);
+      const closedAt =
+        status === "completed" && order.date_completed
+          ? new Date(order.date_completed)
+          : null;
+
+      await upsertOrderDeal(companyId, customerId, "woocommerce", {
+        externalId: String(order.id),
+        value,
+        currency: order.currency || null,
+        isPaid,
+        closedAt,
+      });
+      ordersSynced++;
+    }
+
+    if (orders.length < 50) break;
+    page++;
+  }
+  return ordersSynced;
 }
 
 // ─── EASYORDERS ───────────────────────────────────────────────────────

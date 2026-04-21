@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "../config/database";
 import { AppError, notFound } from "../middleware/errorHandler";
-import { upsertShopCustomer } from "./ecommerce.service";
+import { upsertShopCustomer, upsertOrderDeal } from "./ecommerce.service";
 
 // ============================================================================
 // WEBHOOKS — inbound receivers for Shopify, Salla, Zid, etc.
@@ -437,7 +437,10 @@ async function dispatch(
     return;
   }
 
-  // Orders — upsert both the customer and a "won" deal tagged with the order
+  // Orders — upsert both the customer and a deal tagged with the order.
+  // Reuses upsertShopCustomer (returns id) and upsertOrderDeal from
+  // ecommerce.service.ts — same logic as the polling sync path so
+  // behavior is identical whether an order arrives via webhook or cron.
   if (
     norm === "orders/create" ||
     norm === "orders/paid" ||
@@ -447,56 +450,23 @@ async function dispatch(
     norm === "order/updated"
   ) {
     const o = extractOrder(platform, body);
-    if (o) {
-      if (o.customer) {
-        await upsertShopCustomer(companyId, platform, o.customer.externalId, {
+    if (o && o.customer) {
+      const customerId = await upsertShopCustomer(
+        companyId,
+        platform,
+        o.customer.externalId,
+        {
           fullName: o.customer.fullName,
           email: o.customer.email,
           phone: o.customer.phone,
-        });
-      }
-      // Find the customer we just upserted to link the deal
-      const customer = o.customer
-        ? await prisma.customer.findFirst({
-            where: {
-              companyId,
-              externalId: `${platform}:${o.customer.externalId}`,
-            },
-            select: { id: true },
-          })
-        : null;
-
-      if (customer) {
-        // Idempotent-ish: dedup by title that embeds the order id
-        const title = `${platform} order #${o.externalId}`;
-        const existing = await prisma.deal.findFirst({
-          where: { companyId, title },
-          select: { id: true },
-        });
-        if (existing) {
-          await prisma.deal.update({
-            where: { id: existing.id },
-            data: {
-              value: o.total,
-              currency: o.currency || "USD",
-              stage: o.isPaid ? "won" : "proposal",
-              probability: o.isPaid ? 100 : 50,
-            },
-          });
-        } else {
-          await prisma.deal.create({
-            data: {
-              companyId,
-              customerId: customer.id,
-              title,
-              value: o.total,
-              currency: o.currency || "USD",
-              stage: o.isPaid ? "won" : "proposal",
-              probability: o.isPaid ? 100 : 50,
-            },
-          });
         }
-      }
+      );
+      await upsertOrderDeal(companyId, customerId, platform, {
+        externalId: o.externalId,
+        value: o.total,
+        currency: o.currency,
+        isPaid: o.isPaid,
+      });
     }
     return;
   }
