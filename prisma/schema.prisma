@@ -1581,3 +1581,62 @@ model OAuthState {
   @@index([expiresAt])
   @@map("oauth_states")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// WHITE-LABEL BRAND SETTINGS
+// ─────────────────────────────────────────────────────────────────────────
+// Per-company branding overrides. Used to customize the dashboard
+// appearance (logo + colors + display name) for enterprise customers
+// who want Zyrix-powered CRM to look like their own product. Tier
+// gating happens server-side: FREE/STARTER can set display name +
+// colors, PRO can add logo, ENTERPRISE can add custom domain.
+//
+// Optional 1:1 with Company — a row is only created when a merchant
+// first sets any branding. If no row exists, the dashboard falls back
+// to default Zyrix branding.
+model BrandSettings {
+  id        String @id @default(uuid())
+  companyId String @unique
+
+  // Display name that overrides the 'Zyrix' product name in the UI
+  // chrome (sidebar header, browser tab, welcome emails).
+  displayName String?
+
+  // Public URL of the uploaded logo. Lives in the same storage as
+  // other company uploads (Cloudinary, S3, etc.). Null = fall back
+  // to the default Zyrix logo.
+  logoUrl String?
+
+  // Optional favicon URL. Smaller file, shown in browser tab.
+  faviconUrl String?
+
+  // Hex color strings (e.g. '#0891B2'). Applied as CSS variables so
+  // the whole dashboard re-themes without code changes. Validated
+  // server-side to be valid 6-hex format.
+  primaryColor String?
+  accentColor  String?
+
+  // Custom outbound email sender. When set, transactional emails
+  // (welcome, password reset, quote PDFs) send from this address
+  // via whatever provider the customer configured in SMTP or Resend.
+  // For SPF/DKIM validation, the domain must be verified separately.
+  emailFromName    String?
+  emailFromAddress String?
+
+  // Custom CNAME domain — enterprise tier only. When set and verified,
+  // requests to https://{customDomain} route to this company's dashboard.
+  // customDomainVerifiedAt gates the "is this actually live" check.
+  customDomain            String?  @unique
+  customDomainVerifiedAt  DateTime?
+
+  // A per-company token for the TXT record the customer adds to DNS
+  // to prove ownership of the custom domain. Cycled on re-verification.
+  customDomainVerificationToken String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([customDomain])
+  @@map("brand_settings")
+}
