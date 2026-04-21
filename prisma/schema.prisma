@@ -50,6 +50,7 @@ model Company {
   contracts         Contract[]
   portalTokens      PortalToken[]
   chatMessages      ChatMessage[]
+  exchangeRates     ExchangeRate[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -1010,4 +1011,29 @@ model ChatMessage {
   @@index([createdAt])
   @@index([readAt])
   @@map("chat_messages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// EXCHANGE RATES — Multi-currency conversion
+// ─────────────────────────────────────────────────────────────────────────
+model ExchangeRate {
+  id        String @id @default(uuid())
+  companyId String
+
+  fromCurrency String
+  toCurrency   String
+  rate         Decimal @db.Decimal(14, 6)
+
+  effectiveAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, fromCurrency, toCurrency])
+  @@index([companyId])
+  @@index([fromCurrency])
+  @@index([toCurrency])
+  @@map("exchange_rates")
 }
