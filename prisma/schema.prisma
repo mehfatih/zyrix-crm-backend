@@ -1226,3 +1226,30 @@ model WebhookEvent {
   @@index([status, nextRetryAt])
   @@map("webhook_events")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// DASHBOARD LAYOUTS — per-user customizable widget grids
+// ─────────────────────────────────────────────────────────────────────────
+// Each user picks which widgets to show on their home dashboard and in
+// what order. The layout is a JSON array of { id, type, width, config }
+// objects. Width is one of 'full' | 'half' | 'third' | 'quarter' so the
+// grid snaps to standard column counts; no free-form pixel dragging
+// needed to keep layouts coherent across screen sizes.
+//
+// One row per (userId, companyId) — users can't share layouts across
+// companies they belong to, and company-level default layouts are
+// represented by a sentinel userId='company_default' row that the
+// service falls back to when a user has no personal layout yet.
+model DashboardLayout {
+  id        String @id @default(uuid())
+  companyId String
+  userId    String // "company_default" for org-wide default
+  widgets   Json   @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, userId])
+  @@index([companyId])
+  @@map("dashboard_layouts")
+}
