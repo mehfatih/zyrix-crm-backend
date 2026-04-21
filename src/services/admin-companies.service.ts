@@ -131,6 +131,8 @@ export interface UpdateCompanyDto {
   country?: string;
   industry?: string;
   size?: string;
+  baseCurrency?: string | null;
+  idleTimeoutMinutes?: number | null;
 }
 
 export async function updateCompany(
@@ -152,6 +154,10 @@ export async function updateCompany(
       ...(dto.country !== undefined && { country: dto.country }),
       ...(dto.industry !== undefined && { industry: dto.industry }),
       ...(dto.size !== undefined && { size: dto.size }),
+      ...(dto.baseCurrency !== undefined && { baseCurrency: dto.baseCurrency }),
+      ...(dto.idleTimeoutMinutes !== undefined && {
+        idleTimeoutMinutes: dto.idleTimeoutMinutes,
+      }),
     },
   });
 

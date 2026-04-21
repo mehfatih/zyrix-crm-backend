@@ -39,6 +39,11 @@ const updateCompanySchema = z.object({
   country: z.string().optional(),
   industry: z.string().optional(),
   size: z.string().optional(),
+  baseCurrency: z.string().min(3).max(8).nullable().optional(),
+  // Auto-lock idle timeout in minutes. 0 or null disables it (e.g.
+  // for TV-dashboard merchants). Range 0..60 — longer than an hour
+  // defeats the security purpose of the feature.
+  idleTimeoutMinutes: z.number().int().min(0).max(60).nullable().optional(),
 });
 
 const suspendCompanySchema = z.object({ reason: z.string().optional() });
