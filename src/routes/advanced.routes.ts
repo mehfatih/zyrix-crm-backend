@@ -20,6 +20,7 @@ router.post("/templates", controller.createTemplate);
 router.get("/templates/:id", controller.getTemplate);
 router.put("/templates/:id", controller.updateTemplate);
 router.delete("/templates/:id", controller.deleteTemplate);
+router.post("/templates/:id/use", controller.markTemplateUsed);
 
 // ──────────────────────────────────────────────────────────────────────
 // CUSTOM FIELDS

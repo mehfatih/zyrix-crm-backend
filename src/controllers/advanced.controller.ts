@@ -73,6 +73,13 @@ export async function deleteTemplate(req: Request, res: Response, next: NextFunc
     res.status(200).json({ success: true, data });
   } catch (err) { next(err); }
 }
+export async function markTemplateUsed(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    await EmailTemplatesSvc.incrementUsage(companyId, req.params.id as string);
+    res.status(200).json({ success: true, data: { ok: true } });
+  } catch (err) { next(err); }
+}
 
 // ============================================================================
 // CUSTOM FIELDS
