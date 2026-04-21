@@ -148,3 +148,61 @@ export async function ecommerce(
     next(err);
   }
 }
+
+// ============================================================================
+// E-COMMERCE ANALYTICS — EXPORT (CSV / PDF)
+// ============================================================================
+import {
+  buildAnalyticsCsv,
+  buildAnalyticsPdf,
+} from "../services/ecommerceExport.service";
+
+const ecommerceExportSchema = z.object({
+  format: z.enum(["csv", "pdf"]),
+  baseCurrency: z.string().min(2).max(8).optional(),
+  windowDays: z.coerce.number().int().positive().max(365).optional(),
+});
+
+export async function ecommerceExport(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId } = auth(req);
+    const q = ecommerceExportSchema.parse(req.query);
+    const analytics = await ReportsSvc.getEcommerceAnalytics(
+      companyId,
+      q.baseCurrency,
+      q.windowDays
+    );
+
+    // Filename includes the window + generated-at date so re-exports don't
+    // collide in the user's Downloads folder.
+    const stamp = new Date().toISOString().slice(0, 10);
+    const baseName = `zyrix-ecommerce-${q.windowDays || 30}d-${stamp}`;
+
+    if (q.format === "csv") {
+      const csv = buildAnalyticsCsv(analytics);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${baseName}.csv"`
+      );
+      res.status(200).send(csv);
+      return;
+    }
+
+    // format === 'pdf'
+    const buf = await buildAnalyticsPdf(analytics);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${baseName}.pdf"`
+    );
+    res.setHeader("Content-Length", buf.length.toString());
+    res.status(200).send(buf);
+  } catch (err) {
+    next(err);
+  }
+}
