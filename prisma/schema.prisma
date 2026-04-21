@@ -48,6 +48,7 @@ model Company {
   commissionEntries CommissionEntry[]
   campaigns         Campaign[]
   contracts         Contract[]
+  portalTokens      PortalToken[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -170,6 +171,7 @@ model Customer {
   loyaltyTxns   LoyaltyTransaction[]
   campaignRecipients CampaignRecipient[]
   contracts     Contract[]
+  portalTokens  PortalToken[]
   tags          CustomerTag[]
   whatsappChats WhatsappChat[]
 
@@ -952,4 +954,31 @@ model Contract {
   @@index([endDate])
   @@index([renewalDate])
   @@map("contracts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CUSTOMER PORTAL — Magic-link tokens
+// ─────────────────────────────────────────────────────────────────────────
+model PortalToken {
+  id         String @id @default(uuid())
+  customerId String
+  companyId  String
+
+  token     String   @unique
+  purpose   String   @default("login") // login | session
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([companyId])
+  @@index([expiresAt])
+  @@map("portal_tokens")
 }
