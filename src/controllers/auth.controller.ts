@@ -386,6 +386,7 @@ export async function me(
           country: user.company.country,
           baseCurrency: user.company.baseCurrency,
           enabledFeatures: user.company.enabledFeatures,
+          idleTimeoutMinutes: user.company.idleTimeoutMinutes,
         },
       },
     });

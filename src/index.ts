@@ -49,6 +49,7 @@ import notificationsRoutes from "./routes/notifications.routes";
 import analyticsReportsRoutes from "./routes/analytics-reports.routes";
 import brandsRoutes from "./routes/brands.routes";
 import taxInvoicesRoutes from "./routes/tax-invoices.routes";
+import sessionEventsRoutes from "./routes/session-events.routes";
 import featureFlagsRoutes from "./routes/feature-flags.routes";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
@@ -184,6 +185,7 @@ app.use("/api/notifications", notificationsRoutes);
 app.use("/api/analytics-reports", analyticsReportsRoutes);
 app.use("/api/brands", brandsRoutes);
 app.use("/api/tax-invoices", taxInvoicesRoutes);
+app.use("/api/session-events", sessionEventsRoutes);
 app.use("/api/feature-flags", featureFlagsRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);

@@ -41,6 +41,12 @@ model Company {
   // requiring a data migration each time we add one.
   enabledFeatures Json @default("{}")
 
+  // Idle timeout in minutes — the merchant's CRM dashboard auto-logs
+  // out after this many minutes of no user activity. Default 10.
+  // 0 or null disables the auto-lock (for TV-dashboard use cases).
+  // Range: 0..60 enforced by the admin UI.
+  idleTimeoutMinutes Int? @default(10)
+
   // Onboarding wizard — null means the user still needs to complete it.
   // When the wizard calls POST /api/onboarding/complete, we set this
   // timestamp, which flips the dashboard banner off and stops the
@@ -1938,4 +1944,46 @@ model TaxInvoice {
   @@index([companyId, status])
   @@index([companyId, issuedAt])
   @@map("tax_invoices")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SESSION EVENTS — for idle timeout KPIs
+// ─────────────────────────────────────────────────────────────────────────
+// Each row = one "something happened to this session" event. The primary
+// use case is letting managers see how often employees close Zyrix
+// actively vs get logged out by idle timeout — a signal of engagement
+// + potential training needs (frequent auto-logouts may indicate the
+// employee is being interrupted a lot or using the system as a
+// reference rather than a working tool).
+//
+// Why a separate table instead of piggybacking on AuditLog:
+//   • Volume — dozens per user per day, vs AuditLog's business-level
+//     events (deal created, contract signed) that are much rarer
+//   • Query pattern — we aggregate by (userId, day, eventType) for
+//     the KPI dashboard, which is different from AuditLog's "who did
+//     what to entity X?" pattern
+//   • Retention — can be rolled up/archived separately if volume
+//     becomes an issue; business audit events need to be kept much
+//     longer for compliance
+model SessionEvent {
+  id        String @id @default(uuid())
+  userId    String
+  companyId String
+
+  // 'login'              — fresh signin (via password, OAuth, magic link)
+  // 'manual_logout'      — user clicked the logout button
+  // 'auto_logout_idle'   — idle timeout fired (10 min default)
+  // 'session_expired'    — refresh token rejected / tokens cleared
+  eventType String
+
+  // Client-side metadata for debugging: user agent, locale, viewport.
+  // JSON instead of columns so we can add/remove fields without migrations.
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId, userId, createdAt])
+  @@index([companyId, eventType, createdAt])
+  @@index([userId, createdAt])
+  @@map("session_events")
 }
