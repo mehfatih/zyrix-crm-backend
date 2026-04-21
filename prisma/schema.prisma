@@ -1740,3 +1740,55 @@ model Mention {
   @@index([companyId, mentionedUserId])
   @@map("mentions")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// SCHEDULED REPORTS
+// ─────────────────────────────────────────────────────────────────────────
+// User-defined recurring reports. At each scheduled tick the cron runs
+// the report's queries + emails the result to the recipient list. Reports
+// share the underlying metric catalog with the interactive pivot builder;
+// only the delivery layer is different.
+model ScheduledReport {
+  id        String @id @default(uuid())
+  companyId String
+  createdById String
+
+  // Human label ('Weekly Sales Digest', 'Q4 Revenue by Region')
+  name String
+
+  // 'daily' | 'weekly' | 'monthly'
+  cadence String
+
+  // 0-23 for daily/weekly — the hour (UTC) to fire
+  hour Int @default(9)
+
+  // 0-6 for weekly (0=Sunday) — which day
+  dayOfWeek Int?
+
+  // 1-28 for monthly — which day of month (capped at 28 to avoid
+  // edge cases with 29-31)
+  dayOfMonth Int?
+
+  // The metric keys to include. These are resolved by the reports
+  // service against its hardcoded metric catalog (e.g. 'revenue_by_month',
+  // 'deal_conversion_rate', 'top_customers_by_ltv'). JSON array of
+  // strings — keeps the schema flexible as we add metrics.
+  metrics Json @default("[]")
+
+  // Email recipients. Comma-separated or JSON array of email strings.
+  // Each recipient must be a user in the same company to prevent
+  // data leakage; service validates at runtime.
+  recipients Json @default("[]")
+
+  isEnabled Boolean @default(true)
+  lastRunAt DateTime?
+  lastError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, isEnabled])
+  @@index([isEnabled, cadence])
+  @@map("scheduled_reports")
+}

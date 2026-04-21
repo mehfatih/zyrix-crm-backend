@@ -46,9 +46,11 @@ import oauthRoutes from "./routes/oauth.routes";
 import brandRoutes from "./routes/brand.routes";
 import commentsRoutes from "./routes/comments.routes";
 import notificationsRoutes from "./routes/notifications.routes";
+import analyticsReportsRoutes from "./routes/analytics-reports.routes";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
 import { startWorkflowWorker } from "./cron/workflow-worker";
+import { startScheduledReportsWorker } from "./cron/scheduled-reports-worker";
 
 const app: Express = express();
 
@@ -176,6 +178,7 @@ app.use("/api/oauth", oauthRoutes);
 app.use("/api/brand", brandRoutes);
 app.use("/api/comments", commentsRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/analytics-reports", analyticsReportsRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key
@@ -212,6 +215,7 @@ const server = app.listen(env.PORT, () => {
   // is never lost to missed log buffering on cold boots.
   startSyncScheduler();
   startWorkflowWorker();
+  startScheduledReportsWorker();
 
   // Seed curated templates — idempotent upsert by slug. Failures here
   // shouldn't crash the server; template gallery will just show whatever
