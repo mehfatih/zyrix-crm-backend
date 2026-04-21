@@ -46,6 +46,7 @@ model Company {
   followupSettings FollowupSettings?
   commissionRules   CommissionRule[]
   commissionEntries CommissionEntry[]
+  campaigns         Campaign[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -100,6 +101,7 @@ model User {
   createdQuotes   Quote[]         @relation("QuoteCreator")
   loyaltyTxns     LoyaltyTransaction[] @relation("LoyaltyTxnCreator")
   commissionEntries CommissionEntry[]
+  createdCampaigns Campaign[] @relation("CampaignCreator")
 
   @@index([email])
   @@index([googleId])
@@ -164,6 +166,7 @@ model Customer {
   tasks         Task[]
   quotes        Quote[]
   loyaltyTxns   LoyaltyTransaction[]
+  campaignRecipients CampaignRecipient[]
   tags          CustomerTag[]
   whatsappChats WhatsappChat[]
 
@@ -820,4 +823,81 @@ model CommissionEntry {
   @@index([ruleId])
   @@index([status])
   @@map("commission_entries")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MARKETING CAMPAIGNS
+// ─────────────────────────────────────────────────────────────────────────
+model Campaign {
+  id          String @id @default(uuid())
+  companyId   String
+  createdById String
+
+  name    String
+  subject String?
+  channel String @default("email")  // email | whatsapp | sms
+  status  String @default("draft")  // draft | scheduled | sending | sent | failed | cancelled
+
+  bodyHtml  String?
+  bodyText  String?
+  fromName  String?
+  fromEmail String?
+  replyTo   String?
+
+  targetType  String  @default("all") // all | status | tag | manual
+  targetValue String?
+
+  scheduledAt DateTime?
+  sentAt      DateTime?
+
+  recipientCount Int @default(0)
+  sentCount      Int @default(0)
+  deliveredCount Int @default(0)
+  openedCount    Int @default(0)
+  clickedCount   Int @default(0)
+  bouncedCount   Int @default(0)
+  failedCount    Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company    Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy  User                @relation("CampaignCreator", fields: [createdById], references: [id])
+  recipients CampaignRecipient[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([channel])
+  @@index([scheduledAt])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id         String @id @default(uuid())
+  campaignId String
+  customerId String
+
+  email String?
+  phone String?
+
+  status       String    @default("queued") // queued | sent | delivered | opened | clicked | bounced | failed
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  openedAt     DateTime?
+  clickedAt    DateTime?
+  errorMessage String?
+
+  messageId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, customerId])
+  @@index([campaignId])
+  @@index([customerId])
+  @@index([status])
+  @@map("campaign_recipients")
 }

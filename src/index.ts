@@ -19,6 +19,7 @@ import cashflowRoutes from "./routes/cashflow.routes";
 import followupRoutes from "./routes/followup.routes";
 import aiCfoRoutes from "./routes/ai-cfo.routes";
 import commissionRoutes from "./routes/commission.routes";
+import campaignsRoutes from "./routes/campaigns.routes";
 import whatsappRoutes from "./routes/whatsapp.routes";
 import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
@@ -92,6 +93,7 @@ app.get("/api", (_req, res) => {
       followup: "/api/followup",
       aiCfo: "/api/ai-cfo",
       commission: "/api/commission",
+      campaigns: "/api/campaigns",
       whatsapp: "/api/whatsapp",
       admin: "/api/admin",
       public: "/api/public",
@@ -112,6 +114,7 @@ app.use("/api/cashflow", cashflowRoutes);
 app.use("/api/followup", followupRoutes);
 app.use("/api/ai-cfo", aiCfoRoutes);
 app.use("/api/commission", commissionRoutes);
+app.use("/api/campaigns", campaignsRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
