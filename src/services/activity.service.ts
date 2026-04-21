@@ -1,6 +1,7 @@
 import { prisma } from "../config/database";
 import { notFound } from "../middleware/errorHandler";
 import type { Prisma } from "@prisma/client";
+import { dispatchActivityCompleted } from "./workflow-events.service";
 
 export interface CreateActivityDto {
   type: "note" | "call" | "email" | "meeting" | "task" | "whatsapp";
@@ -93,11 +94,48 @@ export async function completeActivity(
     where: { id: activityId, companyId },
   });
   if (!existing) throw notFound("Activity");
+  // Idempotency: if already completed, skip the update + dispatch so
+  // re-hitting Complete doesn't cause duplicate workflow runs.
+  if (existing.completedAt) return existing;
 
-  return prisma.activity.update({
+  const updated = await prisma.activity.update({
     where: { id: activityId },
     data: { completedAt: new Date() },
+    include: {
+      customer: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          status: true,
+          source: true,
+        },
+      },
+    },
   });
+
+  dispatchActivityCompleted(
+    companyId,
+    {
+      id: updated.id,
+      type: updated.type,
+      title: updated.title,
+      customerId: updated.customerId,
+    },
+    updated.customer
+      ? {
+          id: updated.customer.id,
+          fullName: updated.customer.fullName,
+          email: updated.customer.email,
+          phone: updated.customer.phone,
+          status: updated.customer.status,
+          source: updated.customer.source,
+        }
+      : null
+  ).catch(() => {});
+
+  return updated;
 }
 
 export async function deleteActivity(

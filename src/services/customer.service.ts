@@ -1,6 +1,10 @@
 import { prisma } from "../config/database";
 import { badRequest, notFound } from "../middleware/errorHandler";
 import type { Prisma } from "@prisma/client";
+import {
+  dispatchCustomerCreated,
+  dispatchCustomerStatusChanged,
+} from "./workflow-events.service";
 
 export interface CreateCustomerDto {
   fullName: string;
@@ -49,7 +53,7 @@ export async function createCustomer(
     }
   }
 
-  return prisma.customer.create({
+  const customer = await prisma.customer.create({
     data: {
       companyId,
       ownerId: userId,
@@ -71,6 +75,22 @@ export async function createCustomer(
       _count: { select: { deals: true, activities: true } },
     },
   });
+
+  // Fire workflow triggers. dispatchCustomerCreated is fire-and-forget;
+  // the customer is already persisted, so any error in workflow matching
+  // can't roll back the primary action.
+  dispatchCustomerCreated(companyId, {
+    id: customer.id,
+    fullName: customer.fullName,
+    email: customer.email,
+    phone: customer.phone,
+    status: customer.status,
+    source: customer.source,
+  }).catch(() => {
+    /* already logged inside safeDispatch */
+  });
+
+  return customer;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -173,7 +193,7 @@ export async function updateCustomer(
   });
   if (!existing) throw notFound("Customer");
 
-  return prisma.customer.update({
+  const updated = await prisma.customer.update({
     where: { id: customerId },
     data: {
       ...(dto.fullName !== undefined && { fullName: dto.fullName }),
@@ -202,6 +222,25 @@ export async function updateCustomer(
       _count: { select: { deals: true, activities: true } },
     },
   });
+
+  // Fire status-changed event only when status actually changed.
+  // Workflows can filter on the new status via trigger.config.toStatus.
+  if (dto.status !== undefined && dto.status !== existing.status) {
+    dispatchCustomerStatusChanged(
+      companyId,
+      {
+        id: updated.id,
+        fullName: updated.fullName,
+        email: updated.email,
+        phone: updated.phone,
+        status: updated.status,
+        source: updated.source,
+      },
+      existing.status
+    ).catch(() => {});
+  }
+
+  return updated;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,10 @@
 import { prisma } from "../config/database";
 import { badRequest, notFound } from "../middleware/errorHandler";
 import type { Prisma } from "@prisma/client";
+import {
+  dispatchDealCreated,
+  dispatchDealStageChanged,
+} from "./workflow-events.service";
 
 const VALID_STAGES = [
   "lead",
@@ -63,7 +67,7 @@ export async function createDeal(
     throw badRequest(`Invalid stage. Must be one of: ${VALID_STAGES.join(", ")}`);
   }
 
-  return prisma.deal.create({
+  const deal = await prisma.deal.create({
     data: {
       companyId,
       ownerId: userId,
@@ -85,6 +89,30 @@ export async function createDeal(
       owner: { select: { id: true, fullName: true } },
     },
   });
+
+  dispatchDealCreated(
+    companyId,
+    {
+      id: deal.id,
+      title: deal.title,
+      value: Number(deal.value),
+      currency: deal.currency,
+      stage: deal.stage,
+      customerId: deal.customerId,
+    },
+    deal.customer
+      ? {
+          id: deal.customer.id,
+          fullName: deal.customer.fullName,
+          email: deal.customer.email,
+          phone: null,
+          status: "new",
+          source: null,
+        }
+      : null
+  ).catch(() => {});
+
+  return deal;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -231,7 +259,7 @@ export async function updateDeal(
     where: { id: dealId },
     data: updateData,
     include: {
-      customer: { select: { id: true, fullName: true, companyName: true } },
+      customer: { select: { id: true, fullName: true, companyName: true, email: true, phone: true, status: true, source: true } },
       owner: { select: { id: true, fullName: true } },
     },
   }).then(async (updated) => {
@@ -246,6 +274,34 @@ export async function updateDeal(
         // Non-fatal: deal update should succeed even if commission fails
       }
     }
+
+    // Fire workflow triggers when stage actually changes. dispatchDealStageChanged
+    // fans out to deal.stage_changed + deal.won / deal.lost when terminal.
+    if (dto.stage !== undefined && dto.stage !== existing.stage) {
+      dispatchDealStageChanged(
+        companyId,
+        {
+          id: updated.id,
+          title: updated.title,
+          value: Number(updated.value),
+          currency: updated.currency,
+          stage: updated.stage,
+          customerId: updated.customerId,
+        },
+        updated.customer
+          ? {
+              id: updated.customer.id,
+              fullName: updated.customer.fullName,
+              email: updated.customer.email,
+              phone: updated.customer.phone,
+              status: updated.customer.status,
+              source: updated.customer.source,
+            }
+          : null,
+        existing.stage
+      ).catch(() => {});
+    }
+
     return updated;
   });
 }

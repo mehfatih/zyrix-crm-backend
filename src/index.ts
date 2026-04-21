@@ -37,8 +37,10 @@ import billingRoutes from "./routes/billing.routes";
 import dashboardLayoutRoutes from "./routes/dashboard-layout.routes";
 import templatesRoutes from "./routes/templates.routes";
 import workflowsRoutes from "./routes/workflows.routes";
+import workflowWebhookRouter from "./routes/workflow-webhook.routes";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
+import { startWorkflowWorker } from "./cron/workflow-worker";
 
 const app: Express = express();
 
@@ -160,6 +162,8 @@ app.use("/api/billing", billingRoutes);
 app.use("/api/dashboard", dashboardLayoutRoutes);
 app.use("/api/templates", templatesRoutes);
 app.use("/api/workflows", workflowsRoutes);
+// Public workflow webhook receiver — no auth, rate-limited per workflow
+app.use("/wh", workflowWebhookRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -189,6 +193,7 @@ const server = app.listen(env.PORT, () => {
   // Register scheduled jobs after the server is listening so cron output
   // is never lost to missed log buffering on cold boots.
   startSyncScheduler();
+  startWorkflowWorker();
 
   // Seed curated templates — idempotent upsert by slug. Failures here
   // shouldn't crash the server; template gallery will just show whatever
