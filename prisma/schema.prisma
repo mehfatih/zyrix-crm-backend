@@ -49,6 +49,7 @@ model Company {
   campaigns         Campaign[]
   contracts         Contract[]
   portalTokens      PortalToken[]
+  chatMessages      ChatMessage[]
   tags           Tag[]
   whatsappChats  WhatsappChat[]
   subscriptions  Subscription[]
@@ -105,6 +106,8 @@ model User {
   commissionEntries CommissionEntry[]
   createdCampaigns Campaign[] @relation("CampaignCreator")
   createdContracts Contract[] @relation("ContractCreator")
+  sentMessages     ChatMessage[] @relation("ChatSender")
+  receivedMessages ChatMessage[] @relation("ChatRecipient")
 
   @@index([email])
   @@index([googleId])
@@ -981,4 +984,30 @@ model PortalToken {
   @@index([companyId])
   @@index([expiresAt])
   @@map("portal_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// INTERNAL CHAT — Direct messages between users
+// ─────────────────────────────────────────────────────────────────────────
+model ChatMessage {
+  id         String @id @default(uuid())
+  companyId  String
+  fromUserId String
+  toUserId   String
+
+  content String
+  readAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  company  Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fromUser User    @relation("ChatSender", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User    @relation("ChatRecipient", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([createdAt])
+  @@index([readAt])
+  @@map("chat_messages")
 }

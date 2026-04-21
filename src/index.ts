@@ -22,6 +22,7 @@ import commissionRoutes from "./routes/commission.routes";
 import campaignsRoutes from "./routes/campaigns.routes";
 import contractRoutes from "./routes/contract.routes";
 import portalRoutes from "./routes/portal.routes";
+import chatRoutes from "./routes/chat.routes";
 import whatsappRoutes from "./routes/whatsapp.routes";
 import adminRoutes from "./routes/admin.routes";
 import publicRoutes from "./routes/public.routes";
@@ -98,6 +99,7 @@ app.get("/api", (_req, res) => {
       campaigns: "/api/campaigns",
       contracts: "/api/contracts",
       portal: "/api/portal",
+      chat: "/api/chat",
       whatsapp: "/api/whatsapp",
       admin: "/api/admin",
       public: "/api/public",
@@ -121,6 +123,7 @@ app.use("/api/commission", commissionRoutes);
 app.use("/api/campaigns", campaignsRoutes);
 app.use("/api/contracts", contractRoutes);
 app.use("/api/portal", portalRoutes);
+app.use("/api/chat", chatRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
