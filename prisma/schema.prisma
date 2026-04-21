@@ -1640,3 +1640,103 @@ model BrandSettings {
   @@index([customDomain])
   @@map("brand_settings")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// TEAM COLLABORATION — notifications, comments, mentions
+// ─────────────────────────────────────────────────────────────────────────
+// Core model for team-aware CRM interactions. Three tables wired together:
+//
+// Notification — in-app + (future) email pings for the user. Shown in the
+//   bell-icon tray. Marked read when the user views the detail they
+//   reference.
+//
+// Comment — threaded discussion attached to a domain object (customer,
+//   deal, activity). Supports @mentions via a separate Mention table
+//   rather than parsing the body each read.
+//
+// Mention — normalized record of 'user X was @mentioned in comment Y'.
+//   Makes 'show me everywhere I was mentioned' cheap and avoids repeated
+//   body parsing. Each mention produces a Notification for the mentioned
+//   user.
+model Notification {
+  id        String @id @default(uuid())
+  companyId String
+  userId    String // recipient
+
+  // 'mention' | 'deal_assigned' | 'comment_reply' | 'task_due' | 'deal_won'
+  // etc. Used for icon + grouping in the UI; the frontend's i18n layer
+  // renders the actual strings.
+  kind String
+
+  // Short display label — pre-rendered by the service so the UI doesn't
+  // need to know about every possible kind. For mentions this is
+  // 'Sara mentioned you on Acme Corp'.
+  title String
+
+  // Optional secondary body — the snippet of the comment that contained
+  // the mention, first 120 chars of the relevant text, etc.
+  body String?
+
+  // Link target the UI navigates to when the notification is clicked.
+  // e.g. '/customers/abc123?comment=xyz'
+  link String?
+
+  // Entity this notification references — useful for dedup and
+  // for 'show all notifications about deal X' style queries.
+  entityType String?
+  entityId   String?
+
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId, userId, readAt])
+  @@index([companyId, userId, createdAt])
+  @@map("notifications")
+}
+
+model Comment {
+  id        String @id @default(uuid())
+  companyId String
+  authorId  String
+
+  // Polymorphic attachment — one of ('customer' | 'deal' | 'activity').
+  // We don't use DB-level FKs here because the Customer/Deal/Activity
+  // tables all have different shapes and the polymorphism is natural
+  // at the app layer.
+  entityType String
+  entityId   String
+
+  body String
+
+  // For threaded replies — null = top-level comment. Replies deeper than
+  // two levels fold back to two-level UI (discord-style).
+  parentId String?
+
+  editedAt  DateTime?
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mentions Mention[]
+
+  @@index([companyId, entityType, entityId, createdAt])
+  @@index([companyId, authorId])
+  @@index([parentId])
+  @@map("comments")
+}
+
+model Mention {
+  id         String @id @default(uuid())
+  companyId  String
+  commentId  String
+  mentionedUserId String
+  createdAt  DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, mentionedUserId])
+  @@index([companyId, mentionedUserId])
+  @@map("mentions")
+}

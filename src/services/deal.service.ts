@@ -275,6 +275,31 @@ export async function updateDeal(
       }
     }
 
+    // Notify the new owner when ownership transfers to a different user.
+    // Skips if the deal is being unassigned or if the assignee is the
+    // same user making the change.
+    if (dto.ownerId !== undefined && dto.ownerId && dto.ownerId !== existing.ownerId) {
+      try {
+        const { createNotification } = await import(
+          "./notifications.service"
+        );
+        await createNotification({
+          companyId,
+          userId: dto.ownerId,
+          kind: "deal_assigned",
+          title: `You were assigned to ${updated.title}`,
+          body: updated.customer
+            ? `Customer: ${updated.customer.fullName}`
+            : undefined,
+          link: `/deals/${updated.id}`,
+          entityType: "deal",
+          entityId: updated.id,
+        });
+      } catch {
+        // Non-fatal
+      }
+    }
+
     // Fire workflow triggers when stage actually changes. dispatchDealStageChanged
     // fans out to deal.stage_changed + deal.won / deal.lost when terminal.
     if (dto.stage !== undefined && dto.stage !== existing.stage) {
