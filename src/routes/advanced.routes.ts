@@ -51,4 +51,11 @@ router.post("/shopify/connect", controller.shopifyConnect);
 router.delete("/shopify/stores/:id", controller.shopifyDisconnect);
 router.post("/shopify/stores/:id/sync", controller.shopifySync);
 
+// ──────────────────────────────────────────────────────────────────────
+// ADVANCED SEARCH & FILTERS
+// ──────────────────────────────────────────────────────────────────────
+router.get("/search", controller.globalSearch);
+router.post("/filter", controller.advancedFilter);
+router.get("/filter/fields", controller.getAllowedFields);
+
 export default router;

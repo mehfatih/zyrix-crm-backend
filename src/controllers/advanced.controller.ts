@@ -7,6 +7,7 @@ import * as ExportSvc from "../services/export.service";
 import * as ImportSvc from "../services/import.service";
 import * as TimelineSvc from "../services/timeline.service";
 import * as ShopifySvc from "../services/shopify.service";
+import * as SearchSvc from "../services/search.service";
 import type { AuthenticatedRequest } from "../types";
 
 function auth(req: Request) {
@@ -251,5 +252,57 @@ export async function shopifySync(req: Request, res: Response, next: NextFunctio
     const { companyId } = auth(req);
     const data = await ShopifySvc.syncStore(companyId, req.params.id as string);
     res.status(200).json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+// ============================================================================
+// ADVANCED SEARCH
+// ============================================================================
+const globalSearchSchema = z.object({
+  q: z.string().min(1).max(200),
+});
+
+export async function globalSearch(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const { q } = globalSearchSchema.parse(req.query);
+    const data = await SearchSvc.globalSearch(companyId, q);
+    res.status(200).json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+const filterConditionSchema = z.object({
+  field: z.string().min(1).max(80),
+  operator: z.enum([
+    "equals", "contains", "starts_with", "not_equals",
+    "greater_than", "less_than", "greater_or_equal", "less_or_equal",
+    "in", "not_in", "is_empty", "is_not_empty", "between",
+  ]),
+  value: z.any().optional(),
+  value2: z.any().optional(),
+});
+
+const advancedFilterSchema = z.object({
+  entityType: z.enum(["customers", "deals", "quotes", "contracts", "tasks"]),
+  conditions: z.array(filterConditionSchema).max(20),
+  logic: z.enum(["AND", "OR"]).optional(),
+  sortBy: z.string().max(80).optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+export async function advancedFilter(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const dto = advancedFilterSchema.parse(req.body);
+    const data = await SearchSvc.advancedFilter(companyId, dto as SearchSvc.AdvancedFilterRequest);
+    res.status(200).json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+export async function getAllowedFields(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.status(200).json({ success: true, data: SearchSvc.ALLOWED_FIELDS });
   } catch (err) { next(err); }
 }
