@@ -11,6 +11,7 @@ export interface CreateActivityDto {
   dealId?: string;
   dueDate?: string;
   metadata?: Record<string, unknown>;
+  brandId?: string | null;
 }
 
 export async function createActivity(
@@ -18,10 +19,35 @@ export async function createActivity(
   userId: string,
   dto: CreateActivityDto
 ) {
+  // Resolve brandId with inheritance — an activity on a deal inherits
+  // the deal's brand; an activity on just a customer inherits the
+  // customer's brand. Explicit brandId always wins.
+  let brandId: string | null = null;
+  if (dto.brandId !== undefined && dto.brandId !== null) {
+    const { assertBrandOwnedByCompany } = await import("./brands.service");
+    await assertBrandOwnedByCompany(companyId, dto.brandId);
+    brandId = dto.brandId;
+  } else if (dto.brandId === undefined) {
+    if (dto.dealId) {
+      const deal = await prisma.deal.findFirst({
+        where: { id: dto.dealId, companyId },
+        select: { brandId: true },
+      });
+      brandId = deal?.brandId ?? null;
+    } else if (dto.customerId) {
+      const customer = await prisma.customer.findFirst({
+        where: { id: dto.customerId, companyId },
+        select: { brandId: true },
+      });
+      brandId = customer?.brandId ?? null;
+    }
+  }
+
   return prisma.activity.create({
     data: {
       companyId,
       userId,
+      brandId,
       type: dto.type,
       title: dto.title,
       content: dto.content,
@@ -45,6 +71,7 @@ export async function listActivities(
     dealId?: string;
     userId?: string;
     type?: string;
+    brandId?: string;
     page?: number;
     limit?: number;
   } = {}
@@ -58,6 +85,11 @@ export async function listActivities(
     ...(rest.dealId && { dealId: rest.dealId }),
     ...(rest.userId && { userId: rest.userId }),
     ...(rest.type && { type: rest.type }),
+    ...(rest.brandId === "unbranded"
+      ? { brandId: null }
+      : rest.brandId
+        ? { brandId: rest.brandId }
+        : {}),
   };
 
   const [activities, total] = await Promise.all([

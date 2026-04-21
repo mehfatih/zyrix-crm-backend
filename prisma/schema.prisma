@@ -164,6 +164,7 @@ model Customer {
   id            String  @id @default(uuid())
   companyId     String
   ownerId       String?
+  brandId       String?  // optional multi-brand tagging
 
   fullName      String
   email         String?
@@ -220,6 +221,7 @@ model Deal {
   companyId  String
   customerId String
   ownerId    String?
+  brandId    String?  // optional multi-brand tagging
 
   title             String
   value             Decimal   @default(0) @db.Decimal(12, 2)
@@ -260,6 +262,7 @@ model Activity {
   userId     String
   customerId String?
   dealId     String?
+  brandId    String?  // optional multi-brand tagging
 
   type        String
   title       String
@@ -1791,4 +1794,36 @@ model ScheduledReport {
   @@index([companyId, isEnabled])
   @@index([isEnabled, cadence])
   @@map("scheduled_reports")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MULTI-BRAND MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────
+// A merchant can run multiple brands under one Zyrix account. Each
+// Customer/Deal/Activity/Quote/Contract can optionally be tagged with
+// a brandId for cross-brand reporting + filtering. Rows without brandId
+// are treated as 'unbranded' and visible in every brand's view.
+//
+// This is a FLAT hierarchy under Company (no brand-within-brand).
+// Default brand behavior: when a user picks a current brand in the
+// brand switcher, newly-created rows inherit that brandId automatically.
+model Brand {
+  id          String  @id @default(uuid())
+  companyId   String
+  name        String
+  slug        String  // e.g. 'levana' — used in URLs + filters
+  logoUrl     String?
+  primaryColor String?  // hex like '#FF6B9D'
+  description String?
+
+  isDefault   Boolean @default(false)  // shown pre-selected in brand switcher
+  isArchived  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+  @@index([companyId, isArchived])
+  @@map("brands")
 }

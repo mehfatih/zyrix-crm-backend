@@ -15,6 +15,7 @@ const createSchema = z.object({
   probability: z.number().int().min(0).max(100).optional(),
   expectedCloseDate: z.string().datetime().optional(),
   description: z.string().max(2000).optional(),
+  brandId: z.string().uuid().nullable().optional(),
 });
 
 const updateSchema = z.object({
@@ -30,6 +31,7 @@ const updateSchema = z.object({
   description: z.string().max(2000).optional(),
   lostReason: z.string().max(500).optional(),
   ownerId: z.string().uuid().nullable().optional(),
+  brandId: z.string().uuid().nullable().optional(),
 });
 
 const listSchema = z.object({
@@ -38,6 +40,7 @@ const listSchema = z.object({
   stage: z.string().optional(),
   customerId: z.string().uuid().optional(),
   ownerId: z.string().uuid().optional(),
+  brandId: z.string().optional(),
   sortBy: z.enum(["createdAt", "value", "expectedCloseDate"]).optional(),
   sortOrder: z.enum(["asc", "desc"]).optional(),
 });
@@ -55,7 +58,7 @@ export async function create(
 ): Promise<void> {
   try {
     const authReq = req as AuthenticatedRequest;
-    const dto = createSchema.parse(req.body);
+    const dto = createSchema.parse(req.body) as any;
     const deal = await dealService.createDeal(
       authReq.user.companyId,
       authReq.user.userId,

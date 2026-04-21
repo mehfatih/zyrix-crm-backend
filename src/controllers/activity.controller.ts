@@ -12,6 +12,7 @@ const createSchema = z.object({
   dealId: z.string().uuid().optional(),
   dueDate: z.string().datetime().optional(),
   metadata: z.record(z.unknown()).optional(),
+  brandId: z.string().uuid().nullable().optional(),
 });
 
 const listSchema = z.object({
@@ -19,6 +20,7 @@ const listSchema = z.object({
   dealId: z.string().uuid().optional(),
   userId: z.string().uuid().optional(),
   type: z.string().optional(),
+  brandId: z.string().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
@@ -36,7 +38,7 @@ export async function create(
 ): Promise<void> {
   try {
     const authReq = req as AuthenticatedRequest;
-    const dto = createSchema.parse(req.body);
+    const dto = createSchema.parse(req.body) as any;
     const activity = await activityService.createActivity(
       authReq.user.companyId,
       authReq.user.userId,

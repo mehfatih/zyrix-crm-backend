@@ -17,6 +17,7 @@ const createSchema = z.object({
   source: z.string().max(50).optional(),
   status: z.enum(["new", "qualified", "customer", "lost"]).optional(),
   notes: z.string().max(2000).optional(),
+  brandId: z.string().uuid().nullable().optional(),
 });
 
 const updateSchema = createSchema.partial().extend({
@@ -30,6 +31,7 @@ const listSchema = z.object({
   search: z.string().optional(),
   status: z.string().optional(),
   ownerId: z.string().uuid().optional(),
+  brandId: z.string().optional(), // uuid OR 'unbranded' sentinel
   sortBy: z.enum(["createdAt", "fullName", "lifetimeValue"]).optional(),
   sortOrder: z.enum(["asc", "desc"]).optional(),
 });
@@ -50,7 +52,7 @@ export async function create(
 ): Promise<void> {
   try {
     const authReq = req as AuthenticatedRequest;
-    const dto = createSchema.parse(req.body);
+    const dto = createSchema.parse(req.body) as any;
     const customer = await customerService.createCustomer(
       authReq.user.companyId,
       authReq.user.userId,

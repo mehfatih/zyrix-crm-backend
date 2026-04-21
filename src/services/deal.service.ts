@@ -24,6 +24,7 @@ export interface CreateDealDto {
   probability?: number;
   expectedCloseDate?: string;
   description?: string;
+  brandId?: string | null;
 }
 
 // Updated to accept null for date fields (to match Zod schema)
@@ -38,6 +39,7 @@ export interface UpdateDealDto {
   description?: string;
   lostReason?: string;
   ownerId?: string | null;
+  brandId?: string | null;
 }
 
 export interface ListDealsQuery {
@@ -46,6 +48,7 @@ export interface ListDealsQuery {
   stage?: string;
   customerId?: string;
   ownerId?: string;
+  brandId?: string;
   sortBy?: "createdAt" | "value" | "expectedCloseDate";
   sortOrder?: "asc" | "desc";
 }
@@ -67,11 +70,24 @@ export async function createDeal(
     throw badRequest(`Invalid stage. Must be one of: ${VALID_STAGES.join(", ")}`);
   }
 
+  // Validate brandId. If not provided, inherit from the customer — deals
+  // should default to their customer's brand so merchants don't have to
+  // tag both explicitly.
+  let brandId: string | null = null;
+  if (dto.brandId !== undefined && dto.brandId !== null) {
+    const { assertBrandOwnedByCompany } = await import("./brands.service");
+    await assertBrandOwnedByCompany(companyId, dto.brandId);
+    brandId = dto.brandId;
+  } else if (dto.brandId === undefined) {
+    brandId = customer.brandId ?? null;
+  }
+
   const deal = await prisma.deal.create({
     data: {
       companyId,
       ownerId: userId,
       customerId: dto.customerId,
+      brandId,
       title: dto.title,
       value: dto.value ?? 0,
       currency: dto.currency ?? "USD",
@@ -128,6 +144,7 @@ export async function listDeals(
     stage,
     customerId,
     ownerId,
+    brandId,
     sortBy = "createdAt",
     sortOrder = "desc",
   } = query;
@@ -139,6 +156,12 @@ export async function listDeals(
     ...(stage && { stage }),
     ...(customerId && { customerId }),
     ...(ownerId && { ownerId }),
+    // Multi-brand: 'unbranded' → NULL, UUID → exact, undefined → all
+    ...(brandId === "unbranded"
+      ? { brandId: null }
+      : brandId
+        ? { brandId }
+        : {}),
   };
 
   const [deals, total] = await Promise.all([

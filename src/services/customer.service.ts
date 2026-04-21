@@ -19,6 +19,7 @@ export interface CreateCustomerDto {
   source?: string;
   status?: string;
   notes?: string;
+  brandId?: string | null;  // optional multi-brand tag on create
 }
 
 export interface UpdateCustomerDto extends Partial<CreateCustomerDto> {
@@ -32,6 +33,11 @@ export interface ListCustomersQuery {
   search?: string;
   status?: string;
   ownerId?: string;
+  // Multi-brand filter. Accepts:
+  //   - string UUID → rows matching that brand
+  //   - 'unbranded' → rows where brandId IS NULL
+  //   - undefined → no brand filter (all)
+  brandId?: string;
   sortBy?: "createdAt" | "fullName" | "lifetimeValue";
   sortOrder?: "asc" | "desc";
 }
@@ -53,10 +59,17 @@ export async function createCustomer(
     }
   }
 
+  // Validate brandId belongs to the company (prevent cross-tenant leak)
+  if (dto.brandId) {
+    const { assertBrandOwnedByCompany } = await import("./brands.service");
+    await assertBrandOwnedByCompany(companyId, dto.brandId);
+  }
+
   const customer = await prisma.customer.create({
     data: {
       companyId,
       ownerId: userId,
+      brandId: dto.brandId ?? null,
       fullName: dto.fullName,
       email: dto.email?.toLowerCase(),
       phone: dto.phone,
@@ -106,6 +119,7 @@ export async function listCustomers(
     search,
     status,
     ownerId,
+    brandId,
     sortBy = "createdAt",
     sortOrder = "desc",
   } = query;
@@ -116,6 +130,12 @@ export async function listCustomers(
     companyId,
     ...(status && { status }),
     ...(ownerId && { ownerId }),
+    // brandId filter: 'unbranded' matches NULL, a UUID matches exact
+    ...(brandId === "unbranded"
+      ? { brandId: null }
+      : brandId
+        ? { brandId }
+        : {}),
     ...(search && {
       OR: [
         { fullName: { contains: search, mode: "insensitive" } },
@@ -193,6 +213,12 @@ export async function updateCustomer(
   });
   if (!existing) throw notFound("Customer");
 
+  // Validate brandId if changing
+  if (dto.brandId !== undefined && dto.brandId !== null) {
+    const { assertBrandOwnedByCompany } = await import("./brands.service");
+    await assertBrandOwnedByCompany(companyId, dto.brandId);
+  }
+
   const updated = await prisma.customer.update({
     where: { id: customerId },
     data: {
@@ -213,6 +239,7 @@ export async function updateCustomer(
       ...(dto.status !== undefined && { status: dto.status }),
       ...(dto.notes !== undefined && { notes: dto.notes }),
       ...(dto.ownerId !== undefined && { ownerId: dto.ownerId }),
+      ...(dto.brandId !== undefined && { brandId: dto.brandId }),
       ...(dto.lifetimeValue !== undefined && {
         lifetimeValue: dto.lifetimeValue,
       }),
