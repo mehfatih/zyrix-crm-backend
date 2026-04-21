@@ -4,6 +4,12 @@ import { authenticateToken } from "../middleware/auth";
 
 const router = Router();
 
+// ──────────────────────────────────────────────────────────────────────
+// PUBLIC — no auth required (for marketing page)
+// ──────────────────────────────────────────────────────────────────────
+router.get("/ecommerce/catalog", controller.ecommerceListCatalog);
+
+// All routes below require authentication
 router.use(authenticateToken);
 
 // ──────────────────────────────────────────────────────────────────────
@@ -54,7 +60,6 @@ router.post("/shopify/stores/:id/sync", controller.shopifySync);
 // ──────────────────────────────────────────────────────────────────────
 // E-COMMERCE GENERAL (multi-platform: Shopify, Salla, Zid, YouCan, Ticimax, etc.)
 // ──────────────────────────────────────────────────────────────────────
-router.get("/ecommerce/catalog", controller.ecommerceListCatalog);
 router.get("/ecommerce/stores", controller.ecommerceListStores);
 router.post("/ecommerce/connect", controller.ecommerceConnect);
 router.delete("/ecommerce/stores/:id", controller.ecommerceDisconnect);
