@@ -1481,3 +1481,70 @@ model ApiKey {
   @@index([keyPrefix])
   @@map("api_keys")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// AI AGENTS — conversation threads + message history
+// ─────────────────────────────────────────────────────────────────────────
+// Unified schema for all three agents (Sales Assistant, Content Writer,
+// Meeting Notes). Each row is one ongoing thread between a user and one
+// agent kind. Messages are stored in a separate table for efficient
+// paging and so we can run analytics on token usage / popular queries.
+//
+// agentKind values: 'sales' | 'content' | 'meeting'
+// Role values: 'user' | 'assistant' | 'tool' | 'system'
+// Tool calls and function results are encoded in the content JSON so
+// replay is deterministic.
+model AiThread {
+  id        String @id @default(uuid())
+  companyId String
+  userId    String
+  agentKind String
+
+  // Short auto-generated title derived from the first message (or the
+  // user renames it). Keeps the thread list scannable.
+  title String?
+
+  // For Meeting Notes agent: optional link back to an Activity row
+  // (the meeting) so one click opens the original context.
+  relatedActivityId String?
+
+  // Conversation can end — reopened threads reset this.
+  archived Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages AiMessage[]
+
+  @@index([companyId, userId, agentKind])
+  @@index([companyId, updatedAt])
+  @@map("ai_threads")
+}
+
+model AiMessage {
+  id       String @id @default(uuid())
+  threadId String
+
+  // 'user' | 'assistant' | 'tool' | 'system'
+  role String
+
+  // Plain text body for display. For role='tool' this is a short summary
+  // of the function call output; the full raw output is in toolPayload.
+  content String
+
+  // For role='assistant' when the model called a tool: { name, args }
+  // For role='tool' when returning the result: { name, result }
+  toolCall Json?
+
+  // Token usage — we track prompt + completion per message so a
+  // Thread.tokenTotal can be derived without re-calling Gemini.
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  thread AiThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("ai_messages")
+}

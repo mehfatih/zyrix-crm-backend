@@ -41,6 +41,7 @@ import workflowWebhookRouter from "./routes/workflow-webhook.routes";
 import apiKeysRoutes from "./routes/api-keys.routes";
 import publicApiRoutes from "./routes/public-api.routes";
 import zapierRoutes from "./routes/zapier.routes";
+import aiAgentsRoutes from "./routes/ai-agents.routes";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
 import { startWorkflowWorker } from "./cron/workflow-worker";
@@ -166,6 +167,7 @@ app.use("/api/dashboard", dashboardLayoutRoutes);
 app.use("/api/templates", templatesRoutes);
 app.use("/api/workflows", workflowsRoutes);
 app.use("/api/keys", apiKeysRoutes);
+app.use("/api/ai-agents", aiAgentsRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key
