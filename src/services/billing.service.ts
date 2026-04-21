@@ -63,6 +63,7 @@ export async function getCurrentBilling(companyId: string) {
       plan: true,
       trialEndsAt: true,
       status: true,
+      baseCurrency: true,
     },
   });
   if (!company) throw notFound("Company not found");

@@ -33,8 +33,16 @@ router.post(
 // Stub confirmation — used only in dev/QA when gateway credentials are absent
 router.post("/checkout/confirm-stub", PaymentCtrl.confirmStub);
 
-// Webhooks
+// Webhooks — POST from gateway, GET responds 200 for URL verification pings
+// (some gateways probe the endpoint with GET before accepting the registration).
+router.get("/webhooks/iyzico", (_req, res) => {
+  res.status(200).json({ success: true, message: "Iyzico webhook endpoint ready" });
+});
 router.post("/webhooks/iyzico", PaymentCtrl.iyzicoWebhook);
+
+router.get("/webhooks/hyperpay", (_req, res) => {
+  res.status(200).json({ success: true, message: "HyperPay webhook endpoint ready" });
+});
 router.post("/webhooks/hyperpay", PaymentCtrl.hyperpayWebhook);
 
 export default router;
