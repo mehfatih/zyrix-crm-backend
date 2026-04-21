@@ -34,5 +34,6 @@ admin.delete("/subscriptions/:id", controller.deleteSubscription);
 admin.post("/subscriptions/:id/rotate-secret", controller.rotateSecret);
 
 admin.get("/events", controller.listEvents);
+admin.post("/events/:id/retry", controller.retryEvent);
 
 export const webhookAdminRouter = admin;

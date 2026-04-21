@@ -1182,9 +1182,16 @@ model WebhookEvent {
   topic          String
   externalId     String? // platform's event id (e.g. Shopify X-Shopify-Webhook-Id)
 
-  status    String @default("pending") // pending | processing | done | failed | skipped
+  // pending | processing | done | failed | skipped | dead_letter
+  // failed       = last attempt errored, will retry at nextRetryAt
+  // dead_letter  = exhausted retry budget, needs human intervention
+  status    String @default("pending")
   attempts  Int    @default(0)
   lastError String?
+
+  // When to make the next retry attempt. null for terminal states
+  // (done/skipped/dead_letter) and in-flight events (pending/processing).
+  nextRetryAt DateTime?
 
   payloadRaw  String  @db.Text         // raw body as received (for retries + forensics)
   payloadJson Json    @default("{}")
@@ -1201,5 +1208,6 @@ model WebhookEvent {
   @@index([platform, topic])
   @@index([status])
   @@index([receivedAt])
+  @@index([status, nextRetryAt])
   @@map("webhook_events")
 }

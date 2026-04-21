@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { prisma } from "../config/database";
 import { syncStore } from "../services/ecommerce.service";
+import { retryPendingEvents } from "../services/webhook.service";
 
 // ============================================================================
 // SCHEDULED AUTO-SYNC
@@ -120,5 +121,39 @@ export function startSyncScheduler(): void {
 
   console.log(
     `[cron] sync scheduler registered — "${CRON_EXPRESSION}" (hourly)`
+  );
+
+  // ─── Webhook retry worker ────────────────────────────────────────────
+  // Every 2 minutes, pick up failed webhook events whose nextRetryAt has
+  // come around and re-run them through processEvent. This is separate
+  // from the hourly store sync because the first backoff bucket is 1 min
+  // — running hourly would introduce up to 59 minutes of unnecessary
+  // delay on the first retry.
+  const WEBHOOK_RETRY_CRON = "*/2 * * * *";
+  if (!cron.validate(WEBHOOK_RETRY_CRON)) {
+    console.error(`[cron] invalid retry schedule: ${WEBHOOK_RETRY_CRON}`);
+    return;
+  }
+  let retryInFlight = false;
+  cron.schedule(WEBHOOK_RETRY_CRON, () => {
+    if (retryInFlight) return; // mutex — skip tick if previous still running
+    retryInFlight = true;
+    retryPendingEvents()
+      .then((stats) => {
+        if (stats.picked > 0) {
+          console.log(
+            `[cron] webhook retries — picked=${stats.picked} ok=${stats.ok} failed=${stats.failed}`
+          );
+        }
+      })
+      .catch((e) => {
+        console.error("[cron] webhook retry tick errored:", e?.message || e);
+      })
+      .finally(() => {
+        retryInFlight = false;
+      });
+  });
+  console.log(
+    `[cron] webhook retry scheduler registered — "${WEBHOOK_RETRY_CRON}" (every 2 min)`
   );
 }

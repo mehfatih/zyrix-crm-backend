@@ -218,3 +218,14 @@ export async function getSupportedPlatforms(_req: Request, res: Response) {
     data: WebhookSvc.SUPPORTED_PLATFORMS,
   });
 }
+
+export async function retryEvent(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const eventId = req.params.id as string;
+    const data = await WebhookSvc.retryEventManually(companyId, eventId);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}

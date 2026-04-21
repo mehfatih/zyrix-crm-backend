@@ -219,6 +219,7 @@ export async function listRecentEvents(
       signatureOk: true,
       receivedAt: true,
       processedAt: true,
+      nextRetryAt: true,
     },
   });
 }
@@ -363,19 +364,63 @@ export async function verifyAndRecord(params: {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// HANDLER DISPATCH
+// HANDLER DISPATCH + RETRY QUEUE
 // ──────────────────────────────────────────────────────────────────────
+//
+// Retry policy — exponential backoff with a hard cap so a persistently
+// broken event doesn't pile up forever.
+//
+//   attempt 1 failure → retry in 1 min
+//   attempt 2 failure → retry in 5 min
+//   attempt 3 failure → retry in 15 min
+//   attempt 4 failure → retry in 1 hour
+//   attempt 5 failure → retry in 6 hours
+//   attempt 6+        → status = 'dead_letter' (needs human via manual retry)
+//
+// The retry worker (retryPendingEvents) is called from cron/sync.ts on a
+// fast interval (every 2 minutes) so first backoff hits roughly on time.
+// Super-admins can also kick a specific event via retryEventManually which
+// resets nextRetryAt so it picks up on the very next tick.
+// ──────────────────────────────────────────────────────────────────────
+
+const BACKOFF_SCHEDULE_MS: number[] = [
+  1 * 60 * 1000,      // attempt 1 → retry in 1 min
+  5 * 60 * 1000,      // attempt 2 → 5 min
+  15 * 60 * 1000,     // attempt 3 → 15 min
+  60 * 60 * 1000,     // attempt 4 → 1 hr
+  6 * 60 * 60 * 1000, // attempt 5 → 6 hr
+];
+const MAX_ATTEMPTS = BACKOFF_SCHEDULE_MS.length + 1; // 6th failure = dead letter
+
+/**
+ * Compute when a given attempt count should be retried. Returns null when
+ * we've exhausted the retry budget — caller should mark the event dead.
+ */
+function computeNextRetry(attempts: number): Date | null {
+  // attempts is the number of attempts that have ALREADY happened (including
+  // the one that just failed). BACKOFF_SCHEDULE_MS is 0-indexed.
+  const idx = attempts - 1;
+  if (idx < 0 || idx >= BACKOFF_SCHEDULE_MS.length) return null;
+  return new Date(Date.now() + BACKOFF_SCHEDULE_MS[idx]);
+}
 
 export async function processEvent(eventId: string): Promise<void> {
   const ev = await prisma.webhookEvent.findUnique({
     where: { id: eventId },
   });
   if (!ev) return;
-  if (ev.status !== "pending") return;
+  // Allow both fresh events (pending) and retries (failed with nextRetryAt≤now)
+  if (ev.status !== "pending" && ev.status !== "failed") return;
 
   await prisma.webhookEvent.update({
     where: { id: ev.id },
-    data: { status: "processing", attempts: { increment: 1 } },
+    data: {
+      status: "processing",
+      attempts: { increment: 1 },
+      // Clear nextRetryAt while processing so the worker query doesn't
+      // double-pick the same row if the run takes longer than expected.
+      nextRetryAt: null,
+    },
   });
 
   try {
@@ -387,15 +432,30 @@ export async function processEvent(eventId: string): Promise<void> {
     );
     await prisma.webhookEvent.update({
       where: { id: ev.id },
-      data: { status: "done", processedAt: new Date(), lastError: null },
+      data: {
+        status: "done",
+        processedAt: new Date(),
+        lastError: null,
+        nextRetryAt: null,
+      },
     });
   } catch (err: any) {
+    // Read fresh attempts count after the increment above
+    const fresh = await prisma.webhookEvent.findUnique({
+      where: { id: ev.id },
+      select: { attempts: true },
+    });
+    const attempts = fresh?.attempts ?? ev.attempts + 1;
+    const nextRetryAt = computeNextRetry(attempts);
+    const isDead = nextRetryAt === null || attempts >= MAX_ATTEMPTS;
+
     await prisma.webhookEvent.update({
       where: { id: ev.id },
       data: {
-        status: "failed",
+        status: isDead ? "dead_letter" : "failed",
         processedAt: new Date(),
         lastError: err?.message?.slice(0, 500) || "unknown error",
+        nextRetryAt: isDead ? null : nextRetryAt,
       },
     });
     if (ev.subscriptionId) {
@@ -405,6 +465,87 @@ export async function processEvent(eventId: string): Promise<void> {
       });
     }
   }
+}
+
+/**
+ * Retry worker — called from the sync cron. Atomically claims a batch of
+ * failed events whose nextRetryAt has arrived and reruns them through
+ * processEvent. Bounded batch so a flood doesn't starve the cron tick.
+ */
+export async function retryPendingEvents(
+  batchLimit = 50
+): Promise<{ picked: number; ok: number; failed: number }> {
+  const now = new Date();
+  const eligible = await prisma.webhookEvent.findMany({
+    where: {
+      status: "failed",
+      nextRetryAt: { lte: now },
+      attempts: { lt: MAX_ATTEMPTS },
+    },
+    orderBy: { nextRetryAt: "asc" },
+    take: batchLimit,
+    select: { id: true },
+  });
+
+  const stats = { picked: eligible.length, ok: 0, failed: 0 };
+  for (const { id } of eligible) {
+    try {
+      await processEvent(id);
+      stats.ok++;
+    } catch {
+      // processEvent handles its own error persistence; this catch is
+      // just belt-and-braces so one bad row never blocks the batch.
+      stats.failed++;
+    }
+  }
+  return stats;
+}
+
+/**
+ * Admin-triggered manual retry. Resets nextRetryAt to now and kicks
+ * processEvent inline. Works for 'failed' and 'dead_letter' alike — when
+ * a human decides the root cause is fixed, both statuses should be
+ * revivable. We also reset the status to 'pending' so processEvent's
+ * guard clause accepts it.
+ */
+export async function retryEventManually(
+  companyId: string,
+  eventId: string
+): Promise<{ eventId: string; status: string }> {
+  const ev = await prisma.webhookEvent.findFirst({
+    where: { id: eventId, companyId },
+    select: { id: true, status: true },
+  });
+  if (!ev) throw notFound("Webhook event not found");
+  if (ev.status === "done") {
+    throw new AppError(
+      "This event already completed successfully — nothing to retry.",
+      400,
+      "BAD_REQUEST"
+    );
+  }
+  if (ev.status === "processing") {
+    throw new AppError(
+      "Event is currently being processed — wait a moment and try again.",
+      409,
+      "CONFLICT"
+    );
+  }
+
+  // Reset to pending so processEvent's guard admits it, and clear the
+  // retry schedule so the worker won't race us.
+  await prisma.webhookEvent.update({
+    where: { id: ev.id },
+    data: { status: "pending", nextRetryAt: null },
+  });
+
+  await processEvent(ev.id);
+
+  const final = await prisma.webhookEvent.findUnique({
+    where: { id: ev.id },
+    select: { status: true },
+  });
+  return { eventId: ev.id, status: final?.status || "unknown" };
 }
 
 async function dispatch(
