@@ -40,6 +40,7 @@ import workflowsRoutes from "./routes/workflows.routes";
 import workflowWebhookRouter from "./routes/workflow-webhook.routes";
 import apiKeysRoutes from "./routes/api-keys.routes";
 import publicApiRoutes from "./routes/public-api.routes";
+import zapierRoutes from "./routes/zapier.routes";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
 import { startWorkflowWorker } from "./cron/workflow-worker";
@@ -169,6 +170,8 @@ app.use("/api/keys", apiKeysRoutes);
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key
 app.use("/v1", publicApiRoutes);
+// Zapier-specific routes (flat-array responses, dropdowns, etc.)
+app.use("/v1/zapier", zapierRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
