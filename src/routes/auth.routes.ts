@@ -67,6 +67,7 @@ const generalLimiter = rateLimit({
 // ─────────────────────────────────────────────────────────────────────────
 router.post("/signup", signupLimiter, authController.signup);
 router.post("/signin", signinLimiter, authController.signin);
+router.post("/2fa-challenge", signinLimiter, authController.twoFactorChallenge);
 router.post("/google", signinLimiter, authController.googleAuth);
 router.post("/refresh", generalLimiter, authController.refresh);
 router.post("/logout", generalLimiter, authController.logout);

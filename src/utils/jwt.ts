@@ -107,3 +107,43 @@ export function parseExpiresIn(str: string): number {
 export const accessTokenExpiresInSeconds = Math.floor(
   parseExpiresIn(env.JWT_ACCESS_EXPIRES_IN) / 1000
 );
+
+// ─────────────────────────────────────────────────────────────────────────
+// 2FA CHALLENGE TOKENS
+// ----------------------------------------------------------------------------
+// Issued after a successful password check when the user has 2FA enabled.
+// This token is ONLY valid for POST /api/auth/2fa-challenge — it cannot be
+// used for any other API call, because verifyAccessToken rejects any token
+// whose type isn't "access". Short-lived (5 min) so an intercepted one
+// expires quickly.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface TwoFactorChallengePayload {
+  userId: string;
+  type: "2fa_challenge";
+  iat?: number;
+  exp?: number;
+}
+
+export function generate2FAChallengeToken(userId: string): string {
+  return jwt.sign(
+    { userId, type: "2fa_challenge" } as TwoFactorChallengePayload,
+    ACCESS_SECRET,
+    { expiresIn: "5m" } as jwt.SignOptions
+  );
+}
+
+export function verify2FAChallengeToken(token: string): TwoFactorChallengePayload {
+  try {
+    const decoded = jwt.verify(token, ACCESS_SECRET) as TwoFactorChallengePayload;
+    if (decoded.type !== "2fa_challenge") {
+      throw new Error("Invalid token type");
+    }
+    return decoded;
+  } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      throw new Error("2FA_CHALLENGE_EXPIRED");
+    }
+    throw new Error("INVALID_2FA_CHALLENGE");
+  }
+}

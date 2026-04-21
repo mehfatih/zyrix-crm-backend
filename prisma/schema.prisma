@@ -91,6 +91,10 @@ model User {
   emailVerified            Boolean   @default(false)
   twoFactorSecret          String?
   twoFactorEnabled         Boolean   @default(false)
+  // Array of hashed single-use backup codes (bcrypt). When the user
+  // loses their authenticator, they can use one of these to log in,
+  // and the matching code is wiped from the array.
+  twoFactorBackupCodes     String[]  @default([])
   emailVerificationToken   String?   @unique
   emailVerificationExpires DateTime?
   passwordResetToken       String?   @unique

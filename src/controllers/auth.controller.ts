@@ -5,6 +5,7 @@ import * as googleService from "../services/google-oauth.service";
 import type { AuthenticatedRequest } from "../types";
 import { prisma } from "../config/database";
 import { notFound } from "../middleware/errorHandler";
+import { recordAudit, extractRequestMeta } from "../utils/audit";
 
 // ============================================================================
 // AUTH CONTROLLER
@@ -32,6 +33,11 @@ const refreshSchema = z.object({
 
 const googleAuthSchema = z.object({
   idToken: z.string().min(10, "Google ID token is required"),
+});
+
+const twoFactorChallengeSchema = z.object({
+  challengeToken: z.string().min(10),
+  code: z.string().min(6).max(12),
 });
 
 const verifyEmailSchema = z.object({
@@ -96,16 +102,78 @@ export async function signin(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const meta = extractRequestMeta(req);
   try {
     const dto = signinSchema.parse(req.body);
     const result = await authService.signin(dto);
 
+    // Audit — record the success, but only for a fully-completed login.
+    // If 2FA is required, we record success at the challenge step instead.
+    if (!("requires2FA" in result) || !result.requires2FA) {
+      const r = result as Exclude<typeof result, { requires2FA: true }>;
+      await recordAudit({
+        userId: r.user.id,
+        companyId: r.user.companyId,
+        action: "user.login",
+        ...meta,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message:
+        "requires2FA" in result && result.requires2FA
+          ? "Two-factor authentication required"
+          : "Signed in successfully",
+    });
+  } catch (error: any) {
+    // Log the attempt — but we don't know the userId for a bad-password
+    // try since the user lookup failed. Record the email as metadata so
+    // ops can still detect credential-stuffing patterns.
+    const email =
+      typeof req.body?.email === "string" ? req.body.email : null;
+    await recordAudit({
+      action: "user.login_failed",
+      metadata: { email },
+      ...meta,
+    });
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /api/auth/2fa-challenge
+// ─────────────────────────────────────────────────────────────────────────
+export async function twoFactorChallenge(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const meta = extractRequestMeta(req);
+  try {
+    const { challengeToken, code } = twoFactorChallengeSchema.parse(req.body);
+    const result = await authService.complete2FAChallenge(
+      challengeToken,
+      code
+    );
+    await recordAudit({
+      userId: result.user.id,
+      companyId: result.user.companyId,
+      action: "user.login",
+      metadata: { with2FA: true },
+      ...meta,
+    });
     res.status(200).json({
       success: true,
       data: result,
       message: "Signed in successfully",
     });
   } catch (error) {
+    await recordAudit({
+      action: "user.2fa_challenge_failed",
+      ...meta,
+    });
     next(error);
   }
 }

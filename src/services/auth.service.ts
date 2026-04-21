@@ -7,6 +7,8 @@ import {
   generateRefreshToken,
   verifyRefreshToken,
   accessTokenExpiresInSeconds,
+  generate2FAChallengeToken,
+  verify2FAChallengeToken,
 } from "../utils/jwt";
 import { badRequest, conflict, unauthorized, notFound } from "../middleware/errorHandler";
 import {
@@ -15,6 +17,7 @@ import {
   sendWelcomeEmail,
 } from "./email.service";
 import { env } from "../config/env";
+import { verifyLoginCode } from "./twofactor.service";
 import type {
   SignupDto,
   SigninDto,
@@ -145,7 +148,16 @@ export async function signup(dto: SignupDto): Promise<AuthResponse> {
 // ─────────────────────────────────────────────────────────────────────────
 // SIGNIN — Authenticate existing user
 // ─────────────────────────────────────────────────────────────────────────
-export async function signin(dto: SigninDto): Promise<AuthResponse> {
+/**
+ * Signin response — if user has 2FA enabled, we return a short-lived
+ * challenge token instead of the full JWT pair. The client must then
+ * call /api/auth/2fa-challenge with the tempToken + code to complete.
+ */
+export type SigninResult =
+  | (AuthResponse & { requires2FA?: false })
+  | { requires2FA: true; challengeToken: string };
+
+export async function signin(dto: SigninDto): Promise<SigninResult> {
   const { email, password } = dto;
 
   const user = await prisma.user.findUnique({
@@ -160,6 +172,79 @@ export async function signin(dto: SigninDto): Promise<AuthResponse> {
   const isValid = await comparePassword(password, user.passwordHash);
   if (!isValid) {
     throw unauthorized("Invalid email or password");
+  }
+
+  // If 2FA is enabled, DO NOT issue the JWT pair yet. Return a short-
+  // lived challenge token the client will submit alongside the TOTP
+  // code to /api/auth/2fa-challenge. lastLoginAt updates only after
+  // the second factor succeeds — otherwise a stolen password would
+  // show a fake "last login" timestamp.
+  if (user.twoFactorEnabled) {
+    return {
+      requires2FA: true,
+      challengeToken: generate2FAChallengeToken(user.id),
+    };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
+
+  const tokens = await generateAuthTokens(
+    user.id,
+    user.companyId,
+    user.email,
+    user.role
+  );
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      companyId: user.companyId,
+      emailVerified: user.emailVerified,
+    },
+    company: {
+      id: user.company.id,
+      name: user.company.name,
+      slug: user.company.slug,
+      plan: user.company.plan,
+    },
+    tokens,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 2FA CHALLENGE COMPLETION — step 2 of login for users with 2FA on
+// ─────────────────────────────────────────────────────────────────────────
+export async function complete2FAChallenge(
+  challengeToken: string,
+  code: string
+): Promise<AuthResponse> {
+  let payload;
+  try {
+    payload = verify2FAChallengeToken(challengeToken);
+  } catch (e: any) {
+    if (e.message === "2FA_CHALLENGE_EXPIRED") {
+      throw unauthorized("Challenge expired — please sign in again");
+    }
+    throw unauthorized("Invalid challenge token");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    include: { company: true },
+  });
+  if (!user || !user.twoFactorEnabled) {
+    throw unauthorized("Invalid challenge");
+  }
+
+  const result = await verifyLoginCode(user.id, code);
+  if (!result.ok) {
+    throw unauthorized("Incorrect code");
   }
 
   await prisma.user.update({
