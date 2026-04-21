@@ -1434,3 +1434,50 @@ model WorkflowExecution {
   @@index([companyId, queuedAt])
   @@map("workflow_executions")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// PUBLIC API KEYS
+// ─────────────────────────────────────────────────────────────────────────
+// API keys for third-party integrations (Zapier, custom scripts, etc.).
+// We NEVER store the raw key — only a bcrypt hash. The key is shown to
+// the user exactly once at creation time. If they lose it they create a
+// new one. The key prefix (first 8 chars) is stored in plaintext so we
+// can identify keys in logs without reading the hash.
+//
+// Scope model is simple for v1: 'read' (GET only) or 'write' (full CRUD).
+// Granular per-resource scopes can be layered later without schema change
+// by migrating scopes from a single string to a JSON array.
+model ApiKey {
+  id          String @id @default(uuid())
+  companyId   String
+  createdById String
+
+  // Human-readable label the user sets ("Zapier", "Production webhook", etc.)
+  name String
+
+  // First 8 chars of the key (zy_live_XXXXXXXX...) for display in list UI
+  // and log correlation. Not secret — the full key is only in the hash.
+  keyPrefix String
+
+  // bcrypt hash of the full key string. Never logged, never returned.
+  keyHash String
+
+  // Permissions. For v1: 'read' | 'write'.
+  scope String @default("write")
+
+  // When revoked, authentication rejects the key with 401. Keep the row
+  // so audit logs that reference this key still resolve to something.
+  revokedAt DateTime?
+
+  // Last-used tracking for the list UI — "last active 3 days ago" helps
+  // users identify stale keys they can safely revoke.
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, revokedAt])
+  @@index([keyPrefix])
+  @@map("api_keys")
+}

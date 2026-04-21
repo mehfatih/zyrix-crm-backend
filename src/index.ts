@@ -38,6 +38,8 @@ import dashboardLayoutRoutes from "./routes/dashboard-layout.routes";
 import templatesRoutes from "./routes/templates.routes";
 import workflowsRoutes from "./routes/workflows.routes";
 import workflowWebhookRouter from "./routes/workflow-webhook.routes";
+import apiKeysRoutes from "./routes/api-keys.routes";
+import publicApiRoutes from "./routes/public-api.routes";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
 import { startWorkflowWorker } from "./cron/workflow-worker";
@@ -162,8 +164,11 @@ app.use("/api/billing", billingRoutes);
 app.use("/api/dashboard", dashboardLayoutRoutes);
 app.use("/api/templates", templatesRoutes);
 app.use("/api/workflows", workflowsRoutes);
+app.use("/api/keys", apiKeysRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
+// Public API v1 — API-key auth, rate-limited per key
+app.use("/v1", publicApiRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
