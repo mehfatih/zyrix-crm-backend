@@ -581,11 +581,23 @@ model AuditLog {
   entityType String?
   entityId   String?
 
+  // Granular diff — { fieldName: { before, after }, ... }. Produced by
+  // diffObjects(); only fields that actually changed are recorded.
   changes  Json?
+  // Arbitrary context — request params, feature flags, etc.
   metadata Json?
+
+  // Whole-record snapshots for compliance exports. before/after hold the
+  // full entity payload at each side of the mutation so a compliance
+  // auditor can reconstruct state without replaying diffs.
+  before Json?
+  after  Json?
 
   ipAddress String?
   userAgent String?
+  // Refresh-token id the action was authenticated with, when available.
+  // Lets us tie a sequence of actions to a specific login session.
+  sessionId String?
 
   createdAt DateTime @default(now())
 
@@ -596,6 +608,7 @@ model AuditLog {
   @@index([companyId])
   @@index([action])
   @@index([entityType, entityId])
+  @@index([sessionId])
   @@index([createdAt])
   @@map("audit_logs")
 }
