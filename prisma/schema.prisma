@@ -170,6 +170,7 @@ model User {
   sentMessages     ChatMessage[] @relation("ChatSender")
   receivedMessages ChatMessage[] @relation("ChatRecipient")
   createdEmailTemplates EmailTemplate[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([email])
   @@index([googleId])
@@ -178,6 +179,28 @@ model User {
   @@index([customRoleId])
   @@index([status])
   @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PASSWORD RESET TOKENS (Super Admin flow)
+// ─────────────────────────────────────────────────────────────────────────
+// Raw tokens are never persisted. We store SHA-256 digests and match at
+// redeem time. Expiry = 1h. Used tokens stay in the table for audit.
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 // ─────────────────────────────────────────────────────────────────────────
