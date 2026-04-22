@@ -12,6 +12,198 @@ import { prisma } from "../config/database";
 import { sendEmail } from "./email.service";
 import { sendViaMetaCloud } from "./whatsapp.service";
 import { interpolate } from "./workflows.service";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { env } from "../config/env";
+
+const genAI = env.GEMINI_API_KEY
+  ? new GoogleGenerativeAI(env.GEMINI_API_KEY)
+  : null;
+
+// ──────────────────────────────────────────────────────────────────────
+// AI helpers — all use gemini-2.0-flash per handoff
+// ──────────────────────────────────────────────────────────────────────
+
+async function geminiText(prompt: string): Promise<string> {
+  if (!genAI) throw new Error("GEMINI_API_KEY is not configured");
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const result = await model.generateContent(prompt);
+  return result.response.text().trim();
+}
+
+async function runAiGenerateEmail(
+  _companyId: string,
+  config: Record<string, unknown>,
+  payload: unknown
+): Promise<ActionResult> {
+  try {
+    const purpose = interpolate(String(config.purpose ?? ""), payload);
+    const tone = String(config.tone ?? "professional");
+    const locale = String(config.locale ?? "en");
+    const context = JSON.stringify(payload ?? {}, null, 2).slice(0, 4000);
+    const prompt = `You are drafting a ${tone} email in ${locale}. Purpose: ${purpose}
+Context (from the CRM event that triggered this workflow):
+${context}
+
+Return strict JSON: {"subject": "...", "bodyHtml": "...", "bodyText": "..."}`;
+    const raw = await geminiText(prompt);
+    // Strip code fences if Gemini wraps JSON
+    const jsonText = raw
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/i, "");
+    let parsed: { subject?: string; bodyHtml?: string; bodyText?: string };
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      return { ok: false, error: "AI returned non-JSON", output: { raw } };
+    }
+    return { ok: true, output: parsed };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "AI generate failed" };
+  }
+}
+
+async function runAiSummarize(
+  _companyId: string,
+  config: Record<string, unknown>,
+  payload: unknown
+): Promise<ActionResult> {
+  try {
+    const text = interpolate(String(config.text ?? ""), payload);
+    const maxWords = Number(config.maxWords ?? 60);
+    const prompt = `Summarize in ${maxWords} words or fewer. Preserve key facts, numbers, names.
+
+TEXT:
+${text}
+
+SUMMARY:`;
+    const summary = await geminiText(prompt);
+    return { ok: true, output: { summary } };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "AI summarize failed" };
+  }
+}
+
+async function runAiCategorize(
+  _companyId: string,
+  config: Record<string, unknown>,
+  payload: unknown
+): Promise<ActionResult> {
+  try {
+    const text = interpolate(String(config.text ?? ""), payload);
+    const categories = Array.isArray(config.categories)
+      ? (config.categories as string[])
+      : [];
+    if (categories.length === 0) {
+      return { ok: false, error: "categories list is empty" };
+    }
+    const prompt = `Pick exactly one category for the text. Reply with just the category name, no prose.
+Categories: ${categories.join(", ")}
+
+TEXT:
+${text}
+
+CATEGORY:`;
+    const picked = (await geminiText(prompt)).split("\n")[0].trim();
+    const normalized = categories.find(
+      (c) => c.toLowerCase() === picked.toLowerCase()
+    );
+    return {
+      ok: true,
+      output: { category: normalized ?? picked, raw: picked },
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "AI categorize failed" };
+  }
+}
+
+async function runAiTranslate(
+  _companyId: string,
+  config: Record<string, unknown>,
+  payload: unknown
+): Promise<ActionResult> {
+  try {
+    const text = interpolate(String(config.text ?? ""), payload);
+    const target = String(config.targetLocale ?? "en");
+    const prompt = `Translate the following text to ${target}. Preserve tone, numbers, and proper nouns. Return only the translation.
+
+TEXT:
+${text}
+
+TRANSLATION:`;
+    const translation = await geminiText(prompt);
+    return { ok: true, output: { translation, target } };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "AI translate failed" };
+  }
+}
+
+async function runSendNotification(
+  companyId: string,
+  config: Record<string, unknown>,
+  payload: unknown
+): Promise<ActionResult> {
+  try {
+    const userId = interpolate(String(config.userId ?? ""), payload).trim();
+    const title = interpolate(String(config.title ?? ""), payload).trim();
+    const message = interpolate(
+      String(config.message ?? ""),
+      payload
+    ).trim();
+    if (!userId) return { ok: false, error: "userId is empty" };
+    if (!title) return { ok: false, error: "title is empty" };
+    await prisma.notification.create({
+      data: {
+        companyId,
+        userId,
+        kind: "workflow",
+        title,
+        body: message || null,
+      } as any,
+    });
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "send_notification failed" };
+  }
+}
+
+async function runUpdateField(
+  companyId: string,
+  config: Record<string, unknown>,
+  payload: unknown
+): Promise<ActionResult> {
+  try {
+    const entity = String(config.entity ?? "");
+    const entityIdRaw = interpolate(String(config.entityId ?? ""), payload);
+    const field = String(config.field ?? "");
+    const valueRaw = config.value;
+    const value =
+      typeof valueRaw === "string" ? interpolate(valueRaw, payload) : valueRaw;
+    if (!entity || !entityIdRaw || !field) {
+      return { ok: false, error: "entity, entityId, and field are required" };
+    }
+    const where = { id: entityIdRaw, companyId };
+    const data = { [field]: value } as any;
+    switch (entity) {
+      case "customer":
+        await prisma.customer.updateMany({ where, data });
+        break;
+      case "deal":
+        await prisma.deal.updateMany({ where, data });
+        break;
+      case "quote":
+        await prisma.quote.updateMany({ where, data });
+        break;
+      case "contract":
+        await prisma.contract.updateMany({ where, data });
+        break;
+      default:
+        return { ok: false, error: `Unsupported entity: ${entity}` };
+    }
+    return { ok: true, output: { entity, entityId: entityIdRaw, field } };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "update_field failed" };
+  }
+}
 
 export interface ActionResult {
   ok: boolean;
@@ -328,7 +520,21 @@ export async function runAction(
     case "add_tag":
       return runAddTag(companyId, config, payload);
     case "call_webhook":
+    case "webhook_call":
       return runCallWebhook(companyId, config, payload);
+    // ── P10 AI-native step types ───────────────────────────────────
+    case "ai_generate_email":
+      return runAiGenerateEmail(companyId, config, payload);
+    case "ai_summarize":
+      return runAiSummarize(companyId, config, payload);
+    case "ai_categorize":
+      return runAiCategorize(companyId, config, payload);
+    case "ai_translate":
+      return runAiTranslate(companyId, config, payload);
+    case "send_notification":
+      return runSendNotification(companyId, config, payload);
+    case "update_field":
+      return runUpdateField(companyId, config, payload);
     default:
       return { ok: false, error: `Unknown action type: ${type}` };
   }

@@ -461,6 +461,207 @@ export const ACTIONS: ActionSpec[] = [
 ];
 
 // ──────────────────────────────────────────────────────────────────────
+// AI-NATIVE ACTIONS (P10) — all powered by Gemini 2.0 Flash
+// ──────────────────────────────────────────────────────────────────────
+
+ACTIONS.push(
+  {
+    type: "ai_generate_email",
+    label: {
+      en: "AI · Generate email",
+      ar: "AI · توليد بريد",
+      tr: "AI · E-posta oluştur",
+    },
+    description: {
+      en: "Draft a subject + body from a short purpose description.",
+      ar: "إنشاء عنوان ونص بريد من وصف قصير.",
+      tr: "Kısa açıklamadan konu + gövde oluştur.",
+    },
+    category: "messaging",
+    configFields: [
+      {
+        key: "purpose",
+        label: { en: "Purpose", ar: "الغرض", tr: "Amaç" },
+        type: "textarea",
+        required: true,
+        placeholder:
+          "Follow up on the pending quote, ask for a decision by Friday",
+      },
+      {
+        key: "tone",
+        label: { en: "Tone", ar: "النبرة", tr: "Ton" },
+        type: "select",
+        options: ["professional", "friendly", "concise", "warm"],
+      },
+      {
+        key: "locale",
+        label: { en: "Language", ar: "اللغة", tr: "Dil" },
+        type: "select",
+        options: ["en", "ar", "tr"],
+      },
+    ],
+  },
+  {
+    type: "ai_summarize",
+    label: {
+      en: "AI · Summarize",
+      ar: "AI · تلخيص",
+      tr: "AI · Özetle",
+    },
+    description: {
+      en: "Reduce a long text to a short summary.",
+      ar: "تقليل نص طويل إلى ملخص قصير.",
+      tr: "Uzun metni kısa özete indir.",
+    },
+    category: "messaging",
+    configFields: [
+      {
+        key: "text",
+        label: { en: "Text to summarize", ar: "النص", tr: "Metin" },
+        type: "textarea",
+        required: true,
+      },
+      {
+        key: "maxWords",
+        label: { en: "Max words", ar: "أقصى عدد كلمات", tr: "En fazla kelime" },
+        type: "number",
+      },
+    ],
+  },
+  {
+    type: "ai_categorize",
+    label: {
+      en: "AI · Categorize",
+      ar: "AI · تصنيف",
+      tr: "AI · Kategorize et",
+    },
+    description: {
+      en: "Classify a text into one of a set of categories.",
+      ar: "تصنيف النص ضمن إحدى الفئات.",
+      tr: "Metni önceden tanımlanmış kategorilerden birine sınıflandır.",
+    },
+    category: "crm",
+    configFields: [
+      {
+        key: "text",
+        label: { en: "Text", ar: "النص", tr: "Metin" },
+        type: "textarea",
+        required: true,
+      },
+      {
+        key: "categories",
+        label: { en: "Categories (comma-separated)", ar: "الفئات مفصولة بفواصل", tr: "Kategoriler virgülle" },
+        type: "text",
+        required: true,
+        placeholder: "lead, support, complaint, other",
+      },
+    ],
+  },
+  {
+    type: "ai_translate",
+    label: {
+      en: "AI · Translate",
+      ar: "AI · ترجمة",
+      tr: "AI · Çevir",
+    },
+    description: {
+      en: "Translate text to a target language.",
+      ar: "ترجمة نص إلى لغة مستهدفة.",
+      tr: "Metni hedef dile çevir.",
+    },
+    category: "messaging",
+    configFields: [
+      {
+        key: "text",
+        label: { en: "Text", ar: "النص", tr: "Metin" },
+        type: "textarea",
+        required: true,
+      },
+      {
+        key: "targetLocale",
+        label: { en: "Target language", ar: "اللغة الهدف", tr: "Hedef dil" },
+        type: "select",
+        options: ["en", "ar", "tr", "fr", "es", "de"],
+        required: true,
+      },
+    ],
+  },
+  {
+    type: "send_notification",
+    label: {
+      en: "Send in-app notification",
+      ar: "إرسال إشعار داخل التطبيق",
+      tr: "Uygulama içi bildirim gönder",
+    },
+    description: {
+      en: "Push a bell-icon notification to a specific user.",
+      ar: "إرسال إشعار لمستخدم محدد.",
+      tr: "Belirli bir kullanıcıya bildirim gönder.",
+    },
+    category: "crm",
+    configFields: [
+      {
+        key: "userId",
+        label: { en: "User ID", ar: "معرّف المستخدم", tr: "Kullanıcı ID" },
+        type: "text",
+        required: true,
+      },
+      {
+        key: "title",
+        label: { en: "Title", ar: "العنوان", tr: "Başlık" },
+        type: "text",
+        required: true,
+      },
+      {
+        key: "message",
+        label: { en: "Body", ar: "النص", tr: "Gövde" },
+        type: "textarea",
+      },
+    ],
+  },
+  {
+    type: "update_field",
+    label: {
+      en: "Update a field",
+      ar: "تحديث حقل",
+      tr: "Alan güncelle",
+    },
+    description: {
+      en: "Set one field on a customer / deal / quote / contract.",
+      ar: "تعيين حقل على عميل / صفقة / عرض / عقد.",
+      tr: "Müşteri / anlaşma / teklif / sözleşme üzerinde bir alanı güncelle.",
+    },
+    category: "crm",
+    configFields: [
+      {
+        key: "entity",
+        label: { en: "Entity", ar: "الكيان", tr: "Varlık" },
+        type: "select",
+        options: ["customer", "deal", "quote", "contract"],
+        required: true,
+      },
+      {
+        key: "entityId",
+        label: { en: "Entity ID (or template)", ar: "معرّف الكيان", tr: "Varlık ID" },
+        type: "text",
+        required: true,
+      },
+      {
+        key: "field",
+        label: { en: "Field", ar: "الحقل", tr: "Alan" },
+        type: "text",
+        required: true,
+      },
+      {
+        key: "value",
+        label: { en: "Value", ar: "القيمة", tr: "Değer" },
+        type: "text",
+      },
+    ],
+  }
+);
+
+// ──────────────────────────────────────────────────────────────────────
 // CONDITION OPERATORS
 // ──────────────────────────────────────────────────────────────────────
 
