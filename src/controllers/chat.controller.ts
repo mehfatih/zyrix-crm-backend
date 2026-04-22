@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as ChatSvc from "../services/chat.service";
 import type { AuthenticatedRequest } from "../types";
+import { recordAudit, extractRequestMeta } from "../utils/audit";
 
 const sendSchema = z.object({
   toUserId: z.string().min(1),
@@ -72,6 +73,16 @@ export async function send(req: Request, res: Response, next: NextFunction) {
       userId,
       dto as ChatSvc.SendMessageDto
     );
+    const created = data as unknown as { id?: string } | null;
+    recordAudit({
+      userId,
+      companyId,
+      action: "chatMessage.create",
+      entityType: "chatMessage",
+      entityId: created?.id ?? null,
+      after: data,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.status(201).json({ success: true, data });
   } catch (err) {
     next(err);
