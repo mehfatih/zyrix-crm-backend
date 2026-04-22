@@ -228,6 +228,16 @@ model Customer {
   aiExtracted   Json?
   lastContactAt DateTime?
 
+  // B3 predictive lead scoring (0-100, weekly recompute)
+  leadScore        Int?
+  leadScoreUpdatedAt DateTime?
+  // B8 customer health score (0-100, refreshed on touch + weekly)
+  healthScore      Int?
+  healthScoreUpdatedAt DateTime?
+  // B4 territory assignment (free-form label, resolved by the
+  // territory assignment service). Null = unassigned.
+  territory        String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1991,6 +2001,88 @@ model TaxInvoice {
 //   • Retention — can be rolled up/archived separately if volume
 //     becomes an issue; business audit events need to be kept much
 //     longer for compliance
+// ─────────────────────────────────────────────────────────────────────────
+// BONUS MODELS — B4, B5, B6, B7, B10
+// ─────────────────────────────────────────────────────────────────────────
+
+model Territory {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  // Criteria for auto-assignment. Shape:
+  //   { country?: string[], city?: string[], sourceContains?: string,
+  //     companyNameContains?: string }
+  criteria    Json     @default("{}")
+  ownerId     String?  // default owner for customers assigned here
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("territories")
+}
+
+model Quota {
+  id        String   @id @default(uuid())
+  companyId String
+  userId    String
+  period    String   // YYYY-MM, YYYY-Q1..Q4, or YYYY
+  target    Decimal  @db.Decimal(14, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, userId, period])
+  @@index([companyId])
+  @@map("quotas")
+}
+
+model Meeting {
+  id          String   @id @default(uuid())
+  companyId   String
+  createdById String
+  customerId  String?
+  dealId      String?
+  title       String
+  transcript  String   @db.Text
+  summary     String?
+  actionItems Json     @default("[]")
+  meetingAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, meetingAt])
+  @@map("meetings")
+}
+
+model ContractSignature {
+  id            String   @id @default(uuid())
+  companyId     String
+  contractId    String
+  signerEmail   String
+  signerName    String?
+  signatureDataUrl String? @db.Text
+  token         String   @unique
+  tokenExpiresAt DateTime
+  requestedBy   String
+  requestedAt   DateTime @default(now())
+  signedAt      DateTime?
+
+  @@index([contractId])
+  @@index([token])
+  @@map("contract_signatures")
+}
+
+model SlackWebhook {
+  id         String   @id @default(uuid())
+  companyId  String   @unique
+  url        String
+  // Which events to push: ["deal.won", "deal.stage_changed", ...]
+  eventTypes Json     @default("[]")
+  addedBy    String
+  createdAt  DateTime @default(now())
+
+  @@map("slack_webhooks")
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // DOCUMENT LINKS — P9 Google Docs cataloging
 // ─────────────────────────────────────────────────────────────────────────
