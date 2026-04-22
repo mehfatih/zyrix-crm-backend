@@ -56,6 +56,8 @@ import auditLogsRoutes from "./routes/audit-logs.routes";
 import ipAllowlistRoutes from "./routes/ip-allowlist.routes";
 import retentionRoutes from "./routes/retention.routes";
 import complianceRoutes from "./routes/compliance.routes";
+import scimRoutes from "./routes/scim.routes";
+import scimTokensRoutes from "./routes/scim-tokens.routes";
 import { enforceIpAllowlist } from "./middleware/ipAllowlist";
 import { startRetentionCron } from "./cron/data-retention";
 import { authenticateToken } from "./middleware/auth";
@@ -201,6 +203,8 @@ app.use("/api/audit-logs", auditLogsRoutes);
 app.use("/api/admin/ip-allowlist", ipAllowlistRoutes);
 app.use("/api/data-retention", retentionRoutes);
 app.use("/api/compliance", complianceRoutes);
+app.use("/api/scim-tokens", scimTokensRoutes);
+app.use("/scim/v2", scimRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key

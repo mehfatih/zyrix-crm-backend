@@ -1992,6 +1992,28 @@ model TaxInvoice {
 //     becomes an issue; business audit events need to be kept much
 //     longer for compliance
 // ─────────────────────────────────────────────────────────────────────────
+// SCIM TOKENS — P7
+// ─────────────────────────────────────────────────────────────────────────
+// Per-company bearer tokens used by Okta/Azure AD/Google Workspace/
+// JumpCloud to provision users via SCIM 2.0. Same hashing approach as
+// ComplianceToken — plaintext shown once, bcrypt stored.
+model ScimToken {
+  id        String   @id @default(uuid())
+  companyId String
+  label     String
+  tokenHash String   @unique
+  prefix    String
+  createdBy String
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([companyId])
+  @@index([prefix])
+  @@map("scim_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // COMPLIANCE TOKENS — P6
 // ─────────────────────────────────────────────────────────────────────────
 // Per-company bearer tokens used to authenticate the compliance API
