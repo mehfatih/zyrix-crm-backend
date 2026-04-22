@@ -1992,6 +1992,29 @@ model TaxInvoice {
 //     becomes an issue; business audit events need to be kept much
 //     longer for compliance
 // ─────────────────────────────────────────────────────────────────────────
+// NETWORK RULES — P8 (platform-owner scope, not merchant)
+// ─────────────────────────────────────────────────────────────────────────
+// Applied by the platform admin to the whole Zyrix surface. Supported
+// types:
+//   • geo_block    — config: { blockedCidrs: string[] } deny list
+//   • rate_limit   — config: { windowMs, max, path? } per-endpoint cap
+//   • ddos_heuristic — config: { windowMs, spike } sliding window
+// Inactive rules are retained for history.
+model NetworkRule {
+  id        String   @id @default(uuid())
+  type      String
+  label     String
+  config    Json
+  active    Boolean  @default(true)
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, active])
+  @@map("network_rules")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // SCIM TOKENS — P7
 // ─────────────────────────────────────────────────────────────────────────
 // Per-company bearer tokens used by Okta/Azure AD/Google Workspace/

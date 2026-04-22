@@ -58,6 +58,8 @@ import retentionRoutes from "./routes/retention.routes";
 import complianceRoutes from "./routes/compliance.routes";
 import scimRoutes from "./routes/scim.routes";
 import scimTokensRoutes from "./routes/scim-tokens.routes";
+import networkRulesRoutes from "./routes/network-rules.routes";
+import { networkRules } from "./middleware/networkRules";
 import { enforceIpAllowlist } from "./middleware/ipAllowlist";
 import { startRetentionCron } from "./cron/data-retention";
 import { authenticateToken } from "./middleware/auth";
@@ -73,6 +75,10 @@ const app: Express = express();
 app.set("trust proxy", 1);
 
 app.use(helmet());
+
+// Platform-level network rules — geo_block + rate_limit. Runs before auth
+// so blocked IPs never reach the app router. Fails open on DB errors.
+app.use(networkRules());
 
 app.use(
   cors({
@@ -205,6 +211,7 @@ app.use("/api/data-retention", retentionRoutes);
 app.use("/api/compliance", complianceRoutes);
 app.use("/api/scim-tokens", scimTokensRoutes);
 app.use("/scim/v2", scimRoutes);
+app.use("/api/admin/network-rules", networkRulesRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key
