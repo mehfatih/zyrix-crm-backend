@@ -18,6 +18,7 @@ import {
 } from "./email.service";
 import { env } from "../config/env";
 import { verifyLoginCode } from "./twofactor.service";
+import { seedSystemRoles } from "./roles.service";
 import type {
   SignupDto,
   SigninDto,
@@ -103,6 +104,13 @@ export async function signup(dto: SignupDto): Promise<AuthResponse> {
 
     return { company, user };
   });
+
+  // Seed the four system roles for this fresh company. Outside the
+  // transaction so a seed hiccup doesn't roll back signup. Non-fatal:
+  // built-in role fallback in rbac.service.ts still works without them.
+  seedSystemRoles(result.company.id).catch((err) =>
+    console.error("[Auth] seedSystemRoles failed (non-fatal):", err)
+  );
 
   // Generate tokens
   const tokens = await generateAuthTokens(

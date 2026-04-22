@@ -52,6 +52,7 @@ import taxInvoicesRoutes from "./routes/tax-invoices.routes";
 import sessionEventsRoutes from "./routes/session-events.routes";
 import featureFlagsRoutes from "./routes/feature-flags.routes";
 import rolesRoutes from "./routes/roles.routes";
+import { seedSystemRolesForAllCompanies } from "./services/roles.service";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
 import { startWorkflowWorker } from "./cron/workflow-worker";
@@ -234,6 +235,17 @@ const server = app.listen(env.PORT, () => {
   seedTemplates().catch((err) => {
     console.error("[templates] seed failed (non-fatal):", err.message);
   });
+
+  // Ensure every existing company has the four system roles (P1 RBAC).
+  // Idempotent — no-ops for companies already seeded. Non-fatal so a
+  // DB hiccup or missing `roles` table (pre-SQL-apply) can't block boot.
+  seedSystemRolesForAllCompanies()
+    .then(({ companies }) =>
+      console.log(`[rbac] system roles ensured for ${companies} companies`)
+    )
+    .catch((err) =>
+      console.error("[rbac] system role seed failed (non-fatal):", err.message)
+    );
 });
 
 const shutdown = async (signal: string) => {

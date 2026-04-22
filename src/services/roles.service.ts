@@ -242,6 +242,21 @@ export async function seedSystemRoles(companyId: string) {
   }
 }
 
+/**
+ * Ensures every existing company has its four system roles. Called once
+ * on server startup. Idempotent — runs seedSystemRoles() per company, so
+ * companies that already have all four are a no-op.
+ */
+export async function seedSystemRolesForAllCompanies(): Promise<{
+  companies: number;
+}> {
+  const companies = await prisma.company.findMany({ select: { id: true } });
+  for (const c of companies) {
+    await seedSystemRoles(c.id);
+  }
+  return { companies: companies.length };
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // User ↔ role assignment
 // ──────────────────────────────────────────────────────────────────────

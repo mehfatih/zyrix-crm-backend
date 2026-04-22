@@ -10,6 +10,7 @@ import {
 import { badRequest } from "../middleware/errorHandler";
 import type { AuthResponse } from "../types";
 import { sendWelcomeEmail } from "./email.service";
+import { seedSystemRoles } from "./roles.service";
 
 const googleClient = env.GOOGLE_CLIENT_ID
   ? new OAuth2Client(env.GOOGLE_CLIENT_ID)
@@ -149,6 +150,11 @@ export async function googleSignInOrSignUp(
 
       return newUser;
     });
+
+    // Seed the four system roles for this fresh company — non-fatal.
+    seedSystemRoles(result.companyId).catch((err) =>
+      console.error("[GoogleOAuth] seedSystemRoles failed (non-fatal):", err)
+    );
 
     user = result;
   }
