@@ -8,6 +8,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "../types";
+import { prisma } from "../config/database";
 import {
   PERMISSION_CATALOG,
   PERMISSIONS,
@@ -193,6 +194,39 @@ export async function remove(
       ...extractRequestMeta(req),
     });
     res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// GET /api/users — list team members in the caller's company
+// ──────────────────────────────────────────────────────────────────────
+
+export async function listUsers(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId } = auth(req);
+    const users = await prisma.user.findMany({
+      where: { companyId, role: { not: "super_admin" } },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        role: true,
+        customRoleId: true,
+        status: true,
+        avatarUrl: true,
+        lastLoginAt: true,
+        createdAt: true,
+      },
+      orderBy: [{ role: "asc" }, { fullName: "asc" }],
+    });
+    res.status(200).json({ success: true, data: users });
   } catch (err) {
     next(err);
   }

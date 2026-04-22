@@ -44,6 +44,14 @@ router.delete(
   ctrl.remove
 );
 
+// List team members in caller's company.
+router.get(
+  "/users",
+  authenticateToken,
+  requirePermission("settings:users"),
+  ctrl.listUsers
+);
+
 // Assign a user to a role (built-in via role string, custom via customRoleId).
 router.patch(
   "/users/:id/role",
