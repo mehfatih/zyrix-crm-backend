@@ -64,6 +64,7 @@ export async function create(req: Request, res: Response, next: NextFunction) {
       action: "brand.created",
       entityType: "brand",
       entityId: data.id,
+      after: data,
       metadata: { name: data.name, slug: data.slug },
       ...extractRequestMeta(req),
     });
@@ -80,13 +81,17 @@ const updateSchema = createSchema.partial().extend({
 export async function update(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, companyId } = auth(req);
+    const id = req.params.id as string;
     const dto = updateSchema.parse(req.body) as any;
-    const data = await updateBrand(companyId, req.params.id as string, dto);
+    const before = await getBrand(companyId, id).catch(() => null);
+    const data = await updateBrand(companyId, id, dto);
     await recordAudit({
       userId, companyId,
       action: "brand.updated",
       entityType: "brand",
       entityId: data.id,
+      before,
+      after: data,
       metadata: { fields: Object.keys(dto) },
       ...extractRequestMeta(req),
     });
@@ -99,12 +104,16 @@ export async function update(req: Request, res: Response, next: NextFunction) {
 export async function setDefault(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, companyId } = auth(req);
-    const data = await setDefaultBrand(companyId, req.params.id as string);
+    const id = req.params.id as string;
+    const before = await getBrand(companyId, id).catch(() => null);
+    const data = await setDefaultBrand(companyId, id);
     await recordAudit({
       userId, companyId,
       action: "brand.set_default",
       entityType: "brand",
       entityId: data.id,
+      before,
+      after: data,
       ...extractRequestMeta(req),
     });
     res.status(200).json({ success: true, data });
@@ -116,12 +125,15 @@ export async function setDefault(req: Request, res: Response, next: NextFunction
 export async function remove(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, companyId } = auth(req);
-    const data = await deleteBrand(companyId, req.params.id as string);
+    const id = req.params.id as string;
+    const before = await getBrand(companyId, id).catch(() => null);
+    const data = await deleteBrand(companyId, id);
     await recordAudit({
       userId, companyId,
       action: data.archived ? "brand.archived" : "brand.deleted",
       entityType: "brand",
-      entityId: req.params.id as string,
+      entityId: id,
+      before,
       ...extractRequestMeta(req),
     });
     res.status(200).json({ success: true, data });

@@ -2,6 +2,11 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as LoyaltySvc from "../services/loyalty.service";
 import type { AuthenticatedRequest } from "../types";
+import {
+  recordAudit,
+  extractRequestMeta,
+  diffObjects,
+} from "../utils/audit";
 
 // ============================================================================
 // LOYALTY CONTROLLER
@@ -66,12 +71,30 @@ export async function upsertProgram(
   next: NextFunction
 ) {
   try {
-    const { companyId } = auth(req);
+    const { companyId, userId } = auth(req);
     const dto = upsertProgramSchema.parse(req.body);
+    const before = await LoyaltySvc.getProgram(companyId).catch(() => null);
     const data = await LoyaltySvc.upsertProgram(
       companyId,
       dto as LoyaltySvc.UpsertProgramDto
     );
+    recordAudit({
+      userId,
+      companyId,
+      action: before ? "loyalty.program_updated" : "loyalty.program_created",
+      entityType: "loyalty_program",
+      entityId: data.id,
+      before,
+      after: data,
+      changes:
+        before && data
+          ? diffObjects(
+              before as unknown as Record<string, unknown>,
+              data as unknown as Record<string, unknown>
+            )
+          : undefined,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -107,6 +130,16 @@ export async function createTransaction(
       userId,
       dto as LoyaltySvc.CreateTxnDto
     );
+    recordAudit({
+      userId,
+      companyId,
+      action: `loyalty.txn_${dto.type}`,
+      entityType: "loyalty_txn",
+      entityId: data.id,
+      after: data,
+      metadata: { customerId: dto.customerId, points: dto.points },
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.status(201).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -119,11 +152,18 @@ export async function deleteTransaction(
   next: NextFunction
 ) {
   try {
-    const { companyId } = auth(req);
-    const data = await LoyaltySvc.deleteTransaction(
+    const { companyId, userId } = auth(req);
+    const id = req.params.id as string;
+    const data = await LoyaltySvc.deleteTransaction(companyId, id);
+    recordAudit({
+      userId,
       companyId,
-      req.params.id as string
-    );
+      action: "loyalty.txn_deleted",
+      entityType: "loyalty_txn",
+      entityId: id,
+      after: data,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);

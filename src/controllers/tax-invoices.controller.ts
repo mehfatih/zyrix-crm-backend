@@ -85,6 +85,7 @@ export async function issue(req: Request, res: Response, next: NextFunction) {
       action: "tax_invoice.issued",
       entityType: "tax_invoice",
       entityId: data.id,
+      after: data,
       metadata: {
         regime: data.regime,
         invoiceNumber: data.invoiceNumber,
@@ -130,17 +131,17 @@ export async function submit(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, companyId } = auth(req);
     const { externalId } = submitSchema.parse(req.body);
-    const data = await markSubmitted(
-      companyId,
-      req.params.id as string,
-      externalId
-    );
+    const id = req.params.id as string;
+    const before = await getTaxInvoice(companyId, id).catch(() => null);
+    const data = await markSubmitted(companyId, id, externalId);
     await recordAudit({
       userId,
       companyId,
       action: "tax_invoice.submitted",
       entityType: "tax_invoice",
       entityId: data.id,
+      before,
+      after: data,
       metadata: { externalId },
       ...extractRequestMeta(req),
     });
@@ -153,13 +154,17 @@ export async function submit(req: Request, res: Response, next: NextFunction) {
 export async function approve(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, companyId } = auth(req);
-    const data = await markApproved(companyId, req.params.id as string);
+    const id = req.params.id as string;
+    const before = await getTaxInvoice(companyId, id).catch(() => null);
+    const data = await markApproved(companyId, id);
     await recordAudit({
       userId,
       companyId,
       action: "tax_invoice.approved",
       entityType: "tax_invoice",
       entityId: data.id,
+      before,
+      after: data,
       ...extractRequestMeta(req),
     });
     res.status(200).json({ success: true, data });
@@ -174,17 +179,17 @@ export async function reject(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, companyId } = auth(req);
     const { reason } = rejectSchema.parse(req.body);
-    const data = await markRejected(
-      companyId,
-      req.params.id as string,
-      reason
-    );
+    const id = req.params.id as string;
+    const before = await getTaxInvoice(companyId, id).catch(() => null);
+    const data = await markRejected(companyId, id, reason);
     await recordAudit({
       userId,
       companyId,
       action: "tax_invoice.rejected",
       entityType: "tax_invoice",
       entityId: data.id,
+      before,
+      after: data,
       metadata: { reason },
       ...extractRequestMeta(req),
     });
