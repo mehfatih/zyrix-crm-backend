@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import { requireSuperAdmin } from "../middleware/superAdmin";
 import * as AdminCtrl from "../controllers/admin.controller";
 import * as FeatureCtrl from "../controllers/feature-flags.controller";
+import * as PasswordResetCtrl from "../controllers/admin-password-reset.controller";
 
 // ============================================================================
 // ADMIN ROUTES — /api/admin/*
@@ -32,9 +33,33 @@ const loginLimiter = rateLimit({
   },
 });
 
+const requestResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { code: "RATE_LIMITED", message: "Too many reset requests." },
+  },
+});
+
+const confirmResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { code: "RATE_LIMITED", message: "Too many reset attempts." },
+  },
+});
+
 // Public (no auth)
 router.post("/bootstrap", bootstrapLimiter, AdminCtrl.bootstrap);
 router.post("/login", loginLimiter, AdminCtrl.login);
+router.post("/forgot-password", requestResetLimiter, PasswordResetCtrl.requestReset);
+router.post("/reset-password", confirmResetLimiter, PasswordResetCtrl.confirmReset);
 
 // Protected — super_admin only
 router.use(requireSuperAdmin);
