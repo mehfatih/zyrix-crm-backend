@@ -20,6 +20,7 @@ const bootstrapSchema = z.object({ token: z.string().min(10) });
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  rememberMe: z.boolean().optional(),
 });
 
 const listCompaniesSchema = z.object({

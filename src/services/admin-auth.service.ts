@@ -5,10 +5,18 @@ import {
   generateAccessToken,
   generateRefreshToken,
   accessTokenExpiresInSeconds,
+  parseExpiresIn,
 } from "../utils/jwt";
 import { unauthorized, forbidden } from "../middleware/errorHandler";
 import { env } from "../config/env";
+import { recordAudit } from "../utils/audit";
 import type { AuthTokens, SigninDto } from "../types";
+
+// Extended access-token lifetime when the admin opts into "Remember me".
+const REMEMBER_ME_ACCESS_EXPIRES_IN = "30d";
+const REMEMBER_ME_ACCESS_SECONDS = Math.floor(
+  parseExpiresIn(REMEMBER_ME_ACCESS_EXPIRES_IN) / 1000
+);
 
 // ============================================================================
 // ADMIN AUTH SERVICE
@@ -60,14 +68,19 @@ export async function adminSignin(dto: SigninDto): Promise<AdminLoginResponse> {
     throw unauthorized("Invalid credentials");
   }
 
+  const rememberMe = dto.rememberMe === true;
+
   // Generate tokens
   const tokenId = uuidv4();
-  const accessToken = generateAccessToken({
-    userId: user.id,
-    companyId: user.companyId,
-    email: user.email,
-    role: user.role,
-  });
+  const accessToken = generateAccessToken(
+    {
+      userId: user.id,
+      companyId: user.companyId,
+      email: user.email,
+      role: user.role,
+    },
+    rememberMe ? { expiresIn: REMEMBER_ME_ACCESS_EXPIRES_IN } : undefined
+  );
   const refreshToken = generateRefreshToken({
     userId: user.id,
     tokenId,
@@ -92,19 +105,14 @@ export async function adminSignin(dto: SigninDto): Promise<AdminLoginResponse> {
     data: { lastLoginAt: new Date() },
   });
 
-  // Audit log
-  try {
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
-        action: "admin.login",
-        entityType: "user",
-        entityId: user.id,
-      },
-    });
-  } catch {
-    // Non-critical
-  }
+  await recordAudit({
+    userId: user.id,
+    companyId: user.companyId,
+    action: "admin.login",
+    entityType: "user",
+    entityId: user.id,
+    metadata: { rememberMe },
+  });
 
   return {
     user: {
@@ -116,7 +124,9 @@ export async function adminSignin(dto: SigninDto): Promise<AdminLoginResponse> {
     tokens: {
       accessToken,
       refreshToken,
-      expiresIn: accessTokenExpiresInSeconds,
+      expiresIn: rememberMe
+        ? REMEMBER_ME_ACCESS_SECONDS
+        : accessTokenExpiresInSeconds,
     },
   };
 }

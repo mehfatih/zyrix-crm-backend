@@ -13,15 +13,18 @@ const ACCESS_SECRET = env.JWT_ACCESS_SECRET;
 const REFRESH_SECRET = env.JWT_REFRESH_SECRET;
 
 // ─────────────────────────────────────────────────────────────────────────
-// Generate Access Token (short-lived: 15m)
+// Generate Access Token (short-lived: 15m by default)
 // ─────────────────────────────────────────────────────────────────────────
+// Optional expiresIn override lets specific flows (e.g. admin "Remember me")
+// issue a 30-day token without changing the platform default.
 export function generateAccessToken(
-  payload: Omit<AccessTokenPayload, "type">
+  payload: Omit<AccessTokenPayload, "type">,
+  options?: { expiresIn?: string }
 ): string {
   return jwt.sign(
     { ...payload, type: "access" },
     ACCESS_SECRET,
-    { expiresIn: env.JWT_ACCESS_EXPIRES_IN } as jwt.SignOptions
+    { expiresIn: options?.expiresIn ?? env.JWT_ACCESS_EXPIRES_IN } as jwt.SignOptions
   );
 }
 
