@@ -2,6 +2,38 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as QuoteSvc from "../services/quote.service";
 import type { AuthenticatedRequest } from "../types";
+import {
+  recordAudit,
+  extractRequestMeta,
+  diffObjects,
+} from "../utils/audit";
+
+function audit(
+  req: Request,
+  action: string,
+  entityId: string,
+  before: unknown,
+  after: unknown
+) {
+  const r = req as AuthenticatedRequest;
+  recordAudit({
+    userId: r.user.userId,
+    companyId: r.user.companyId,
+    action,
+    entityType: "quote",
+    entityId,
+    before,
+    after,
+    changes:
+      before && after
+        ? diffObjects(
+            before as unknown as Record<string, unknown>,
+            after as unknown as Record<string, unknown>
+          )
+        : undefined,
+    ...extractRequestMeta(req),
+  }).catch(() => {});
+}
 
 // ============================================================================
 // QUOTE CONTROLLER
@@ -83,6 +115,7 @@ export async function create(req: Request, res: Response, next: NextFunction) {
       userId,
       dto as QuoteSvc.CreateQuoteDto
     );
+    audit(req, "quote.create", data.id, null, data);
     res.status(201).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -102,12 +135,15 @@ export async function getOne(req: Request, res: Response, next: NextFunction) {
 export async function update(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
+    const id = req.params.id as string;
     const dto = updateQuoteSchema.parse(req.body);
+    const before = await QuoteSvc.getQuote(companyId, id).catch(() => null);
     const data = await QuoteSvc.updateQuote(
       companyId,
-      req.params.id as string,
+      id,
       dto as QuoteSvc.UpdateQuoteDto
     );
+    audit(req, "quote.update", id, before, data);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -117,7 +153,10 @@ export async function update(req: Request, res: Response, next: NextFunction) {
 export async function send(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
-    const data = await QuoteSvc.sendQuote(companyId, req.params.id as string);
+    const id = req.params.id as string;
+    const before = await QuoteSvc.getQuote(companyId, id).catch(() => null);
+    const data = await QuoteSvc.sendQuote(companyId, id);
+    audit(req, "quote.send", id, before, data);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -127,7 +166,10 @@ export async function send(req: Request, res: Response, next: NextFunction) {
 export async function accept(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
-    const data = await QuoteSvc.acceptQuote(companyId, req.params.id as string);
+    const id = req.params.id as string;
+    const before = await QuoteSvc.getQuote(companyId, id).catch(() => null);
+    const data = await QuoteSvc.acceptQuote(companyId, id);
+    audit(req, "quote.accept", id, before, data);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -137,7 +179,10 @@ export async function accept(req: Request, res: Response, next: NextFunction) {
 export async function reject(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
-    const data = await QuoteSvc.rejectQuote(companyId, req.params.id as string);
+    const id = req.params.id as string;
+    const before = await QuoteSvc.getQuote(companyId, id).catch(() => null);
+    const data = await QuoteSvc.rejectQuote(companyId, id);
+    audit(req, "quote.reject", id, before, data);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -147,10 +192,10 @@ export async function reject(req: Request, res: Response, next: NextFunction) {
 export async function remove(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
-    const data = await QuoteSvc.deleteQuote(
-      companyId,
-      req.params.id as string
-    );
+    const id = req.params.id as string;
+    const before = await QuoteSvc.getQuote(companyId, id).catch(() => null);
+    const data = await QuoteSvc.deleteQuote(companyId, id);
+    audit(req, "quote.delete", id, before, null);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);

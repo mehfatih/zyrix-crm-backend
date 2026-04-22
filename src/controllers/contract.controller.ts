@@ -2,6 +2,38 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as ContractSvc from "../services/contract.service";
 import type { AuthenticatedRequest } from "../types";
+import {
+  recordAudit,
+  extractRequestMeta,
+  diffObjects,
+} from "../utils/audit";
+
+function audit(
+  req: Request,
+  action: string,
+  entityId: string,
+  before: unknown,
+  after: unknown
+) {
+  const r = req as AuthenticatedRequest;
+  recordAudit({
+    userId: r.user.userId,
+    companyId: r.user.companyId,
+    action,
+    entityType: "contract",
+    entityId,
+    before,
+    after,
+    changes:
+      before && after
+        ? diffObjects(
+            before as unknown as Record<string, unknown>,
+            after as unknown as Record<string, unknown>
+          )
+        : undefined,
+    ...extractRequestMeta(req),
+  }).catch(() => {});
+}
 
 const createSchema = z.object({
   customerId: z.string().min(1),
@@ -88,6 +120,7 @@ export async function create(req: Request, res: Response, next: NextFunction) {
       userId,
       dto as ContractSvc.CreateContractDto
     );
+    audit(req, "contract.create", data.id, null, data);
     res.status(201).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -97,11 +130,26 @@ export async function create(req: Request, res: Response, next: NextFunction) {
 export async function update(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
+    const id = req.params.id as string;
     const dto = updateSchema.parse(req.body);
+    const before = await ContractSvc.getContract(companyId, id).catch(
+      () => null
+    );
     const data = await ContractSvc.updateContract(
       companyId,
-      req.params.id as string,
+      id,
       dto as ContractSvc.UpdateContractDto
+    );
+    const stageChanged =
+      before &&
+      typeof (before as any).status === "string" &&
+      (before as any).status !== (data as any).status;
+    audit(
+      req,
+      stageChanged ? "contract.status_changed" : "contract.update",
+      id,
+      before,
+      data
     );
     res.status(200).json({ success: true, data });
   } catch (err) {
@@ -112,10 +160,12 @@ export async function update(req: Request, res: Response, next: NextFunction) {
 export async function remove(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
-    const data = await ContractSvc.deleteContract(
-      companyId,
-      req.params.id as string
+    const id = req.params.id as string;
+    const before = await ContractSvc.getContract(companyId, id).catch(
+      () => null
     );
+    const data = await ContractSvc.deleteContract(companyId, id);
+    audit(req, "contract.delete", id, before, null);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);
