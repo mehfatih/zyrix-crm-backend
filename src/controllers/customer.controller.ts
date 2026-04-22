@@ -3,6 +3,11 @@ import { z } from "zod";
 import * as customerService from "../services/customer.service";
 import type { AuthenticatedRequest } from "../types";
 import { badRequest } from "../middleware/errorHandler";
+import {
+  recordAudit,
+  extractRequestMeta,
+  diffObjects,
+} from "../utils/audit";
 
 const createSchema = z.object({
   fullName: z.string().min(2).max(100),
@@ -58,6 +63,15 @@ export async function create(
       authReq.user.userId,
       dto
     );
+    recordAudit({
+      userId: authReq.user.userId,
+      companyId: authReq.user.companyId,
+      action: "customer.create",
+      entityType: "customer",
+      entityId: customer.id,
+      after: customer,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.status(201).json({
       success: true,
       data: customer,
@@ -113,11 +127,29 @@ export async function update(
     const authReq = req as AuthenticatedRequest;
     const id = getParamId(req);
     const dto = updateSchema.parse(req.body);
+    const before = await customerService.getCustomerById(
+      authReq.user.companyId,
+      id
+    );
     const customer = await customerService.updateCustomer(
       authReq.user.companyId,
       id,
       dto
     );
+    recordAudit({
+      userId: authReq.user.userId,
+      companyId: authReq.user.companyId,
+      action: "customer.update",
+      entityType: "customer",
+      entityId: id,
+      before,
+      after: customer,
+      changes: diffObjects(
+        before as unknown as Record<string, unknown>,
+        customer as unknown as Record<string, unknown>
+      ),
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.json({ success: true, data: customer, message: "Customer updated" });
   } catch (error) {
     next(error);
@@ -132,10 +164,22 @@ export async function remove(
   try {
     const authReq = req as AuthenticatedRequest;
     const id = getParamId(req);
+    const before = await customerService
+      .getCustomerById(authReq.user.companyId, id)
+      .catch(() => null);
     const result = await customerService.deleteCustomer(
       authReq.user.companyId,
       id
     );
+    recordAudit({
+      userId: authReq.user.userId,
+      companyId: authReq.user.companyId,
+      action: "customer.delete",
+      entityType: "customer",
+      entityId: id,
+      before,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.json({ success: true, data: result, message: "Customer deleted" });
   } catch (error) {
     next(error);

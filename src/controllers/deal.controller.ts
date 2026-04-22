@@ -3,6 +3,11 @@ import { z } from "zod";
 import * as dealService from "../services/deal.service";
 import type { AuthenticatedRequest } from "../types";
 import { badRequest } from "../middleware/errorHandler";
+import {
+  recordAudit,
+  extractRequestMeta,
+  diffObjects,
+} from "../utils/audit";
 
 const createSchema = z.object({
   customerId: z.string().uuid(),
@@ -64,6 +69,15 @@ export async function create(
       authReq.user.userId,
       dto
     );
+    recordAudit({
+      userId: authReq.user.userId,
+      companyId: authReq.user.companyId,
+      action: "deal.create",
+      entityType: "deal",
+      entityId: deal.id,
+      after: deal,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.status(201).json({ success: true, data: deal, message: "Deal created" });
   } catch (error) {
     next(error);
@@ -109,11 +123,34 @@ export async function update(
     const authReq = req as AuthenticatedRequest;
     const id = getParamId(req);
     const dto = updateSchema.parse(req.body);
+    const before = await dealService
+      .getDealById(authReq.user.companyId, id)
+      .catch(() => null);
     const deal = await dealService.updateDeal(
       authReq.user.companyId,
       id,
       dto
     );
+    const stageChanged =
+      before &&
+      typeof (before as any).stage === "string" &&
+      (before as any).stage !== (deal as any).stage;
+    recordAudit({
+      userId: authReq.user.userId,
+      companyId: authReq.user.companyId,
+      action: stageChanged ? "deal.stage_changed" : "deal.update",
+      entityType: "deal",
+      entityId: id,
+      before,
+      after: deal,
+      changes: before
+        ? diffObjects(
+            before as unknown as Record<string, unknown>,
+            deal as unknown as Record<string, unknown>
+          )
+        : undefined,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.json({ success: true, data: deal, message: "Deal updated" });
   } catch (error) {
     next(error);
@@ -128,7 +165,19 @@ export async function remove(
   try {
     const authReq = req as AuthenticatedRequest;
     const id = getParamId(req);
+    const before = await dealService
+      .getDealById(authReq.user.companyId, id)
+      .catch(() => null);
     const result = await dealService.deleteDeal(authReq.user.companyId, id);
+    recordAudit({
+      userId: authReq.user.userId,
+      companyId: authReq.user.companyId,
+      action: "deal.delete",
+      entityType: "deal",
+      entityId: id,
+      before,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.json({ success: true, data: result, message: "Deal deleted" });
   } catch (error) {
     next(error);
