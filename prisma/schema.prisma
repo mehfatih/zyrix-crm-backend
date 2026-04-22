@@ -1992,6 +1992,29 @@ model TaxInvoice {
 //     becomes an issue; business audit events need to be kept much
 //     longer for compliance
 // ─────────────────────────────────────────────────────────────────────────
+// DOCUMENT LINKS — P9 Google Docs cataloging
+// ─────────────────────────────────────────────────────────────────────────
+// Pointers from CRM entities to Google Drive documents. We store the
+// title and first 500 chars so the UI has a useful snippet without
+// hitting Drive on every render. A weekly cron refreshes the snippet.
+model DocumentLink {
+  id          String   @id @default(uuid())
+  companyId   String
+  entityType  String   // 'customer', 'deal', 'quote', 'contract'
+  entityId    String
+  googleDocId String
+  title       String
+  snippet     String?
+  addedBy     String
+  createdAt   DateTime @default(now())
+  lastIndexed DateTime @default(now())
+
+  @@index([companyId, entityType, entityId])
+  @@index([googleDocId])
+  @@map("document_links")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // NETWORK RULES — P8 (platform-owner scope, not merchant)
 // ─────────────────────────────────────────────────────────────────────────
 // Applied by the platform admin to the whole Zyrix surface. Supported

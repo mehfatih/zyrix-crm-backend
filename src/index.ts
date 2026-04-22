@@ -59,6 +59,8 @@ import complianceRoutes from "./routes/compliance.routes";
 import scimRoutes from "./routes/scim.routes";
 import scimTokensRoutes from "./routes/scim-tokens.routes";
 import networkRulesRoutes from "./routes/network-rules.routes";
+import documentsRoutes from "./routes/documents.routes";
+import { startDocumentsReindexCron } from "./cron/documents-reindex";
 import { networkRules } from "./middleware/networkRules";
 import { enforceIpAllowlist } from "./middleware/ipAllowlist";
 import { startRetentionCron } from "./cron/data-retention";
@@ -212,6 +214,7 @@ app.use("/api/compliance", complianceRoutes);
 app.use("/api/scim-tokens", scimTokensRoutes);
 app.use("/scim/v2", scimRoutes);
 app.use("/api/admin/network-rules", networkRulesRoutes);
+app.use("/api/documents", documentsRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key
@@ -250,6 +253,7 @@ const server = app.listen(env.PORT, () => {
   startWorkflowWorker();
   startScheduledReportsWorker();
   startRetentionCron();
+  startDocumentsReindexCron();
 
   // Seed curated templates — idempotent upsert by slug. Failures here
   // shouldn't crash the server; template gallery will just show whatever
