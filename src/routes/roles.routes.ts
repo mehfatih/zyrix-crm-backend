@@ -9,6 +9,9 @@ const router = Router();
 // the list to render, even for users who can't actually edit roles).
 router.get("/permissions", authenticateToken, ctrl.catalog);
 
+// Caller's own effective permissions — hydrates frontend hasPermission().
+router.get("/permissions/me", authenticateToken, ctrl.mine);
+
 // Role CRUD — scoped to the caller's company.
 router.get(
   "/roles",

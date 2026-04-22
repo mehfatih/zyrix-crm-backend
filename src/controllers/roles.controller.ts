@@ -20,6 +20,7 @@ import {
   listRoles,
   updateRole,
 } from "../services/roles.service";
+import { getEffectivePermissions } from "../services/rbac.service";
 import { recordAudit, extractRequestMeta } from "../utils/audit";
 
 function auth(req: Request) {
@@ -39,6 +40,29 @@ export function catalog(_req: Request, res: Response) {
       catalog: PERMISSION_CATALOG,
     },
   });
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// GET /api/permissions/me — caller's resolved permission set
+// ──────────────────────────────────────────────────────────────────────
+// Used by the frontend AuthProvider to hydrate hasPermission() at login
+// and on refresh. Returns an empty array if the user is missing — the
+// frontend treats that as "no permissions" and hides everything, which
+// is the right behavior for a deleted account.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function mine(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { userId, role } = auth(req);
+    const permissions = await getEffectivePermissions(userId, role);
+    res.status(200).json({ success: true, data: { permissions } });
+  } catch (err) {
+    next(err);
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────
