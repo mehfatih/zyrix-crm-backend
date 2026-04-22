@@ -10,6 +10,7 @@ import * as ShopifySvc from "../services/shopify.service";
 import * as EcommerceSvc from "../services/ecommerce.service";
 import * as SearchSvc from "../services/search.service";
 import type { AuthenticatedRequest } from "../types";
+import { recordAudit, extractRequestMeta, diffObjects } from "../utils/audit";
 
 function auth(req: Request) {
   const r = req as AuthenticatedRequest;
@@ -50,26 +51,65 @@ export async function createTemplate(req: Request, res: Response, next: NextFunc
     const { companyId, userId } = auth(req);
     const dto = templateSchema.parse(req.body);
     const data = await EmailTemplatesSvc.createTemplate(companyId, userId, dto as EmailTemplatesSvc.CreateTemplateDto);
+    const created = data as unknown as { id?: string } | null;
+    recordAudit({
+      userId,
+      companyId,
+      action: "emailTemplate.create",
+      entityType: "emailTemplate",
+      entityId: created?.id ?? null,
+      after: data,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.status(201).json({ success: true, data });
   } catch (err) { next(err); }
 }
 export async function updateTemplate(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId, userId } = auth(req);
+    const id = req.params.id as string;
     const dto = templateSchema.partial().parse(req.body);
+    const before = await EmailTemplatesSvc.getTemplate(companyId, userId, id).catch(() => null);
     const data = await EmailTemplatesSvc.updateTemplate(
       companyId,
       userId,
-      req.params.id as string,
+      id,
       dto as EmailTemplatesSvc.UpdateTemplateDto
     );
+    recordAudit({
+      userId,
+      companyId,
+      action: "emailTemplate.update",
+      entityType: "emailTemplate",
+      entityId: id,
+      before,
+      after: data,
+      changes: before
+        ? diffObjects(
+            before as unknown as Record<string, unknown>,
+            data as unknown as Record<string, unknown>
+          )
+        : null,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.status(200).json({ success: true, data });
   } catch (err) { next(err); }
 }
 export async function deleteTemplate(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId, userId } = auth(req);
-    const data = await EmailTemplatesSvc.deleteTemplate(companyId, userId, req.params.id as string);
+    const id = req.params.id as string;
+    const before = await EmailTemplatesSvc.getTemplate(companyId, userId, id).catch(() => null);
+    const data = await EmailTemplatesSvc.deleteTemplate(companyId, userId, id);
+    recordAudit({
+      userId,
+      companyId,
+      action: "emailTemplate.delete",
+      entityType: "emailTemplate",
+      entityId: id,
+      before,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
     res.status(200).json({ success: true, data });
   } catch (err) { next(err); }
 }
