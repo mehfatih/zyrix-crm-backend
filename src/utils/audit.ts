@@ -28,8 +28,15 @@ export interface AuditEntry {
   entityId?: string | null;
   changes?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
+  // Whole-record snapshots. Use these in addition to `changes` when the
+  // downstream compliance report needs the full pre/post payload.
+  before?: Record<string, unknown> | unknown | null;
+  after?: Record<string, unknown> | unknown | null;
   ipAddress?: string | null;
   userAgent?: string | null;
+  // Correlates a run of actions to a specific login session. When null
+  // we just don't populate the column (nullable in schema).
+  sessionId?: string | null;
 }
 
 /**
@@ -48,14 +55,39 @@ export async function recordAudit(entry: AuditEntry): Promise<void> {
         entityId: entry.entityId ?? null,
         changes: (entry.changes ?? null) as any,
         metadata: (entry.metadata ?? null) as any,
+        before: redactSensitive(entry.before) as any,
+        after: redactSensitive(entry.after) as any,
         ipAddress: entry.ipAddress ?? null,
         userAgent: entry.userAgent ?? null,
+        sessionId: entry.sessionId ?? null,
       },
     });
   } catch (err) {
     // Intentional: swallow. Console-log so Railway logs show it.
     console.error("[audit] write failed:", err);
   }
+}
+
+/**
+ * Recursively strip known-sensitive fields from a before/after snapshot.
+ * Matches the behaviour of diffObjects() but applies to whole-record
+ * payloads that go into the new JSONB columns.
+ */
+function redactSensitive(value: unknown): unknown {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return value.map(redactSensitive);
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_FIELDS.has(k)) {
+        out[k] = "[redacted]";
+      } else {
+        out[k] = redactSensitive(v);
+      }
+    }
+    return out;
+  }
+  return value;
 }
 
 /**
