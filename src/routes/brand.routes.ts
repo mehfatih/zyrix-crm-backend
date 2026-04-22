@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/auth";
+import { requirePermission } from "../middleware/requirePermission";
 import * as ctrl from "../controllers/brand.controller";
 
 // ============================================================================
@@ -18,12 +19,16 @@ router.get("/public", ctrl.getPublic);
 router.use(authenticateToken);
 
 router.get("/", ctrl.get);
-router.patch("/", ctrl.update);
-router.delete("/", ctrl.reset);
+router.patch("/", requirePermission("settings:branding"), ctrl.update);
+router.delete("/", requirePermission("settings:branding"), ctrl.reset);
 
 // Custom domain (enterprise)
-router.post("/domain", ctrl.setDomain);
-router.post("/domain/verify", ctrl.verifyDomain);
-router.delete("/domain", ctrl.removeDomain);
+router.post("/domain", requirePermission("settings:branding"), ctrl.setDomain);
+router.post(
+  "/domain/verify",
+  requirePermission("settings:branding"),
+  ctrl.verifyDomain
+);
+router.delete("/domain", requirePermission("settings:branding"), ctrl.removeDomain);
 
 export default router;

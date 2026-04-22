@@ -21,20 +21,7 @@ function auth(req: Request) {
   };
 }
 
-function requireAdminOrOwner(req: Request, res: Response): boolean {
-  const { role } = auth(req);
-  if (role !== "owner" && role !== "admin") {
-    res.status(403).json({
-      success: false,
-      error: {
-        code: "FORBIDDEN",
-        message: "Only owners and admins can update brand settings.",
-      },
-    });
-    return false;
-  }
-  return true;
-}
+// Authz enforced at the route level via requirePermission('settings:branding').
 
 // ──────────────────────────────────────────────────────────────────────
 // READ (authenticated) — /api/brand
@@ -70,7 +57,6 @@ export async function update(
   next: NextFunction
 ) {
   try {
-    if (!requireAdminOrOwner(req, res)) return;
     const { userId, companyId } = auth(req);
     const dto = updateSchema.parse(req.body);
     const data = await updateBrandSettings(companyId, dto);
@@ -99,7 +85,6 @@ export async function reset(
   next: NextFunction
 ) {
   try {
-    if (!requireAdminOrOwner(req, res)) return;
     const { userId, companyId } = auth(req);
     const data = await resetBrandSettings(companyId);
     await recordAudit({
@@ -130,7 +115,6 @@ export async function setDomain(
   next: NextFunction
 ) {
   try {
-    if (!requireAdminOrOwner(req, res)) return;
     const { userId, companyId } = auth(req);
     const { customDomain } = domainSchema.parse(req.body);
     const data = await setCustomDomain(companyId, customDomain);
@@ -155,7 +139,6 @@ export async function verifyDomain(
   next: NextFunction
 ) {
   try {
-    if (!requireAdminOrOwner(req, res)) return;
     const { userId, companyId } = auth(req);
     const data = await verifyCustomDomain(companyId);
     if (data.verified) {
@@ -180,7 +163,6 @@ export async function removeDomain(
   next: NextFunction
 ) {
   try {
-    if (!requireAdminOrOwner(req, res)) return;
     const { userId, companyId } = auth(req);
     const data = await removeCustomDomain(companyId);
     await recordAudit({

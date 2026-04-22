@@ -28,17 +28,8 @@ export async function create(
   next: NextFunction
 ) {
   try {
-    const { userId, companyId, role } = auth(req);
-    // API keys give full company access. Owner/admin only.
-    if (role !== "owner" && role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "FORBIDDEN",
-          message: "Only owners and admins can create API keys.",
-        },
-      });
-    }
+    const { userId, companyId } = auth(req);
+    // Authz enforced by requirePermission('settings:integrations').
     const dto = createSchema.parse(req.body) as any;
     const result = await createApiKey(companyId, userId, dto);
     await recordAudit({
@@ -60,16 +51,7 @@ export async function create(
 
 export async function list(req: Request, res: Response, next: NextFunction) {
   try {
-    const { companyId, role } = auth(req);
-    if (role !== "owner" && role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "FORBIDDEN",
-          message: "Only owners and admins can view API keys.",
-        },
-      });
-    }
+    const { companyId } = auth(req);
     const includeRevoked = req.query.includeRevoked === "true";
     const data = await listApiKeys(companyId, { includeRevoked });
     res.status(200).json({ success: true, data });
@@ -84,16 +66,7 @@ export async function revoke(
   next: NextFunction
 ) {
   try {
-    const { userId, companyId, role } = auth(req);
-    if (role !== "owner" && role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "FORBIDDEN",
-          message: "Only owners and admins can revoke API keys.",
-        },
-      });
-    }
+    const { userId, companyId } = auth(req);
     const id = req.params.id as string;
     const result = await revokeApiKey(companyId, id);
     await recordAudit({

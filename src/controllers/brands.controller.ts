@@ -17,17 +17,7 @@ function auth(req: Request) {
   return { userId: r.user.userId, companyId: r.user.companyId, role: r.user.role };
 }
 
-function requireAdminOrOwner(req: Request, res: Response): boolean {
-  const { role } = auth(req);
-  if (role !== "owner" && role !== "admin") {
-    res.status(403).json({
-      success: false,
-      error: { code: "FORBIDDEN", message: "Only owners and admins can manage brands." },
-    });
-    return false;
-  }
-  return true;
-}
+// Authz enforced at the route level via requirePermission('settings:branding').
 
 export async function list(req: Request, res: Response, next: NextFunction) {
   try {
@@ -66,7 +56,6 @@ const createSchema = z.object({
 
 export async function create(req: Request, res: Response, next: NextFunction) {
   try {
-    if (!requireAdminOrOwner(req, res)) return;
     const { userId, companyId } = auth(req);
     const dto = createSchema.parse(req.body) as any;
     const data = await createBrand(companyId, dto);
@@ -90,7 +79,6 @@ const updateSchema = createSchema.partial().extend({
 
 export async function update(req: Request, res: Response, next: NextFunction) {
   try {
-    if (!requireAdminOrOwner(req, res)) return;
     const { userId, companyId } = auth(req);
     const dto = updateSchema.parse(req.body) as any;
     const data = await updateBrand(companyId, req.params.id as string, dto);
@@ -110,7 +98,6 @@ export async function update(req: Request, res: Response, next: NextFunction) {
 
 export async function setDefault(req: Request, res: Response, next: NextFunction) {
   try {
-    if (!requireAdminOrOwner(req, res)) return;
     const { userId, companyId } = auth(req);
     const data = await setDefaultBrand(companyId, req.params.id as string);
     await recordAudit({
@@ -128,7 +115,6 @@ export async function setDefault(req: Request, res: Response, next: NextFunction
 
 export async function remove(req: Request, res: Response, next: NextFunction) {
   try {
-    if (!requireAdminOrOwner(req, res)) return;
     const { userId, companyId } = auth(req);
     const data = await deleteBrand(companyId, req.params.id as string);
     await recordAudit({

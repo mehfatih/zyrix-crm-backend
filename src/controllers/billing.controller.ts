@@ -67,19 +67,9 @@ export async function cancel(
   next: NextFunction
 ) {
   try {
-    const { userId, companyId, role } = auth(req);
+    const { userId, companyId } = auth(req);
     const id = req.params.id as string;
-    // Only owners/admins can cancel billing — member/manager shouldn't
-    // accidentally downgrade the company.
-    if (role !== "owner" && role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "FORBIDDEN",
-          message: "Only owners and admins can cancel the subscription.",
-        },
-      });
-    }
+    // Authz enforced by requirePermission('settings:billing') on the route.
     const data = await BillingSvc.cancelSubscription(companyId, id);
     await recordAudit({
       userId,
@@ -101,17 +91,9 @@ export async function resume(
   next: NextFunction
 ) {
   try {
-    const { userId, companyId, role } = auth(req);
+    const { userId, companyId } = auth(req);
     const id = req.params.id as string;
-    if (role !== "owner" && role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "FORBIDDEN",
-          message: "Only owners and admins can modify the subscription.",
-        },
-      });
-    }
+    // Authz enforced by requirePermission('settings:billing') on the route.
     const data = await BillingSvc.resumeSubscription(companyId, id);
     await recordAudit({
       userId,
