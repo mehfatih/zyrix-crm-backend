@@ -53,6 +53,9 @@ import sessionEventsRoutes from "./routes/session-events.routes";
 import featureFlagsRoutes from "./routes/feature-flags.routes";
 import rolesRoutes from "./routes/roles.routes";
 import auditLogsRoutes from "./routes/audit-logs.routes";
+import ipAllowlistRoutes from "./routes/ip-allowlist.routes";
+import { enforceIpAllowlist } from "./middleware/ipAllowlist";
+import { authenticateToken } from "./middleware/auth";
 import { seedSystemRolesForAllCompanies } from "./services/roles.service";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
@@ -192,6 +195,7 @@ app.use("/api/session-events", sessionEventsRoutes);
 app.use("/api/feature-flags", featureFlagsRoutes);
 app.use("/api", rolesRoutes);
 app.use("/api/audit-logs", auditLogsRoutes);
+app.use("/api/admin/ip-allowlist", ipAllowlistRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key

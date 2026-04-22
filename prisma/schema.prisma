@@ -1991,6 +1991,24 @@ model TaxInvoice {
 //   • Retention — can be rolled up/archived separately if volume
 //     becomes an issue; business audit events need to be kept much
 //     longer for compliance
+// ─────────────────────────────────────────────────────────────────────────
+// IP ALLOWLIST — P4
+// ─────────────────────────────────────────────────────────────────────────
+// Per-company CIDR blocks. When a company has ANY entry in this table,
+// all authenticated requests must originate from an IP that falls in
+// one of the ranges. Empty list = allow all (opt-in feature).
+model IpAllowlist {
+  id        String   @id @default(uuid())
+  companyId String
+  cidr      String   // e.g. "203.0.113.0/24" or "203.0.113.42/32"
+  label     String   // e.g. "Office", "VPN", "Home"
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@map("ip_allowlist")
+}
+
 model SessionEvent {
   id        String @id @default(uuid())
   userId    String
