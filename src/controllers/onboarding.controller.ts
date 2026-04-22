@@ -61,7 +61,35 @@ export async function invite(
       req.body ?? {}
     ) as OnboardingSvc.InviteColleagueInput;
     const data = await OnboardingSvc.inviteColleague(companyId, userId, body);
+    // Inviting someone marks the invitedTeam step so the wizard reflects
+    // reality without a separate PATCH call.
+    await OnboardingSvc.updateOnboardingProgress(companyId, {
+      invitedTeam: true,
+    });
     res.status(201).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const progressSchema = z.object({
+  profile: z.boolean().optional(),
+  country: z.boolean().optional(),
+  firstCustomer: z.boolean().optional(),
+  invitedTeam: z.boolean().optional(),
+  firstDeal: z.boolean().optional(),
+});
+
+export async function patchProgress(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId } = auth(req);
+    const body = progressSchema.parse(req.body ?? {});
+    const data = await OnboardingSvc.updateOnboardingProgress(companyId, body);
+    res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);
   }

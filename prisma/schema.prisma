@@ -52,6 +52,12 @@ model Company {
   // timestamp, which flips the dashboard banner off and stops the
   // /onboarding redirect.
   onboardingCompletedAt DateTime?
+  // Per-step completion map for the 5-step onboarding wizard (P3).
+  // Shape: { profile: bool, country: bool, firstCustomer: bool,
+  //          invitedTeam: bool, firstDeal: bool }.
+  // Missing keys are treated as false. Survives sign-out so the wizard
+  // can resume where it left off.
+  onboardingProgress Json @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

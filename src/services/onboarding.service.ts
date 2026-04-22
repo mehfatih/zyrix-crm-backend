@@ -22,6 +22,19 @@ import { env } from "../config/env";
 // redirect the user to /onboarding.
 // ──────────────────────────────────────────────────────────────────────
 
+export const ONBOARDING_STEPS = [
+  "profile",
+  "country",
+  "firstCustomer",
+  "invitedTeam",
+  "firstDeal",
+] as const;
+export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+
+export function isOnboardingStep(s: string): s is OnboardingStep {
+  return (ONBOARDING_STEPS as readonly string[]).includes(s);
+}
+
 export async function getOnboardingStatus(companyId: string, userId: string) {
   const company = await prisma.company.findUnique({
     where: { id: companyId },
@@ -31,6 +44,7 @@ export async function getOnboardingStatus(companyId: string, userId: string) {
       country: true,
       baseCurrency: true,
       onboardingCompletedAt: true,
+      onboardingProgress: true,
     },
   });
   if (!company) throw notFound("Company not found");
@@ -52,14 +66,78 @@ export async function getOnboardingStatus(companyId: string, userId: string) {
     prisma.user.count({ where: { companyId, status: "active" } }),
   ]);
 
+  const progress = normalizeProgress(company.onboardingProgress);
+  const remaining = ONBOARDING_STEPS.filter((s) => !progress[s]);
+  const completedCount = ONBOARDING_STEPS.length - remaining.length;
+
   return {
     completed: company.onboardingCompletedAt !== null,
     company,
     user,
+    progress,
+    remaining,
+    percent: Math.round((completedCount / ONBOARDING_STEPS.length) * 100),
     signals: {
       storesConnected,
       teamMembers, // includes the current user, so 1 means 'solo'
     },
+  };
+}
+
+function normalizeProgress(raw: unknown): Record<OnboardingStep, boolean> {
+  const base: Record<OnboardingStep, boolean> = {
+    profile: false,
+    country: false,
+    firstCustomer: false,
+    invitedTeam: false,
+    firstDeal: false,
+  };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
+  for (const step of ONBOARDING_STEPS) {
+    if ((raw as Record<string, unknown>)[step] === true) base[step] = true;
+  }
+  return base;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// PROGRESS — patch individual step flags. Setting all five to true also
+// flips onboardingCompletedAt automatically, so the frontend can mark
+// the final step and not need a separate /complete call.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function updateOnboardingProgress(
+  companyId: string,
+  patch: Partial<Record<OnboardingStep, boolean>>
+) {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { onboardingProgress: true, onboardingCompletedAt: true },
+  });
+  if (!company) throw notFound("Company not found");
+
+  const current = normalizeProgress(company.onboardingProgress);
+  const next: Record<OnboardingStep, boolean> = { ...current };
+  for (const [k, v] of Object.entries(patch)) {
+    if (isOnboardingStep(k)) next[k] = !!v;
+  }
+  const allDone = ONBOARDING_STEPS.every((s) => next[s]);
+
+  const updated = await prisma.company.update({
+    where: { id: companyId },
+    data: {
+      onboardingProgress: next as any,
+      ...(allDone && !company.onboardingCompletedAt
+        ? { onboardingCompletedAt: new Date() }
+        : {}),
+    },
+    select: {
+      onboardingProgress: true,
+      onboardingCompletedAt: true,
+    },
+  });
+  return {
+    progress: normalizeProgress(updated.onboardingProgress),
+    completed: updated.onboardingCompletedAt !== null,
   };
 }
 

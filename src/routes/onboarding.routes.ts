@@ -8,5 +8,6 @@ router.use(authenticateToken);
 router.get("/status", controller.status);
 router.post("/complete", controller.complete);
 router.post("/invite-colleague", controller.invite);
+router.patch("/progress", controller.patchProgress);
 
 export default router;
