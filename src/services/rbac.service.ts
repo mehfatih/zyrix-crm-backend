@@ -47,23 +47,34 @@ export async function getEffectivePermissions(
 ): Promise<Permission[]> {
   if (roleHint === "super_admin") return [...ALL];
 
-  const rows = (await prisma.$queryRawUnsafe(
-    `SELECT u."role", u."customRoleId", r."permissions"
-       FROM "users" u
-       LEFT JOIN "roles" r ON r."id" = u."customRoleId"
-      WHERE u."id" = $1
-      LIMIT 1`,
-    userId
-  )) as Array<{ role: string; customRoleId: string | null; permissions: unknown }>;
+  // Step 1: read the user's role string + customRoleId from the users
+  // table. Always works regardless of whether the roles table exists.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, customRoleId: true },
+  });
+  if (!user) return [];
 
-  if (rows.length === 0) return [];
-  const row = rows[0];
-
-  if (row.customRoleId && row.permissions !== null && row.permissions !== undefined) {
-    return parsePermissionsJson(row.permissions);
+  // Step 2 (optional): if customRoleId is set, fetch that role's
+  // permissions. Wrapped in try/catch so a missing `roles` table (pre-
+  // SQL-apply) gracefully degrades to the built-in role fallback
+  // rather than throwing a 500.
+  if (user.customRoleId) {
+    try {
+      const role = await prisma.role.findUnique({
+        where: { id: user.customRoleId },
+        select: { permissions: true },
+      });
+      if (role) return parsePermissionsJson(role.permissions);
+    } catch (err) {
+      console.warn(
+        "[rbac] roles table lookup failed; falling back to built-in role map:",
+        (err as Error).message
+      );
+    }
   }
 
-  return getBuiltInRolePermissions(row.role);
+  return getBuiltInRolePermissions(user.role);
 }
 
 export async function userHasPermission(
