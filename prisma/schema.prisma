@@ -1992,6 +1992,29 @@ model TaxInvoice {
 //     becomes an issue; business audit events need to be kept much
 //     longer for compliance
 // ─────────────────────────────────────────────────────────────────────────
+// DATA RETENTION — P5
+// ─────────────────────────────────────────────────────────────────────────
+// Per-company per-entity retention policies. Daily cron (see
+// src/cron/data-retention.ts) hard-deletes rows older than retentionDays
+// unless legalHold is on. Supported entityType values: 'audit_log',
+// 'activity', 'session_event', 'message'. Extensible by adding more
+// cases in the cron file.
+model RetentionPolicy {
+  id            String   @id @default(uuid())
+  companyId     String
+  entityType    String
+  retentionDays Int
+  legalHold     Boolean  @default(false)
+  legalHoldReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([companyId, entityType])
+  @@index([companyId])
+  @@map("retention_policies")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // IP ALLOWLIST — P4
 // ─────────────────────────────────────────────────────────────────────────
 // Per-company CIDR blocks. When a company has ANY entry in this table,

@@ -54,7 +54,9 @@ import featureFlagsRoutes from "./routes/feature-flags.routes";
 import rolesRoutes from "./routes/roles.routes";
 import auditLogsRoutes from "./routes/audit-logs.routes";
 import ipAllowlistRoutes from "./routes/ip-allowlist.routes";
+import retentionRoutes from "./routes/retention.routes";
 import { enforceIpAllowlist } from "./middleware/ipAllowlist";
+import { startRetentionCron } from "./cron/data-retention";
 import { authenticateToken } from "./middleware/auth";
 import { seedSystemRolesForAllCompanies } from "./services/roles.service";
 import { seedTemplates } from "./services/templates-seed";
@@ -196,6 +198,7 @@ app.use("/api/feature-flags", featureFlagsRoutes);
 app.use("/api", rolesRoutes);
 app.use("/api/audit-logs", auditLogsRoutes);
 app.use("/api/admin/ip-allowlist", ipAllowlistRoutes);
+app.use("/api/data-retention", retentionRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key
@@ -233,6 +236,7 @@ const server = app.listen(env.PORT, () => {
   startSyncScheduler();
   startWorkflowWorker();
   startScheduledReportsWorker();
+  startRetentionCron();
 
   // Seed curated templates — idempotent upsert by slug. Failures here
   // shouldn't crash the server; template gallery will just show whatever
