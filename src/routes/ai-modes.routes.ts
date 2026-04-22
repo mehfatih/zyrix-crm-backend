@@ -1,6 +1,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { authenticateToken } from "../middleware/auth";
+import { gateFeature } from "../middleware/feature-gate";
 import * as ctrl from "../controllers/ai-modes.controller";
 
 // Gemini calls are latency-expensive + token-cost. Cap per user to keep
@@ -14,6 +15,7 @@ const limiter = rateLimit({
 
 const router = Router();
 router.use(authenticateToken);
+router.use(gateFeature("ai_build_modes"));
 router.use(limiter);
 
 router.post("/architect", ctrl.architect);

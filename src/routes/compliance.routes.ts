@@ -1,6 +1,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { authenticateCompliance } from "../middleware/complianceAuth";
+import { gateFeature } from "../middleware/feature-gate";
 import * as ctrl from "../controllers/compliance.controller";
 
 // Aggressive rate limit: compliance exports are expensive + infrequent.
@@ -23,6 +24,7 @@ const limiter = rateLimit({
 const router = Router();
 router.use(limiter);
 router.use(authenticateCompliance());
+router.use(gateFeature("compliance_api"));
 
 // Tokens — only usable via JWT (admin:compliance). A token can manage
 // other tokens, which is a footgun we avoid by checking role here.

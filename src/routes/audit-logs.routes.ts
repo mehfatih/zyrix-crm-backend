@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/auth";
 import { requirePermission } from "../middleware/requirePermission";
+import { gateFeature } from "../middleware/feature-gate";
 import * as ctrl from "../controllers/audit-logs.controller";
 
 const router = Router();
@@ -9,6 +10,7 @@ const router = Router();
 // /api/audit-logs base; the legacy /api/security/audit is kept in
 // security.routes.ts for backwards compatibility with the existing UI.
 router.use(authenticateToken);
+router.use(gateFeature("audit_advanced"));
 router.use(requirePermission("admin:audit"));
 
 router.get("/", ctrl.list);

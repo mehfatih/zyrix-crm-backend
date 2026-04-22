@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/auth";
+import { gateFeature } from "../middleware/feature-gate";
 import * as ctrl from "../controllers/workflows.controller";
 
 const router = Router();
 router.use(authenticateToken);
+router.use(gateFeature("ai_workflows"));
 
 // Spec catalog for the visual builder (triggers, actions, condition operators)
 router.get("/catalog", ctrl.catalog);
