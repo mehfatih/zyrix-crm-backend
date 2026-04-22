@@ -51,6 +51,7 @@ import brandsRoutes from "./routes/brands.routes";
 import taxInvoicesRoutes from "./routes/tax-invoices.routes";
 import sessionEventsRoutes from "./routes/session-events.routes";
 import featureFlagsRoutes from "./routes/feature-flags.routes";
+import rolesRoutes from "./routes/roles.routes";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
 import { startWorkflowWorker } from "./cron/workflow-worker";
@@ -187,6 +188,7 @@ app.use("/api/brands", brandsRoutes);
 app.use("/api/tax-invoices", taxInvoicesRoutes);
 app.use("/api/session-events", sessionEventsRoutes);
 app.use("/api/feature-flags", featureFlagsRoutes);
+app.use("/api", rolesRoutes);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key
