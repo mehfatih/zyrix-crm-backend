@@ -85,6 +85,7 @@ model Company {
   planOverrides  PlanOverride[]
   supportTickets SupportTicket[]
   auditLogs      AuditLog[]
+  roles          Role[]
 
   @@index([status])
   @@index([plan])
@@ -102,6 +103,10 @@ model User {
   fullName                 String
   phone                    String?
   role                     String    @default("member")
+  // Optional pointer to a custom Role (RBAC, P1). When null, the user's
+  // effective permissions come from the built-in `role` string above.
+  // When set, permissions on the linked Role override the built-in map.
+  customRoleId             String?
   googleId                 String?   @unique
   emailVerified            Boolean   @default(false)
   twoFactorSecret          String?
@@ -141,6 +146,7 @@ model User {
   updatedAt DateTime @updatedAt
 
   company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customRole      Role?           @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
   refreshTokens   RefreshToken[]
   ownedCustomers  Customer[]      @relation("CustomerOwner")
   ownedDeals      Deal[]          @relation("DealOwner")
@@ -163,6 +169,7 @@ model User {
   @@index([googleId])
   @@index([companyId])
   @@index([role])
+  @@index([customRoleId])
   @@index([status])
   @@map("users")
 }
@@ -1986,4 +1993,33 @@ model SessionEvent {
   @@index([companyId, eventType, createdAt])
   @@index([userId, createdAt])
   @@map("session_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ROLES — Role-Based Access Control (P1)
+// ─────────────────────────────────────────────────────────────────────────
+// Per-company roles with a fine-grained permission array. The 4 built-in
+// roles (owner/admin/manager/member) are seeded with isSystem=true and
+// must not be edited/deleted via the public API — their permission sets
+// live in code (src/constants/permissions.ts) and serve as the fallback
+// when User.customRoleId is null. Custom roles created by merchants are
+// isSystem=false and fully editable.
+model Role {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  // String array of permission keys from the PERMISSIONS catalog, e.g.
+  //   ["customers:read", "customers:write", "deals:read", ...]
+  permissions Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users   User[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("roles")
 }
