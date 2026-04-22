@@ -1992,6 +1992,29 @@ model TaxInvoice {
 //     becomes an issue; business audit events need to be kept much
 //     longer for compliance
 // ─────────────────────────────────────────────────────────────────────────
+// COMPLIANCE TOKENS — P6
+// ─────────────────────────────────────────────────────────────────────────
+// Per-company bearer tokens used to authenticate the compliance API
+// independently of user JWTs. Issued by merchant owners, stored as
+// bcrypt hashes so a DB leak can't replay tokens. The plaintext is
+// shown ONCE at issue time and never stored.
+model ComplianceToken {
+  id        String   @id @default(uuid())
+  companyId String
+  label     String
+  tokenHash String   @unique
+  prefix    String   // first 8 chars of plaintext, for "tok_1234abcd..." identification in UI
+  createdBy String
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([companyId])
+  @@index([prefix])
+  @@map("compliance_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // DATA RETENTION — P5
 // ─────────────────────────────────────────────────────────────────────────
 // Per-company per-entity retention policies. Daily cron (see
