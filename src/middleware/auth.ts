@@ -1,6 +1,12 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../utils/jwt";
 import type { AuthenticatedRequest } from "../types";
+import { enforceIpAllowlist } from "./ipAllowlist";
+
+// Allowlist enforcement is composed onto every successful token verification
+// so P4 applies globally without touching every router. Companies with no
+// rules are pass-through (opt-in), and DB errors fail open.
+const ipAllowlistCheck = enforceIpAllowlist();
 
 // ============================================================================
 // AUTHENTICATION MIDDLEWARE
@@ -51,7 +57,8 @@ export function authenticateToken(
       role: decoded.role as "super_admin" | "owner" | "admin" | "manager" | "member",
     };
 
-    next();
+    ipAllowlistCheck(req, res, next);
+    return;
   } catch (error) {
     if (error instanceof Error) {
       if (error.message === "TOKEN_EXPIRED") {
