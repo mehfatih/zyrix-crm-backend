@@ -2289,3 +2289,67 @@ model Role {
   @@index([companyId])
   @@map("roles")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// DOCS ANALYTICS — knowledge-hub telemetry (Docs Sprint)
+// ─────────────────────────────────────────────────────────────────────────
+// Tracks article views, search queries, and helpful ratings so the admin
+// panel can surface top articles, top searches, and content flagged for
+// improvement. Rows are untyped at the DB level to allow new event types
+// without migrations.
+model DocEvent {
+  id        String   @id @default(uuid())
+  // 'view' — an article page was opened
+  // 'dwell' — time-on-page beacon fired on unload
+  // 'search' — a search query was submitted
+  // 'helpful' — user rated an article
+  eventType String
+  locale    String
+  // Category + slug are populated for view/dwell/helpful; null for search.
+  category  String?
+  slug      String?
+  // Full text of the user's search query; null for view/dwell/helpful.
+  query     String?
+  // seconds for dwell events, null otherwise
+  durationSeconds Int?
+  // true/false for helpful events, null otherwise
+  helpful   Boolean?
+  // Optional freeform metadata (user agent, viewport, override flags).
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([eventType, createdAt])
+  @@index([locale, category, slug, createdAt])
+  @@index([eventType, locale, createdAt])
+  @@map("doc_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DOCS ARTICLE META — admin-editable metadata layered over the markdown
+// source of truth. Used to mark articles as "recently updated", toggle
+// published/draft state, and pin featured articles without editing MD.
+// ─────────────────────────────────────────────────────────────────────────
+model DocArticleMeta {
+  id           String   @id @default(uuid())
+  // Composite identity: locale + category + slug
+  locale       String
+  category     String
+  slug         String
+  // Admin-overridable title (defaults to markdown frontmatter title)
+  title        String?
+  // Plan badges override: null means "use markdown frontmatter"
+  plansJson    Json?
+  // draft | published
+  status       String   @default("published")
+  // Shows a "Recently updated" badge on the site
+  recentlyUpdated Boolean @default(false)
+  // Admin-provided internal notes (not shown publicly)
+  internalNotes String?
+  updatedByUserId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([locale, category, slug])
+  @@index([status])
+  @@map("doc_article_meta")
+}

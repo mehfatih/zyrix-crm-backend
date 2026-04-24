@@ -62,6 +62,7 @@ import networkRulesRoutes from "./routes/network-rules.routes";
 import documentsRoutes from "./routes/documents.routes";
 import aiModesRoutes from "./routes/ai-modes.routes";
 import bonusRoutes from "./routes/bonus.routes";
+import docsRoutes, { adminDocsRouter } from "./routes/docs.routes";
 import { startDocumentsReindexCron } from "./cron/documents-reindex";
 import { networkRules } from "./middleware/networkRules";
 import { enforceIpAllowlist } from "./middleware/ipAllowlist";
@@ -219,6 +220,8 @@ app.use("/api/admin/network-rules", networkRulesRoutes);
 app.use("/api/documents", documentsRoutes);
 app.use("/api/ai", aiModesRoutes);
 app.use("/api/bonus", bonusRoutes);
+app.use("/api/docs", docsRoutes);
+app.use("/api/admin/docs", adminDocsRouter);
 // Public workflow webhook receiver — no auth, rate-limited per workflow
 app.use("/wh", workflowWebhookRouter);
 // Public API v1 — API-key auth, rate-limited per key
