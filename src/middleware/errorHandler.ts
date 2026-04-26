@@ -56,15 +56,16 @@ export function errorHandler(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _next: NextFunction
 ): void {
-  // Log error in development
-  if (isDevelopment) {
-    console.error("[ERROR]", {
-      url: req.url,
-      method: req.method,
-      error: err.message,
-      stack: err.stack,
-    });
-  }
+  // Log every error to stderr — captured by Railway runtime logs in prod.
+  // The response body separately redacts message + stack in non-dev
+  // (see the unknown-error branch at the end of this function), so the
+  // stack goes to logs but never to the client.
+  console.error("[ERROR]", {
+    url: req.url,
+    method: req.method,
+    error: err.message,
+    stack: err.stack,
+  });
 
   // Zod validation errors
   if (err instanceof ZodError) {
