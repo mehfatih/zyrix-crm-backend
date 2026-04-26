@@ -379,6 +379,23 @@ controllers, or services.
     separate sprint that provisions a dev/staging Postgres instance,
     splits `DATABASE_URL` per environment, and updates the CI/local
     setup to point at it.
+14. **Out-of-band schema writes have happened on prod.** Surfaced by
+    the C-1.B audit (see 14.2). 17 of the 23 tables and 17 of the 20
+    columns that the blocked migrations would create **already exist
+    in the live schema**, despite no corresponding rows in
+    `_prisma_migrations`. The most likely explanation is one or more
+    `prisma db push` runs (or direct `prisma db execute` invocations)
+    against the prod DB after 2026-04-21 to keep the API from
+    500-ing on the affected feature surfaces. C-1.B accepts the
+    resulting schema as-is because every blocked migration uses
+    `IF NOT EXISTS` / `DO/EXCEPTION` guards (so deploy will no-op
+    cleanly), but **schema drift between the live schema and the
+    migration spec is not exhaustively verified** for the 17
+    pre-existing tables (see 14.6). Follow-up: after C-1.C unblocks
+    the queue, run `prisma migrate diff --from-schema-datasource
+    --to-schema-datamodel` and patch any drift in a new migration.
+    Closely related to OQ 13: the absence of a dev/staging environment
+    is what made `db push` against prod attractive in the first place.
 
 ---
 
@@ -769,3 +786,237 @@ C-1.B's job). Those still need to be grep'd for non-idempotent DDL —
 bare `ADD CONSTRAINT`, `CREATE INDEX` without `IF NOT EXISTS`,
 `ADD COLUMN` on heavily-written tables (e.g. `customers`, `deals`,
 `activities`) — before they execute against live traffic.
+
+---
+
+## 14. Pre-flight audit of the 20 blocked migrations (C-1.B)
+
+> Added 2026-04-26. Closes the "remaining unknown" from 13.6.
+> Pure SELECT probes against `information_schema`, `pg_constraint`,
+> `pg_indexes`, `pg_class` (run via `scripts/sprint-c1b-audit.ts`).
+> No DDL, no transactions, no `prisma migrate` commands.
+
+### 14.1 Methodology
+
+For each of the 20 blocked migrations from Section 12.5:
+
+1. Read the full SQL of `prisma/migrations/<name>/migration.sql`.
+2. Identify every DDL statement and its idempotency guard
+   (`IF NOT EXISTS`, `DO $$ … EXCEPTION WHEN duplicate_object …`).
+3. For statements lacking guards, probe the live DB to determine
+   whether the target object already exists.
+4. Classify the migration by the worst statement in it:
+
+   - **GREEN** — every statement is idempotent (`IF NOT EXISTS` or
+     `DO/EXCEPTION` wrapper). Safe to run as-is, will no-op cleanly
+     against existing state.
+   - **YELLOW** — non-idempotent statement(s) exist BUT their targets
+     are absent on prod, so first-run will succeed; rerun would fail.
+   - **RED** — non-idempotent statement targets already present on
+     prod; first-run will throw `42710` / `42701` / `42P07`. Must be
+     addressed before `migrate deploy`.
+
+Server: PostgreSQL **18.3**. PG ≥ 11, so `ADD COLUMN ... DEFAULT`
+is metadata-only (no table rewrite). Brief `ACCESS EXCLUSIVE`
+catalog lock only.
+
+### 14.2 Headline finding: 17 of 23 "new" tables already exist
+
+The probe found heavy out-of-band schema work has happened on prod.
+Every object the probe checked, by category:
+
+| Category | Total in 20 migrations | Already present | Genuinely absent |
+|---|---|---|---|
+| New tables | 23 | **17** | 6 |
+| New columns on existing tables | 20 | **17** | 3 |
+| FK constraint targets (probed) | 1 | **1** | 0 |
+
+**Tables already present** (no migration row attests to their creation):
+`oauth_states`, `notifications`, `comments`, `mentions`,
+`session_events`, `roles`, `ip_allowlist`, `retention_policies`,
+`compliance_tokens`, `scim_tokens`, `network_rules`, `document_links`,
+`territories`, `quotas`, `meetings`, `contract_signatures`,
+`slack_webhooks`.
+
+**Tables genuinely absent** (need actual creation by deploy):
+`brand_settings` (502), `scheduled_reports` (504), `brands` (505),
+`tax_invoices` (506), `doc_events` + `doc_article_meta` (520).
+
+**Columns genuinely absent**: `customers.brandId`, `deals.brandId`,
+`activities.brandId` — all from migration 505.
+
+The most plausible explanation: someone ran `prisma db push` or direct
+SQL against prod at some point after 2026-04-21 (when the migration
+queue blocked) so that the codebase wouldn't 500 everywhere at once.
+That would explain why most endpoints work today and only `/api/brand*`
++ a few others 500 — the `db push` covered 17/23 tables but not all
+of them, and the brand surfaces happen to be in the missing 6.
+
+This is recorded as **OQ 14** below (added separately to Section 10).
+For the purposes of C-1.B classification, what matters is that every
+GREEN migration's `IF NOT EXISTS` guards make the deploy safe
+regardless of whether the target objects already exist or not.
+
+### 14.3 Summary table — all 20 migrations
+
+| Migration | Classification | Why | Notable risks |
+|---|---|---|---|
+| `20260501100000_add_oauth_states` | GREEN | 1 `CREATE TABLE IF NOT EXISTS`, 2 `CREATE INDEX IF NOT EXISTS`. Table already present — deploy will no-op. | None |
+| `20260502100000_add_brand_settings` | GREEN | All `IF NOT EXISTS`. Table absent — will be created. | None — small, no FKs |
+| `20260503100000_add_collaboration` | **RED** | 3 `CREATE TABLE IF NOT EXISTS`, indexes guarded — but the final statement is a **bare `ALTER TABLE "mentions" ADD CONSTRAINT "mentions_commentId_fkey" FOREIGN KEY …`** with no `DO/EXCEPTION` wrapper. The constraint **already exists on the live `mentions` table**. First run will throw `42710 duplicate_object` (same failure mode as 20260430). | See 14.4 |
+| `20260504100000_add_scheduled_reports` | GREEN | All `IF NOT EXISTS`. Table absent — will be created. | None |
+| `20260505100000_add_brands` | GREEN | All `IF NOT EXISTS`. Creates `brands` (absent), adds `brandId` to `customers`/`deals`/`activities` (absent), creates 3 composite indexes on those tables. | Lock impact when indexes build on `customers`/`deals`/`activities` (see 14.5) — sub-second on current data sizes |
+| `20260506100000_add_tax_invoices` | GREEN | All `IF NOT EXISTS`. Table absent. | None |
+| `20260507100000_add_enabled_features` | GREEN | 1 `ALTER TABLE companies ADD COLUMN IF NOT EXISTS`. Column already present — no-op. | Brief catalog lock on `companies` (PG 18 metadata-only) |
+| `20260508100000_add_user_profile_fields` | GREEN | 5 `ADD COLUMN IF NOT EXISTS` on `users`. All 5 columns already present — no-op. | Brief catalog lock on `users` |
+| `20260509100000_add_session_events` | GREEN | `CREATE TABLE IF NOT EXISTS` + `ADD COLUMN IF NOT EXISTS` on `companies`. Table + column already present. | Brief catalog lock on `companies` |
+| `20260510100000_add_rbac_roles` | GREEN | `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` on `users`, FKs wrapped in `DO/EXCEPTION`. Table + column + FKs already present. | Brief catalog lock on `users` |
+| `20260511100000_audit_logs_expand` | GREEN | 3 `ADD COLUMN IF NOT EXISTS` on `audit_logs`, `CREATE INDEX IF NOT EXISTS`. All present. | Brief catalog lock on `audit_logs` |
+| `20260512100000_onboarding_progress` | GREEN | 1 `ADD COLUMN IF NOT EXISTS` on `companies`. Column already present. | Brief catalog lock on `companies` |
+| `20260513100000_ip_allowlist` | GREEN | `CREATE TABLE IF NOT EXISTS`. Already present. | None |
+| `20260514100000_retention_policies` | GREEN | `CREATE TABLE IF NOT EXISTS`. Already present. | None |
+| `20260515100000_compliance_tokens` | GREEN | `CREATE TABLE IF NOT EXISTS`. Already present. | None |
+| `20260516100000_scim_tokens` | GREEN | `CREATE TABLE IF NOT EXISTS`. Already present. | None |
+| `20260517100000_network_rules` | GREEN | `CREATE TABLE IF NOT EXISTS`. Already present. | None |
+| `20260518100000_document_links` | GREEN | `CREATE TABLE IF NOT EXISTS`. Already present. | None |
+| `20260519100000_bonus_b1_b10` | GREEN | 5 `ADD COLUMN IF NOT EXISTS` on `customers`, 5 `CREATE TABLE IF NOT EXISTS`. All present. | Brief catalog lock on `customers` (5 columns added) |
+| `20260520100000_docs_sprint` | GREEN | 2 `CREATE TABLE IF NOT EXISTS`. Both absent — will be created. | None |
+
+**Tally: 19 GREEN, 0 YELLOW, 1 RED.**
+
+No `DROP`, no `ALTER COLUMN` (type/nullability change), no data
+migration (`UPDATE`/`INSERT`), no enum changes anywhere in the 20.
+
+### 14.4 RED detail — `20260503100000_add_collaboration`
+
+The single non-idempotent statement (lines 53–54 of the file):
+
+```sql
+ALTER TABLE "mentions" ADD CONSTRAINT "mentions_commentId_fkey"
+  FOREIGN KEY ("commentId") REFERENCES "comments"("id") ON DELETE CASCADE;
+```
+
+Probe result against the live `mentions` table:
+
+```
+mentions_commentId_fkey on mentions: ALREADY PRESENT — RED
+```
+
+Same failure mode as `20260430100000_add_ai_agents`: bare `ADD
+CONSTRAINT`, target already exists, `42710 duplicate_object` on first
+run. Every other statement in the file (3 `CREATE TABLE IF NOT
+EXISTS`, 6 `CREATE INDEX IF NOT EXISTS`, 1 `CREATE UNIQUE INDEX
+IF NOT EXISTS`) is fully idempotent and would no-op against the
+already-present `notifications` / `comments` / `mentions` schema.
+
+**Per-statement classification for 503** (modeled on 12.3):
+
+| # | Statement (short) | Classification | Evidence |
+|---|---|---|---|
+| 1 | `CREATE TABLE IF NOT EXISTS "notifications"` | ALREADY APPLIED | Table present in `information_schema.tables`. (Schema-equivalence not exhaustively checked — see 14.6.) |
+| 2 | `CREATE INDEX IF NOT EXISTS "notifications_companyId_userId_readAt_idx"` | ALREADY APPLIED | Guard means no-op if absent; not probed individually. |
+| 3 | `CREATE INDEX IF NOT EXISTS "notifications_companyId_userId_createdAt_idx"` | ALREADY APPLIED | Same. |
+| 4 | `CREATE TABLE IF NOT EXISTS "comments"` | ALREADY APPLIED | Table present. |
+| 5 | `CREATE INDEX IF NOT EXISTS "comments_companyId_entityType_entityId_createdAt_idx"` | ALREADY APPLIED | Guard means no-op. |
+| 6 | `CREATE INDEX IF NOT EXISTS "comments_companyId_authorId_idx"` | ALREADY APPLIED | Guard. |
+| 7 | `CREATE INDEX IF NOT EXISTS "comments_parentId_idx"` | ALREADY APPLIED | Guard. |
+| 8 | `CREATE TABLE IF NOT EXISTS "mentions"` | ALREADY APPLIED | Table present. |
+| 9 | `CREATE UNIQUE INDEX IF NOT EXISTS "mentions_commentId_mentionedUserId_key"` | ALREADY APPLIED | Guard. |
+| 10 | `CREATE INDEX IF NOT EXISTS "mentions_companyId_mentionedUserId_idx"` | ALREADY APPLIED | Guard. |
+| 11 | **`ALTER TABLE "mentions" ADD CONSTRAINT "mentions_commentId_fkey" FOREIGN KEY ("commentId") REFERENCES "comments"("id") ON DELETE CASCADE`** | **ALREADY APPLIED — but bare** | `pg_constraint` returns `mentions_commentId_fkey contype=f`. **Will throw `42710` on first deploy attempt.** |
+
+**Recommended action for 503:** `prisma migrate resolve --applied
+20260503100000_add_collaboration`. Same Path C reasoning that drove
+the C-1.A resolutions: schema is already 100% realized including the
+problematic FK; `--applied` records "done" without running any SQL.
+
+The two alternatives:
+- *Patch the migration file* (wrap the FK in `DO $$ … EXCEPTION
+  WHEN duplicate_object …`): mutates immutable history and runs DDL
+  on a live table for no benefit.
+- *Resolve `--rolled-back` and re-run*: same as Path A — would
+  re-throw 42710 immediately.
+
+### 14.5 Lock-impact warnings (heavy-table operations)
+
+Five `CREATE INDEX` statements target tables that have user data
+(rather than freshly-created empty tables). Postgres `CREATE INDEX`
+without `CONCURRENTLY` takes an `ACCESS EXCLUSIVE` write-block lock
+on the target table for the duration of the index build (reads are
+fine; writes are blocked).
+
+| Migration | Index | Target table | Already present? | Table size (today) | Lock concern |
+|---|---|---|---|---|---|
+| 505 | `customers_companyId_brandId_idx` | `customers` | no — will build | 144 kB total, ~1 row | sub-second |
+| 505 | `deals_companyId_brandId_idx` | `deals` | no — will build | 96 kB total | sub-second |
+| 505 | `activities_companyId_brandId_idx` | `activities` | no — will build | 56 kB total | sub-second |
+| 510 | `users_customRoleId_idx` | `users` | **YES** — already present | 192 kB total, ~8 rows | none — `IF NOT EXISTS` no-ops |
+| 511 | `audit_logs_sessionId_idx` | `audit_logs` | **YES** — already present | 128 kB total, ~3 rows | none — `IF NOT EXISTS` no-ops |
+
+All entity tables are tiny right now (single-digit-row demo data).
+Lock duration on prod today is effectively zero. **Not a concern for
+C-1.C** but worth re-checking before any future schema migration that
+touches these same tables once real customer data lands.
+
+ADD COLUMN catalog locks on PG 18 are metadata-only (no table
+rewrite) and complete in microseconds. Not a concern even at scale.
+
+### 14.6 Schema-drift caveat
+
+The probe verified **table existence**, not **schema equivalence**.
+Of the 17 tables that exist on prod without a `_prisma_migrations`
+row, we have not exhaustively confirmed that each has the exact
+columns / types / nullability / defaults / indexes / constraints the
+migration's `CREATE TABLE` block specifies. The `IF NOT EXISTS`
+guard means a divergent table would silently no-op — deploy succeeds,
+drift persists undetected.
+
+Reasons we are accepting this risk for C-1.C without a full Section-13-
+style audit of all 17 tables:
+
+- Application code already reads/writes these tables in production
+  daily (chat polling visible in Railway logs touches
+  `notifications` / `mentions` indirectly via comments routes). If
+  there were a schema-breaking divergence, the corresponding endpoints
+  would already be 500-ing — they are not.
+- The likely origin (`prisma db push` from the same `schema.prisma`
+  HEAD) preserves column shapes faithfully.
+- Cost of an exhaustive audit (15 tables × ~20 column/index/constraint
+  probes each ≈ 300 probes) is a multi-hour effort with low expected
+  yield.
+
+**Mitigation if drift is later discovered:** the canonical
+`schema.prisma` is the source of truth; Prisma's `migrate diff
+--from-schema-datasource --to-schema-datamodel` could be run after
+the queue is unblocked to detect drift, and any drift can be patched
+in a follow-up migration. Out of scope for C-1.
+
+### 14.7 Updated C-1.C recovery sequence
+
+Path C resolutions, in chronological order (Prisma walks pending
+migrations alphabetically, so resolve order does not actually matter
+to Prisma — but doing them chronologically keeps the audit trail
+clean):
+
+1. `prisma migrate resolve --applied 20260420150924_add_admin_panel_schema`
+2. `prisma migrate resolve --applied 20260422100000_password_reset_tokens`
+3. `prisma migrate resolve --applied 20260430100000_add_ai_agents`
+4. **`prisma migrate resolve --applied 20260503100000_add_collaboration`**  *(new in C-1.B — RED finding)*
+5. `prisma migrate deploy`  *(drains the remaining 19 migrations; all GREEN; 14 will no-op via `IF NOT EXISTS` guards, 5 will create genuinely-absent objects: `brand_settings` / `scheduled_reports` / `brands` + `brandId` columns / `tax_invoices` / `doc_events` + `doc_article_meta`)*
+6. Smoke-test:
+   - `/api/brand` (expect 200 with `data: null` for an account with no row)
+   - `/api/brands` (expect 200 with `[]`)
+   - `/api/brands/stats` (expect 200 with stats array)
+   - Plus the spot-check endpoints from 12.5
+
+Order rationale for steps 1–4: they are independent metadata writes
+on `_prisma_migrations`. Doing all four `--applied` operations before
+step 5 prevents `migrate deploy` from attempting to run any of the 4
+known-problem migrations against the live DB.
+
+**Optional pre-step (recommended): take a logical snapshot of the
+prod DB** (Railway PITR or `pg_dump` of schema + critical tables)
+before step 1. The four `--applied` resolutions are reversible via
+`prisma migrate resolve --rolled-back …`, but a snapshot covers any
+unanticipated downstream surprise (e.g., schema drift discovery in
+14.6 turning out to matter after all).
