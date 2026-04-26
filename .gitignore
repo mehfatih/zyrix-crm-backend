@@ -55,3 +55,6 @@ temp/
 
 # Railway
 .railway/
+
+# Database backups (pg_dump output, snapshots)
+backups/

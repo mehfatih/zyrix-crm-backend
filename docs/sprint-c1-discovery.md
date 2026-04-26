@@ -383,10 +383,12 @@ controllers, or services.
     the C-1.B audit (see 14.2). 17 of the 23 tables and 17 of the 20
     columns that the blocked migrations would create **already exist
     in the live schema**, despite no corresponding rows in
-    `_prisma_migrations`. The most likely explanation is one or more
-    `prisma db push` runs (or direct `prisma db execute` invocations)
-    against the prod DB after 2026-04-21 to keep the API from
-    500-ing on the affected feature surfaces. C-1.B accepts the
+    `_prisma_migrations`. Cause confirmed by Mehmet: executed by him
+    personally or by an AI agent in PowerShell auto-execute mode while
+    debugging the broken queue. Not a security incident. Follow-up:
+    never run AI agents in auto-execute mode against production
+    database; restrict auto-mode to local/staging environments once
+    they exist (see OQ 13). C-1.B accepts the
     resulting schema as-is because every blocked migration uses
     `IF NOT EXISTS` / `DO/EXCEPTION` guards (so deploy will no-op
     cleanly), but **schema drift between the live schema and the
@@ -1020,3 +1022,209 @@ before step 1. The four `--applied` resolutions are reversible via
 `prisma migrate resolve --rolled-back …`, but a snapshot covers any
 unanticipated downstream surprise (e.g., schema drift discovery in
 14.6 turning out to matter after all).
+
+---
+
+## 15. C-1.C Recovery execution
+
+> Added 2026-04-26 after successful execution of the C-1.C plan against
+> the production database (which is also the local dev database — see
+> OQ 13). All times in UTC.
+
+### 15.1 Execution timeline
+
+| Phase | What | Time (UTC) |
+|---|---|---|
+| 0 | Snapshot dumps complete | 2026-04-26 10:34:11 |
+| 1 | Pre-flight SELECT | 2026-04-26 ~10:36 |
+| 2.1 | resolve `20260420150924_add_admin_panel_schema` | 2026-04-26 10:42:49 |
+| 2.2 | resolve `20260422100000_password_reset_tokens` | 2026-04-26 10:42:54 |
+| 2.3 | resolve `20260430100000_add_ai_agents` (audit-trail behavior surfaced) | 2026-04-26 10:42:59 |
+| diagnose | Audit-trail discovery + halt | 2026-04-26 ~10:43 |
+| 2.4 | resolve `20260503100000_add_collaboration` | 2026-04-26 10:49:20 |
+| 3.1 | `migrate deploy` (19 migrations, 10.53 s) | 2026-04-26 ~10:50 |
+| 3.2–3.4 | Post-deploy verifications | 2026-04-26 ~10:51 |
+| 4 | Smoke tests (3 brand + 5 spot-check) | 2026-04-26 ~10:51 |
+| 5 | Documentation + commit prep | 2026-04-26 ~10:53 |
+
+### 15.2 Phase 0 — Snapshot
+
+Three logical dumps via PostgreSQL 18.3 client tools (binary version
+matches the live server exactly):
+
+| File | Size | Contents |
+|---|---|---|
+| `backups/sprint-c1c-pre-recovery-20260426-133411.schema.sql` | 105.79 KB | Full schema dump (`--schema-only --no-owner --no-privileges`); 63 `CREATE TABLE` statements |
+| `backups/sprint-c1c-pre-recovery-20260426-133411.migrations.sql` | 7.28 KB | `_prisma_migrations` data dump (`--data-only`); 26 rows in COPY block |
+| `backups/sprint-c1c-pre-recovery-20260426-133411.critical.sql` | 19.65 KB | Schema + data for `companies`/`users`/`customers`/`deals`/`activities`; 7 + 8 + 1 + 1 + 0 = 17 rows of user data |
+
+Verification: 0 `ERROR`/`FATAL` lines; legacy `-- PostgreSQL database
+dump complete` marker present in all 3 files (Postgres 18 also adds
+`\restrict … \unrestrict` markers — see 15.7). `backups/` added to
+`.gitignore` in the same commit as this section.
+
+### 15.3 Phase 1 — Pre-flight verification
+
+```
+        migration_name        |          started_at           | finished_at | rolled_back_at
+------------------------------+-------------------------------+-------------+----------------
+ 20260430100000_add_ai_agents | 2026-04-21 15:38:45.863542+00 |             |
+(1 row)
+```
+
+Matches the Section 12.2 baseline to the microsecond: 1 row, the
+failed `ai_agents` from 2026-04-21, `finished_at` and `rolled_back_at`
+both NULL. The other 3 target migrations absent from the table as
+predicted by Sections 13 and 14.
+
+### 15.4 Phase 2 — The 4 resolves + Prisma audit-trail discovery
+
+All 4 `npx prisma migrate resolve --applied …` commands reported
+"marked as applied". An **unexpected behavior surfaced during the 2.3
+verification**: Prisma's `migrate resolve --applied` against a
+*previously-failed* row does NOT update the existing row in place.
+Instead it:
+
+1. Sets `rolled_back_at` on the original failed row (preserves it as
+   audit trail).
+2. INSERTs a new row with `finished_at` set (the "applied" state).
+
+Net effect for `migrate deploy`: the migration is treated as done (no
+non-terminal row remains for that `migration_name`). Functionally
+correct, but the bulk verification SELECT returns **5 rows** for the 4
+target migration names — not 4. The original verification template
+assumed 1 row per name; that assumption was wrong. This was diagnosed
+via two read-only SELECTs and accepted as documented Prisma behavior.
+
+Final state after Phase 2.5:
+
+```
+            migration_name             |          finished_at          |        rolled_back_at
+---------------------------------------+-------------------------------+-------------------------------
+ 20260420150924_add_admin_panel_schema | 2026-04-26 10:42:49.588396+00 |
+ 20260422100000_password_reset_tokens  | 2026-04-26 10:42:54.510697+00 |
+ 20260430100000_add_ai_agents          |                               | 2026-04-26 10:42:59.593769+00
+ 20260430100000_add_ai_agents          | 2026-04-26 10:42:59.721186+00 |
+ 20260503100000_add_collaboration      | 2026-04-26 10:49:20.591636+00 |
+(5 rows)
+```
+
+Sanity: 0 rows where `finished_at IS NULL AND rolled_back_at IS NULL`.
+
+### 15.5 Phase 3 — `migrate deploy`
+
+```
+48 migrations found in prisma/migrations
+Applying migration `20260501100000_add_oauth_states`
+… (19 migrations applied in chronological order) …
+All migrations have been successfully applied.
+```
+
+Total elapsed: **10.53 seconds**.
+
+Of the 19 applied:
+
+- **14 no-op'd via `IF NOT EXISTS` guards** (per the C-1.B audit;
+  objects already existed via the out-of-band schema state — see OQ 14)
+- **5 created genuinely-absent objects:**
+  - `20260502_add_brand_settings` → `brand_settings` table
+  - `20260504_add_scheduled_reports` → `scheduled_reports` table
+  - `20260505_add_brands` → `brands` table + `brandId` columns on
+    `customers` / `deals` / `activities`
+  - `20260506_add_tax_invoices` → `tax_invoices` table
+  - `20260520_docs_sprint` → `doc_events` and `doc_article_meta` tables
+
+Post-deploy verifications:
+
+| Check | Expected | Actual |
+|---|---|---|
+| 6 expected tables present | brand_settings, brands, scheduled_reports, tax_invoices, doc_events, doc_article_meta | **6/6 ✅** |
+| 3 brandId columns present | customers/deals/activities (text NULL) | **3/3 ✅** |
+| Truly-pending rows (`finished_at IS NULL AND rolled_back_at IS NULL`) | 0 | **0 ✅** |
+| Spec-pending rows (`finished_at IS NULL OR rolled_back_at IS NOT NULL`) | 1 (the ai_agents audit-trail row from 2.3) | **1 ✅** |
+
+### 15.6 Phase 4 — Smoke tests
+
+Local dev server `npm run dev` on `http://localhost:4000`, connecting
+to prod DB. JWT minted silently via `scripts/mint-dev-token.ts` (token
+never echoed).
+
+**Brand endpoints (status codes only):**
+
+| Endpoint | Status |
+|---|---|
+| `GET /api/brand` | **200 ✅** |
+| `GET /api/brands` | **200 ✅** |
+| `GET /api/brands/stats` | **200 ✅** |
+
+**Spot-checks for regression (status codes only):**
+
+| Endpoint | Status | Notes |
+|---|---|---|
+| `GET /api/notifications/unread-count` | 200 | ✅ |
+| `GET /api/chat/unread` | 200 | ✅ |
+| `GET /api/audit-logs` | 403 | Expected — `audit_advanced` feature gate on this plan tier (see Section 14 catalog). Treated as PASS per Mehmet's call. |
+| `GET /api/feature-flags` | 200 | ✅ |
+| `GET /api/customers` | 200 | ✅ |
+
+**Zero 500 responses. Zero regressions.** The `/api/brand*` 500s that
+motivated this entire sprint are resolved.
+
+### 15.7 Anomalies observed
+
+- **Prisma audit-trail behavior on `resolve --applied`** against a
+  previously-failed row produces 2 rows (one rolled back, one applied)
+  per migration_name instead of 1. Functionally equivalent for
+  `migrate deploy` (no non-terminal row remains); cosmetic for
+  `_prisma_migrations` queries. Future verification scripts should
+  count "non-terminal" (`finished_at IS NULL AND rolled_back_at IS
+  NULL`), not "exactly 1 row per name".
+- **PostgreSQL 18 `pg_dump` output format change.** Dumps are now
+  wrapped in `\restrict <token>` … `\unrestrict <token>` markers (a
+  security feature against shifted-`search_path` injection during
+  restore). The legacy `-- PostgreSQL database dump complete` line is
+  no longer the literal last line. Verification heuristics that check
+  the tail of a dump file will report false negatives on PG 18 dumps;
+  grep for the marker anywhere in the file instead.
+- **Audit-trail rows count as "rolled back" in
+  `_prisma_migrations`.** A literal "no pending migrations" check
+  using `WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL`
+  returns 1 (not 0) after C-1.C because of the rolled-back ai_agents
+  row. The semantically correct check is `finished_at IS NULL AND
+  rolled_back_at IS NULL` (truly non-terminal). Both queries reported
+  for transparency in 15.5.
+
+### 15.8 Sprint C-1 Final Status
+
+| Sub-sprint | Commit | Outcome |
+|---|---|---|
+| **C-1.A** — Discovery report + orphan probe | `5727f60` | Identified root cause (failed `20260430` migration blocking 22 subsequent migrations); classified the 2 orphans as ALREADY APPLIED; recommended Path C |
+| **C-1.B** — Pre-flight audit of 20 blocked migrations | `144671e` | 19 GREEN, 1 RED (`20260503_add_collaboration` — same bare-FK pattern); discovered out-of-band schema state, recorded as OQ 14 (since resolved by Mehmet) |
+| **C-1.C** — Recovery execution | (this commit) | Executed Path C: 4× `--applied` resolves + 1× `migrate deploy`. 19 migrations applied in 10.53 s. All 3 `/api/brand*` endpoints now return 200. Zero regressions. |
+
+**Migration table state:**
+
+- Before C-1.C: 26 rows in `_prisma_migrations`, 1 in non-terminal failed state (`20260430`)
+- After C-1.C: 49 rows in `_prisma_migrations` (48 unique migration_names + the 1 rolled-back ai_agents audit-trail row); 0 in non-terminal state; queue fully drained
+
+**Open follow-ups carried forward** (out of scope for C-1, recorded
+in Section 10):
+
+- OQ 13 — Local and production share a single Postgres instance; no
+  dev/staging environment exists. Strongly motivated by this incident.
+- OQ 14 — Out-of-band schema writes happened on prod (cause confirmed
+  by Mehmet: him personally or AI agent in PowerShell auto-execute
+  mode). Schema drift not exhaustively verified for the 17 tables
+  affected; mitigation is a `prisma migrate diff` follow-up.
+
+**Recommended near-term code changes** (from Section 12.7,
+independent of recovery):
+
+1. Make `package.json` `start` fail-closed on `prisma migrate deploy`
+   non-zero exit, so a half-migrated schema can never ship to prod
+   silently again.
+2. Drop the `isDevelopment` gate around `console.error` in
+   `errorHandler.ts:60` so the next 500 leaves a stack trace in
+   Railway runtime logs without requiring a local repro.
+
+Sprint C-1 closed.
