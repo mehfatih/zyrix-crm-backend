@@ -11,6 +11,7 @@ import {
   verifyHmac,
   exchangeCodeForToken,
   grantedScopesSatisfy,
+  CORE_RESOURCES,
   signState,
   verifySignedState,
   STATE_COOKIE_NAME,
@@ -221,7 +222,11 @@ export async function callback(req: Request, res: Response) {
 
     // 8) Verify granted scopes ⊇ required (merchant can tamper with scope).
     if (!grantedScopesSatisfy(tokens.scope)) {
-      return fail("MISSING_PERMISSIONS", `Insufficient scopes granted: ${tokens.scope}`, shopDomain);
+      return fail(
+        "MISSING_PERMISSIONS",
+        `Insufficient scopes — granted: [${tokens.scope}]; need access to core resources: [${CORE_RESOURCES.join(", ")}] (read_X or write_X)`,
+        shopDomain
+      );
     }
 
     // 9) Encrypt + store (one active record per company+shop).
