@@ -12,6 +12,7 @@
 // tokens encrypted at rest end-to-end.
 // ============================================================================
 
+import { prisma } from "../../config/database";
 import { fetchWithLimit } from "../../utils/rateLimiter";
 import { upsertShopCustomer, upsertOrderDeal } from "../ecommerce.service";
 import { getApiVersion } from "./config";
@@ -25,6 +26,7 @@ import { recordIntegrationEvent } from "../integration-events.service";
 interface SyncResult {
   customers: number;
   orders: number;
+  products: number;
 }
 
 const MAX_PAGES = 20;
@@ -136,6 +138,97 @@ async function syncOrders(
   return synced;
 }
 
+// ─── PRODUCTS ───────────────────────────────────────────────────────────
+// Upsert one product (raw SQL — matches the connections.service pattern and
+// avoids depending on the generated client). Keyed on (companyId, externalId).
+async function upsertShopifyProduct(p: {
+  companyId: string;
+  connectionId: string;
+  externalId: string;
+  title: string | null;
+  handle: string | null;
+  vendor: string | null;
+  productType: string | null;
+  status: string | null;
+  variantsCount: number;
+  sku: string | null;
+  price: number | null;
+  inventoryQuantity: number | null;
+  imageUrl: string | null;
+}): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO shopify_products
+       ("id","companyId","connectionId","externalId","title","handle","vendor","productType",
+        "status","variantsCount","sku","price","inventoryQuantity","imageUrl","createdAt","updatedAt")
+     VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW())
+     ON CONFLICT ("companyId","externalId") DO UPDATE SET
+       "connectionId"=EXCLUDED."connectionId","title"=EXCLUDED."title","handle"=EXCLUDED."handle",
+       "vendor"=EXCLUDED."vendor","productType"=EXCLUDED."productType","status"=EXCLUDED."status",
+       "variantsCount"=EXCLUDED."variantsCount","sku"=EXCLUDED."sku","price"=EXCLUDED."price",
+       "inventoryQuantity"=EXCLUDED."inventoryQuantity","imageUrl"=EXCLUDED."imageUrl","updatedAt"=NOW()`,
+    p.companyId, p.connectionId, p.externalId, p.title, p.handle, p.vendor, p.productType,
+    p.status, p.variantsCount, p.sku, p.price, p.inventoryQuantity, p.imageUrl
+  );
+}
+
+async function syncProducts(
+  domain: string,
+  token: string,
+  companyId: string,
+  connectionId: string,
+  version: string
+): Promise<number> {
+  let imported = 0;
+  let pageInfo: string | null = null;
+  let page = 0;
+
+  while (page < MAX_PAGES) {
+    const url = pageInfo
+      ? `https://${domain}/admin/api/${version}/products.json?limit=250&page_info=${encodeURIComponent(pageInfo)}`
+      : `https://${domain}/admin/api/${version}/products.json?limit=250`;
+    const resp = await fetchWithLimit("shopify", domain, url, {
+      headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
+    });
+    if (!resp.ok) break;
+    const data = (await resp.json()) as { products?: any[] };
+    if (!data.products || data.products.length === 0) break;
+
+    for (const pr of data.products) {
+      const variants: any[] = Array.isArray(pr.variants) ? pr.variants : [];
+      const first = variants[0] || {};
+      const inventory = variants.reduce(
+        (sum, v) => sum + (parseInt(v?.inventory_quantity, 10) || 0),
+        0
+      );
+      const imageUrl = pr.image?.src || pr.images?.[0]?.src || null;
+      await upsertShopifyProduct({
+        companyId,
+        connectionId,
+        externalId: String(pr.id),
+        title: pr.title ?? null,
+        handle: pr.handle ?? null,
+        vendor: pr.vendor || null,
+        productType: pr.product_type || null,
+        status: pr.status ?? null,
+        variantsCount: variants.length,
+        sku: first.sku || null,
+        price: first.price != null ? parseFloat(first.price) || 0 : null,
+        inventoryQuantity: variants.length ? inventory : null,
+        imageUrl,
+      });
+      imported++;
+    }
+
+    const linkHeader = resp.headers.get("link") || "";
+    const nextMatch = linkHeader.match(/<[^>]*page_info=([^&>]+)[^>]*>;\s*rel="next"/);
+    if (nextMatch) {
+      pageInfo = decodeURIComponent(nextMatch[1]);
+      page++;
+    } else break;
+  }
+  return imported;
+}
+
 /**
  * Run a full sync for one connection. Records sync_start/sync_success/
  * sync_failure events with duration. Never throws — returns null on failure
@@ -157,6 +250,17 @@ export async function runShopifySync(
     const version = getApiVersion();
     const customers = await syncCustomers(conn.shopDomain, token, conn.companyId, version);
     const orders = await syncOrders(conn.shopDomain, token, conn.companyId, version);
+    // Products are best-effort: a product-sync failure (e.g. missing scope or
+    // table) must never fail the core customer/order sync.
+    let products = 0;
+    try {
+      products = await syncProducts(conn.shopDomain, token, conn.companyId, conn.id, version);
+    } catch (e) {
+      console.warn(
+        `[shopify] product sync failed for ${conn.shopDomain} (non-blocking):`,
+        (e as Error).message
+      );
+    }
     const durationMs = Date.now() - started;
 
     await recordSyncResult(conn.id, durationMs, null);
@@ -164,9 +268,9 @@ export async function runShopifySync(
       companyId: conn.companyId,
       eventType: "sync_success",
       durationMs,
-      requestContext: { shop: conn.shopDomain, connectionId: conn.id, customers, orders },
+      requestContext: { shop: conn.shopDomain, connectionId: conn.id, customers, orders, products },
     });
-    return { customers, orders };
+    return { customers, orders, products };
   } catch (err) {
     const durationMs = Date.now() - started;
     const e = err as { code?: string; message?: string };
