@@ -43,6 +43,7 @@ import publicApiRoutes from "./routes/public-api.routes";
 import zapierRoutes from "./routes/zapier.routes";
 import aiAgentsRoutes from "./routes/ai-agents.routes";
 import oauthRoutes from "./routes/oauth.routes";
+import shopifyIntegrationRoutes from "./routes/integrations/shopify.routes";
 import brandRoutes from "./routes/brand.routes";
 import commentsRoutes from "./routes/comments.routes";
 import notificationsRoutes from "./routes/notifications.routes";
@@ -71,6 +72,8 @@ import { authenticateToken } from "./middleware/auth";
 import { seedSystemRolesForAllCompanies } from "./services/roles.service";
 import { seedTemplates } from "./services/templates-seed";
 import { startSyncScheduler } from "./cron/sync";
+import { startShopifyConnectionSync } from "./cron/shopify-sync";
+import { requestId } from "./middleware/requestId";
 import { startWorkflowWorker } from "./cron/workflow-worker";
 import { startScheduledReportsWorker } from "./cron/scheduled-reports-worker";
 
@@ -78,6 +81,11 @@ const app: Express = express();
 
 // Trust Railway/Cloudflare proxy (for correct IP in rate-limit + logs)
 app.set("trust proxy", 1);
+
+// Assign a request id to every request (echoed as X-Request-Id; included in
+// every error body for traceability). Mounted first so even early failures
+// carry an id.
+app.use(requestId);
 
 app.use(helmet());
 
@@ -201,6 +209,7 @@ app.use("/api/workflows", workflowsRoutes);
 app.use("/api/keys", apiKeysRoutes);
 app.use("/api/ai-agents", aiAgentsRoutes);
 app.use("/api/oauth", oauthRoutes);
+app.use("/api/integrations/shopify", shopifyIntegrationRoutes);
 app.use("/api/brand", brandRoutes);
 app.use("/api/comments", commentsRoutes);
 app.use("/api/notifications", notificationsRoutes);
@@ -257,6 +266,7 @@ const server = app.listen(env.PORT, () => {
   // Register scheduled jobs after the server is listening so cron output
   // is never lost to missed log buffering on cold boots.
   startSyncScheduler();
+  startShopifyConnectionSync();
   startWorkflowWorker();
   startScheduledReportsWorker();
   startRetentionCron();

@@ -1673,6 +1673,78 @@ model OAuthState {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// SHOPIFY CONNECTIONS — OAuth 2.0 authorization-code-grant connections.
+// ─────────────────────────────────────────────────────────────────────────
+// Replaces the legacy plaintext-token model for Shopify. Tokens are stored
+// AES-256-GCM encrypted (ciphertext/iv/tag triplets) — raw tokens never hit
+// the DB. Supports Shopify's expiring offline access tokens (April 2026+):
+// an access token (~1h) refreshed via a 90-day refresh token, rotated on
+// each refresh. One active record per (companyId, shopDomain).
+//
+// companyId is a scalar (not a Prisma relation) on purpose so this model
+// stays decoupled from the large Company model; the FK + ON DELETE CASCADE
+// is enforced in the raw-SQL migration (2026-06_shopify_oauth_hardening.sql).
+model ShopifyConnection {
+  id         String @id @default(uuid())
+  companyId  String
+  shopDomain String
+  // pending | connected | needs_reauth | revoked | error
+  status     String @default("pending")
+
+  accessTokenCiphertext  String?
+  accessTokenIv          String?
+  accessTokenTag         String?
+  refreshTokenCiphertext String?
+  refreshTokenIv         String?
+  refreshTokenTag        String?
+
+  tokenExpiresAt        DateTime?
+  refreshTokenExpiresAt DateTime?
+  scopes                String?
+
+  lastSyncAt         DateTime?
+  lastSyncDurationMs Int?
+  lastError          String?
+
+  // FK to ecommerce_stores that powers the existing sync engine + widgets.
+  ecommerceStoreId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, shopDomain])
+  @@index([companyId])
+  @@index([status])
+  @@index([tokenExpiresAt])
+  @@map("shopify_connections")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// INTEGRATION EVENTS — centralized health/audit log for integrations.
+// ─────────────────────────────────────────────────────────────────────────
+// One row per meaningful lifecycle event (oauth_*, token_refresh*, sync_*,
+// disconnect, api_failure). NEVER stores secrets/tokens. requestContext is a
+// jsonb bag { route, shop, userId, companyId, requestId }. Powers the web
+// Integration Health Dashboard (GET /api/integrations/shopify/health).
+model IntegrationEvent {
+  id             String   @id @default(uuid())
+  companyId      String?
+  platform       String   @default("shopify")
+  eventType      String
+  errorCode      String?
+  errorMessage   String?
+  requestContext Json     @default("{}")
+  durationMs     Int?
+  createdAt      DateTime @default(now())
+
+  @@index([companyId])
+  @@index([platform])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("integration_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // WHITE-LABEL BRAND SETTINGS
 // ─────────────────────────────────────────────────────────────────────────
 // Per-company branding overrides. Used to customize the dashboard

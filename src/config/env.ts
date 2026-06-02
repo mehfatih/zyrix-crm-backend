@@ -38,8 +38,34 @@ const envSchema = z.object({
   // the other is still pending partner-portal review.
   SALLA_CLIENT_ID: z.string().optional(),
   SALLA_CLIENT_SECRET: z.string().optional(),
+  // Legacy Shopify OAuth credentials (kept for the /api/oauth path). The new
+  // /api/integrations/shopify module reads SHOPIFY_API_KEY ?? SHOPIFY_CLIENT_ID
+  // so either naming works (see config/shopify.ts).
   SHOPIFY_CLIENT_ID: z.string().optional(),
   SHOPIFY_CLIENT_SECRET: z.string().optional(),
+
+  // ── Shopify OAuth (new integrations module) ──────────────────────────
+  // All optional: the connect/callback routes short-circuit with a typed
+  // SHOPIFY_NOT_CONFIGURED error when the key/secret are missing, so the
+  // app boots fine before the human adds these on Railway.
+  SHOPIFY_API_KEY: z.string().optional(),
+  SHOPIFY_API_SECRET: z.string().optional(),
+  // Comma-separated scopes; MUST match the scopes declared in the Partner
+  // Dashboard app config. Defaults to the read-only proposal from the sprint.
+  SHOPIFY_SCOPES: z
+    .string()
+    .default("read_products,read_orders,read_customers,read_inventory,read_fulfillments"),
+  SHOPIFY_APP_URL: z.string().optional(), // https://crm.zyrix.co
+  SHOPIFY_REDIRECT_URI: z.string().optional(), // https://api.crm.zyrix.co/api/integrations/shopify/callback
+  // Current stable Admin API version. Confirmed 2026-04 in recon (Jun 2026);
+  // bump to 2026-07 on/after 2026-07-01.
+  SHOPIFY_API_VERSION: z.string().default("2026-04"),
+  // 32-byte base64 key for AES-256-GCM token encryption at rest. Generate:
+  //   openssl rand -base64 32
+  INTEGRATION_TOKEN_ENC_KEY: z.string().optional(),
+  // Mobile return deep link scheme, e.g. "zyrix://". Defaults to the scheme
+  // already configured in the Expo app.json.
+  MOBILE_DEEP_LINK_SCHEME: z.string().default("zyrix://"),
 
   // Admin Panel Bootstrap
   ADMIN_BOOTSTRAP_TOKEN: z.string().optional(),
