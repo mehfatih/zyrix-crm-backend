@@ -248,28 +248,44 @@ export async function refreshAccessToken(shop: string, refreshToken: string): Pr
 // Scope verification — merchant can tamper with the scope param, so confirm
 // the granted scopes are a superset of what we require.
 // ──────────────────────────────────────────────────────────────────────
-// Core resources the CRM must be able to access. We REQUEST a broader set
-// (SHOPIFY_SCOPES — intentionally wide), but only BLOCK the connection if
-// access to one of these core resources wasn't granted at all. Everything
-// else (fulfillments, etc.) is optional and never blocks the connection.
-export const CORE_RESOURCES = ["products", "orders", "customers", "inventory"];
+// The ONLY hard requirement: the merchant must grant read access to these
+// core resources. We REQUEST a much broader set (SHOPIFY_SCOPES), but every
+// other scope is OPTIONAL — a non-grant is logged, never blocks. Read access
+// is the minimum the CRM needs to sync; write_X implies read_X. Keeping the
+// hard requirement this small protects every merchant connection (now and for
+// future customers' own stores) from scope-name mismatches or partial grants.
+export const CORE_RESOURCES = ["products", "orders", "customers"];
 
-/**
- * Verify the merchant granted enough access. Shopify collapses a requested
- * read_X + write_X into just write_X in the granted scope string (write
- * implies read), so we accept either read_X OR write_X as proof of access to
- * a resource — and we only require the CORE_RESOURCES, not the full requested
- * set. This avoids blocking valid connections over the read/write collapse or
- * a non-critical scope-name mismatch.
- */
-export function grantedScopesSatisfy(grantedScope: string): boolean {
-  const granted = new Set(
+function parseScopes(grantedScope: string): Set<string> {
+  return new Set(
     grantedScope
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)
   );
+}
+
+/**
+ * Verify the merchant granted the minimal core read access. Shopify collapses
+ * a requested read_X + write_X into just write_X in the granted scope string
+ * (write implies read), so read_X is satisfied by read_X OR write_X. Only the
+ * CORE_RESOURCES are required — never the full requested set.
+ */
+export function grantedScopesSatisfy(grantedScope: string): boolean {
+  const granted = parseScopes(grantedScope);
   return CORE_RESOURCES.every(
     (r) => granted.has(`read_${r}`) || granted.has(`write_${r}`)
   );
+}
+
+/**
+ * Requested scopes that were NOT granted (accounting for write_X ⇒ read_X).
+ * Informational only — callers log these as a warning; they never block a
+ * connection.
+ */
+export function missingOptionalScopes(grantedScope: string): string[] {
+  const granted = parseScopes(grantedScope);
+  const isGranted = (s: string): boolean =>
+    granted.has(s) || (s.startsWith("read_") && granted.has(`write_${s.slice(5)}`));
+  return getScopes().filter((s) => !isGranted(s));
 }
