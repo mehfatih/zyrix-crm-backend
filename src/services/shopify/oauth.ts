@@ -248,6 +248,20 @@ export async function refreshAccessToken(shop: string, refreshToken: string): Pr
 // Scope verification — merchant can tamper with the scope param, so confirm
 // the granted scopes are a superset of what we require.
 // ──────────────────────────────────────────────────────────────────────
+// Core resources the CRM must be able to access. We REQUEST a broader set
+// (SHOPIFY_SCOPES — intentionally wide), but only BLOCK the connection if
+// access to one of these core resources wasn't granted at all. Everything
+// else (fulfillments, etc.) is optional and never blocks the connection.
+export const CORE_RESOURCES = ["products", "orders", "customers", "inventory"];
+
+/**
+ * Verify the merchant granted enough access. Shopify collapses a requested
+ * read_X + write_X into just write_X in the granted scope string (write
+ * implies read), so we accept either read_X OR write_X as proof of access to
+ * a resource — and we only require the CORE_RESOURCES, not the full requested
+ * set. This avoids blocking valid connections over the read/write collapse or
+ * a non-critical scope-name mismatch.
+ */
 export function grantedScopesSatisfy(grantedScope: string): boolean {
   const granted = new Set(
     grantedScope
@@ -255,5 +269,7 @@ export function grantedScopesSatisfy(grantedScope: string): boolean {
       .map((s) => s.trim())
       .filter(Boolean)
   );
-  return getScopes().every((required) => granted.has(required));
+  return CORE_RESOURCES.every(
+    (r) => granted.has(`read_${r}`) || granted.has(`write_${r}`)
+  );
 }
