@@ -1720,6 +1720,37 @@ model ShopifyConnection {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// SHOPIFY PRODUCTS — catalog imported by the connection sync.
+// ─────────────────────────────────────────────────────────────────────────
+// One row per Shopify product per company. companyId/connectionId are scalars
+// (not Prisma relations); the FKs + ON DELETE CASCADE are enforced in the raw
+// SQL migration (2026-06_shopify_products.sql). Upserted via raw SQL by the
+// sync, so the generated client isn't required at the call site.
+model ShopifyProduct {
+  id                String   @id @default(uuid())
+  companyId         String
+  connectionId      String
+  externalId        String
+  title             String?
+  handle            String?
+  vendor            String?
+  productType       String?
+  status            String?
+  variantsCount     Int      @default(0)
+  sku               String?
+  price             Decimal? @db.Decimal(12, 2)
+  inventoryQuantity Int?
+  imageUrl          String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([companyId, externalId])
+  @@index([companyId])
+  @@index([connectionId])
+  @@map("shopify_products")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // INTEGRATION EVENTS — centralized health/audit log for integrations.
 // ─────────────────────────────────────────────────────────────────────────
 // One row per meaningful lifecycle event (oauth_*, token_refresh*, sync_*,
