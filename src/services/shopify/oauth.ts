@@ -48,8 +48,11 @@ export function normalizeShopDomain(input: string): string | null {
   if (!s.endsWith(".myshopify.com")) return null;
   // Reject anything outside the allowed hostname charset.
   if (!/^[a-z0-9.-]+$/.test(s)) return null;
+  // Store handle: starts with a letter/digit, then letters/digits/hyphens.
+  // Accepts handles with digits + hyphens (e.g. "levana-cosmetics-2",
+  // "kgs1qk-h4"). Mirrors the frontend shopIsValid pattern exactly.
   const sub = s.replace(".myshopify.com", "");
-  if (!/^[a-z0-9][a-z0-9-]{1,60}[a-z0-9]$/.test(sub)) return null;
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(sub)) return null;
   return s;
 }
 
