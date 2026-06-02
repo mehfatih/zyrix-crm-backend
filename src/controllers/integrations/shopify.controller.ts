@@ -200,10 +200,20 @@ export async function callback(req: Request, res: Response) {
       return fail("INVALID_STATE", "State cookie mismatch", shopDomain);
     }
 
-    // 6) Shop in callback must match the shop we issued the install for.
+    // 6) The shop in the callback is the store's CANONICAL *.myshopify.com
+    //    domain, which can legitimately differ from the handle the merchant
+    //    typed at install (e.g. an alias like "levana-cosmetics-2" whose
+    //    canonical domain is "kgs1qk-h4.myshopify.com"). The HMAC above has
+    //    already cryptographically verified this callback belongs to
+    //    `shopDomain`, so we trust it and store the connection under the
+    //    canonical shop. We do NOT hard-fail on a mismatch with the typed
+    //    handle — that rejected valid alias installs.
     const expectedShop = String((consumed.metadata as { shopDomain?: string }).shopDomain ?? "");
     if (expectedShop && expectedShop !== shopDomain) {
-      return fail("INVALID_SHOP_DOMAIN", "Callback shop does not match install shop", shopDomain);
+      console.warn(
+        `[shopify] callback shop ${shopDomain} differs from install handle ${expectedShop} ` +
+          `(alias → canonical); proceeding with the HMAC-verified callback shop`
+      );
     }
 
     // 7) Exchange code → expiring offline token set.
