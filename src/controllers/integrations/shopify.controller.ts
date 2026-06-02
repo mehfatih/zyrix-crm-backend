@@ -11,6 +11,7 @@ import {
   verifyHmac,
   exchangeCodeForToken,
   grantedScopesSatisfy,
+  missingOptionalScopes,
   CORE_RESOURCES,
   signState,
   verifySignedState,
@@ -224,8 +225,17 @@ export async function callback(req: Request, res: Response) {
     if (!grantedScopesSatisfy(tokens.scope)) {
       return fail(
         "MISSING_PERMISSIONS",
-        `Insufficient scopes — granted: [${tokens.scope}]; need access to core resources: [${CORE_RESOURCES.join(", ")}] (read_X or write_X)`,
+        `Insufficient scopes — granted: [${tokens.scope}]; required core read access: [${CORE_RESOURCES.join(", ")}] (read_X or write_X)`,
         shopDomain
+      );
+    }
+    // Every other requested scope is OPTIONAL — a non-grant is logged here and
+    // never blocks the connection (protects merchants from scope-name
+    // mismatches / partial grants).
+    const optMissing = missingOptionalScopes(tokens.scope);
+    if (optMissing.length) {
+      console.warn(
+        `[shopify] ${shopDomain} connected WITHOUT optional scopes (non-blocking): ${optMissing.join(", ")}`
       );
     }
 
