@@ -49,6 +49,7 @@ import whatsappIntegrationRoutes from "./routes/integrations/whatsapp.routes";
 import whatsappWebhookReceiver from "./routes/integrations/whatsapp-webhooks.routes";
 import metaLeadsIntegrationRoutes from "./routes/integrations/meta-leads.routes";
 import metaLeadsWebhookReceiver from "./routes/integrations/meta-leads-webhooks.routes";
+import metaWebhookReceiver from "./routes/integrations/meta-webhooks.routes";
 import brandRoutes from "./routes/brand.routes";
 import commentsRoutes from "./routes/comments.routes";
 import notificationsRoutes from "./routes/notifications.routes";
@@ -122,9 +123,14 @@ app.use("/api/integrations/shopify/webhooks", shopifyWebhookReceiver);
 // router (mounted later) so only /api/integrations/whatsapp/webhooks lands here.
 app.use("/api/integrations/whatsapp/webhooks", whatsappWebhookReceiver);
 // Meta Lead Ads webhook — raw body for X-Hub-Signature-256 (GET handshake +
-// POST leadgen). Mounted before express.json; dedicated URL so it never
-// overlaps the WhatsApp messages webhook. Object=page, field=leadgen.
+// POST leadgen). Mounted before express.json. Kept as a working leadgen-only
+// ALIAS; the canonical Page callback is the unified /meta/webhook below.
 app.use("/api/integrations/meta/leads/webhook", metaLeadsWebhookReceiver);
+// Unified Meta webhook (Sprint 3) — canonical callback for the Page + Instagram
+// objects. ONE signature-verify + dispatcher by object/field: leadgen → Lead
+// Ads ingest, Messenger/IG messaging → unified inbox. Raw body, before
+// express.json. WhatsApp's webhook (separate object/URL) is NOT touched.
+app.use("/api/integrations/meta/webhook", metaWebhookReceiver);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));

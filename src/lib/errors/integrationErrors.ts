@@ -41,6 +41,12 @@ export type IntegrationErrorCode =
   | "META_LEAD_FETCH_FAILED"
   | "META_LEAD_TOKEN_EXPIRED"
   | "META_LEAD_MAP_FAILED"
+  // Meta Messaging (Messenger + Instagram DM)
+  | "META_MESSAGING_NOT_CONFIGURED"
+  | "META_MSG_SIGNATURE_INVALID"
+  | "META_MSG_WINDOW_EXPIRED"
+  | "META_MSG_TAG_REQUIRED"
+  | "META_MSG_SEND_FAILED"
   | "INTERNAL_ERROR";
 
 interface CodeSpec {
@@ -160,6 +166,31 @@ export const INTEGRATION_ERROR_SPECS: Record<IntegrationErrorCode, CodeSpec> = {
     httpStatus: 422,
     category: "validation",
     userMessageKey: "IntegrationErrors.META_LEAD_MAP_FAILED",
+  },
+  META_MESSAGING_NOT_CONFIGURED: {
+    httpStatus: 501,
+    category: "config",
+    userMessageKey: "IntegrationErrors.META_MESSAGING_NOT_CONFIGURED",
+  },
+  META_MSG_SIGNATURE_INVALID: {
+    httpStatus: 401,
+    category: "messaging",
+    userMessageKey: "IntegrationErrors.META_MSG_SIGNATURE_INVALID",
+  },
+  META_MSG_WINDOW_EXPIRED: {
+    httpStatus: 409,
+    category: "messaging",
+    userMessageKey: "IntegrationErrors.META_MSG_WINDOW_EXPIRED",
+  },
+  META_MSG_TAG_REQUIRED: {
+    httpStatus: 409,
+    category: "messaging",
+    userMessageKey: "IntegrationErrors.META_MSG_TAG_REQUIRED",
+  },
+  META_MSG_SEND_FAILED: {
+    httpStatus: 502,
+    category: "messaging",
+    userMessageKey: "IntegrationErrors.META_MSG_SEND_FAILED",
   },
   INTERNAL_ERROR: {
     httpStatus: 500,

@@ -1883,6 +1883,25 @@ model MetaLeadForm {
   @@map("meta_lead_forms")
 }
 
+// Maps a platform-scoped DM sender id (PSID/IGSID) → a CRM contact, so
+// Messenger/Instagram conversations resolve to the right customer (DMs carry
+// no phone/email). One row per (company, channel, externalId).
+model ContactChannelIdentity {
+  id          String   @id @default(uuid())
+  companyId   String
+  contactId   String
+  channel     String
+  externalId  String
+  profileName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([companyId, channel, externalId])
+  @@index([companyId])
+  @@index([contactId])
+  @@map("contact_channel_identities")
+}
+
 // Attribution for a contact/deal sourced from a Meta Lead Ad. leadgenId is
 // UNIQUE → the idempotency key for Meta webhook retries.
 model LeadSource {
