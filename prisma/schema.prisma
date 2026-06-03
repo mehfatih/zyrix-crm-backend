@@ -1751,6 +1751,75 @@ model ShopifyProduct {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// UNIFIED CONVERSATIONS / INBOX (WhatsApp first; Messenger/IG reuse)
+// ─────────────────────────────────────────────────────────────────────────
+// Channel-generic inbox. companyId/contactId/dealId/assignedUserId are scalars
+// (not Prisma relations) to stay decoupled from the large core models; FKs +
+// ON DELETE rules are enforced by the raw-SQL migration
+// (2026-06_whatsapp_inbox.sql). Accessed via raw SQL, so the generated client
+// isn't required at the call sites.
+model Conversation {
+  id               String    @id @default(uuid())
+  companyId        String
+  channel          String    @default("whatsapp")
+  externalThreadId String
+  contactId        String?
+  dealId           String?
+  assignedUserId   String?
+  status           String    @default("open")
+  lastMessageAt    DateTime?
+  windowExpiresAt  DateTime?
+  lastInboundAt    DateTime?
+  unreadCount      Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([companyId, channel, externalThreadId])
+  @@index([companyId])
+  @@index([contactId])
+  @@index([dealId])
+  @@index([status])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id                String    @id @default(uuid())
+  conversationId    String
+  companyId         String
+  direction         String
+  externalMessageId String?
+  type              String    @default("text")
+  body              String?
+  mediaUrl          String?
+  status            String    @default("received")
+  errorDetail       String?
+  sentByUserId      String?
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([conversationId])
+  @@index([companyId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+// Maps a Meta phone_number_id → company for tenant-scoped webhook routing.
+model WhatsappNumber {
+  id            String   @id @default(uuid())
+  companyId     String
+  phoneNumberId String   @unique
+  wabaId        String?
+  displayPhone  String?
+  status        String   @default("connected")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("whatsapp_numbers")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // INTEGRATION EVENTS — centralized health/audit log for integrations.
 // ─────────────────────────────────────────────────────────────────────────
 // One row per meaningful lifecycle event (oauth_*, token_refresh*, sync_*,
