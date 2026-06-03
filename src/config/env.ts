@@ -67,6 +67,19 @@ const envSchema = z.object({
   // already configured in the Expo app.json.
   MOBILE_DEEP_LINK_SCHEME: z.string().default("zyrix://"),
 
+  // ── WhatsApp Business Cloud API (new /api/integrations/whatsapp module) ──
+  // All optional: the routes short-circuit with WHATSAPP_NOT_CONFIGURED when
+  // the key vars are missing, so the app boots fine before they're added.
+  META_APP_ID: z.string().optional(),
+  META_APP_SECRET: z.string().optional(), // verifies X-Hub-Signature-256
+  WHATSAPP_WABA_ID: z.string().optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional(), // System User permanent token
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional(), // GET handshake token
+  // Current stable Graph API version. Confirmed v25.0 (Feb 2026) in recon;
+  // bump when Meta releases the next version.
+  WHATSAPP_GRAPH_API_VERSION: z.string().default("v25.0"),
+
   // Admin Panel Bootstrap
   ADMIN_BOOTSTRAP_TOKEN: z.string().optional(),
   SUPER_ADMIN_EMAILS: z.string().optional(),

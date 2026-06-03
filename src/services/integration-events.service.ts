@@ -27,7 +27,11 @@ export type IntegrationEventType =
   | "disconnect"
   | "api_failure"
   | "webhook_received"
-  | "webhook_failed";
+  | "webhook_failed"
+  | "whatsapp_message_in"
+  | "whatsapp_message_out"
+  | "whatsapp_send_failed"
+  | "whatsapp_webhook_invalid";
 
 export interface RecordIntegrationEventInput {
   companyId?: string | null;

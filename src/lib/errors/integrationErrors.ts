@@ -29,11 +29,17 @@ export type IntegrationErrorCode =
   | "CONNECTION_TIMEOUT"
   | "TOKEN_REFRESH_FAILED"
   | "NEEDS_REAUTH"
+  // WhatsApp
+  | "WHATSAPP_NOT_CONFIGURED"
+  | "WHATSAPP_SIGNATURE_INVALID"
+  | "WHATSAPP_WINDOW_EXPIRED"
+  | "WHATSAPP_TEMPLATE_REQUIRED"
+  | "WHATSAPP_SEND_FAILED"
   | "INTERNAL_ERROR";
 
 interface CodeSpec {
   httpStatus: number;
-  category: "config" | "oauth" | "token" | "sync" | "validation" | "upstream";
+  category: "config" | "oauth" | "token" | "sync" | "validation" | "upstream" | "messaging";
   // i18n key under the `IntegrationErrors` namespace in the web/mobile locales.
   userMessageKey: string;
 }
@@ -98,6 +104,31 @@ export const INTEGRATION_ERROR_SPECS: Record<IntegrationErrorCode, CodeSpec> = {
     httpStatus: 409,
     category: "token",
     userMessageKey: "IntegrationErrors.NEEDS_REAUTH",
+  },
+  WHATSAPP_NOT_CONFIGURED: {
+    httpStatus: 501,
+    category: "config",
+    userMessageKey: "IntegrationErrors.WHATSAPP_NOT_CONFIGURED",
+  },
+  WHATSAPP_SIGNATURE_INVALID: {
+    httpStatus: 401,
+    category: "messaging",
+    userMessageKey: "IntegrationErrors.WHATSAPP_SIGNATURE_INVALID",
+  },
+  WHATSAPP_WINDOW_EXPIRED: {
+    httpStatus: 409,
+    category: "messaging",
+    userMessageKey: "IntegrationErrors.WHATSAPP_WINDOW_EXPIRED",
+  },
+  WHATSAPP_TEMPLATE_REQUIRED: {
+    httpStatus: 409,
+    category: "messaging",
+    userMessageKey: "IntegrationErrors.WHATSAPP_TEMPLATE_REQUIRED",
+  },
+  WHATSAPP_SEND_FAILED: {
+    httpStatus: 502,
+    category: "messaging",
+    userMessageKey: "IntegrationErrors.WHATSAPP_SEND_FAILED",
   },
   INTERNAL_ERROR: {
     httpStatus: 500,
