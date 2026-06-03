@@ -139,9 +139,7 @@ async function syncOrders(
 }
 
 // ─── PRODUCTS ───────────────────────────────────────────────────────────
-// Upsert one product (raw SQL — matches the connections.service pattern and
-// avoids depending on the generated client). Keyed on (companyId, externalId).
-async function upsertShopifyProduct(p: {
+export interface ShopifyProductInput {
   companyId: string;
   connectionId: string;
   externalId: string;
@@ -155,7 +153,54 @@ async function upsertShopifyProduct(p: {
   price: number | null;
   inventoryQuantity: number | null;
   imageUrl: string | null;
-}): Promise<void> {
+}
+
+// Map a Shopify product object (REST list item OR products/* webhook payload —
+// same shape) to our upsert input. Shared by the poll sync and the webhook.
+export function shopifyProductUpsertInput(
+  pr: any,
+  companyId: string,
+  connectionId: string
+): ShopifyProductInput {
+  const variants: any[] = Array.isArray(pr.variants) ? pr.variants : [];
+  const first = variants[0] || {};
+  const inventory = variants.reduce(
+    (sum, v) => sum + (parseInt(v?.inventory_quantity, 10) || 0),
+    0
+  );
+  const imageUrl = pr.image?.src || pr.images?.[0]?.src || null;
+  return {
+    companyId,
+    connectionId,
+    externalId: String(pr.id),
+    title: pr.title ?? null,
+    handle: pr.handle ?? null,
+    vendor: pr.vendor || null,
+    productType: pr.product_type || null,
+    status: pr.status ?? null,
+    variantsCount: variants.length,
+    sku: first.sku || null,
+    price: first.price != null ? parseFloat(first.price) || 0 : null,
+    inventoryQuantity: variants.length ? inventory : null,
+    imageUrl,
+  };
+}
+
+/** Delete a product row (products/delete webhook). */
+export async function deleteShopifyProduct(
+  companyId: string,
+  externalId: string
+): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `DELETE FROM shopify_products WHERE "companyId" = $1 AND "externalId" = $2`,
+    companyId,
+    externalId
+  );
+}
+
+// Upsert one product (raw SQL — matches the connections.service pattern and
+// avoids depending on the generated client). Keyed on (companyId, externalId).
+export async function upsertShopifyProduct(p: ShopifyProductInput): Promise<void> {
   await prisma.$executeRawUnsafe(
     `INSERT INTO shopify_products
        ("id","companyId","connectionId","externalId","title","handle","vendor","productType",
@@ -194,28 +239,7 @@ async function syncProducts(
     if (!data.products || data.products.length === 0) break;
 
     for (const pr of data.products) {
-      const variants: any[] = Array.isArray(pr.variants) ? pr.variants : [];
-      const first = variants[0] || {};
-      const inventory = variants.reduce(
-        (sum, v) => sum + (parseInt(v?.inventory_quantity, 10) || 0),
-        0
-      );
-      const imageUrl = pr.image?.src || pr.images?.[0]?.src || null;
-      await upsertShopifyProduct({
-        companyId,
-        connectionId,
-        externalId: String(pr.id),
-        title: pr.title ?? null,
-        handle: pr.handle ?? null,
-        vendor: pr.vendor || null,
-        productType: pr.product_type || null,
-        status: pr.status ?? null,
-        variantsCount: variants.length,
-        sku: first.sku || null,
-        price: first.price != null ? parseFloat(first.price) || 0 : null,
-        inventoryQuantity: variants.length ? inventory : null,
-        imageUrl,
-      });
+      await upsertShopifyProduct(shopifyProductUpsertInput(pr, companyId, connectionId));
       imported++;
     }
 

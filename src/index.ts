@@ -44,6 +44,7 @@ import zapierRoutes from "./routes/zapier.routes";
 import aiAgentsRoutes from "./routes/ai-agents.routes";
 import oauthRoutes from "./routes/oauth.routes";
 import shopifyIntegrationRoutes from "./routes/integrations/shopify.routes";
+import shopifyWebhookReceiver from "./routes/integrations/shopify-webhooks.routes";
 import brandRoutes from "./routes/brand.routes";
 import commentsRoutes from "./routes/comments.routes";
 import notificationsRoutes from "./routes/notifications.routes";
@@ -108,6 +109,10 @@ app.use(
 // express.raw() scoped to the receiver path only.
 // ──────────────────────────────────────────────────────────────────────
 app.use("/api/webhooks", webhookReceiverRouter);
+// Shopify app webhooks — also raw-body + HMAC, mounted before express.json().
+// More specific than the /api/integrations/shopify router (mounted later) so
+// only POST /api/integrations/shopify/webhooks is intercepted here.
+app.use("/api/integrations/shopify/webhooks", shopifyWebhookReceiver);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
