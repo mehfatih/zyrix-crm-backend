@@ -25,7 +25,9 @@ export type IntegrationEventType =
   | "sync_success"
   | "sync_failure"
   | "disconnect"
-  | "api_failure";
+  | "api_failure"
+  | "webhook_received"
+  | "webhook_failed";
 
 export interface RecordIntegrationEventInput {
   companyId?: string | null;

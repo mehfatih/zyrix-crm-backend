@@ -76,6 +76,23 @@ export async function getConnectionById(
   return rows[0] ?? null;
 }
 
+/**
+ * Look up a connection by shop domain alone (webhooks carry the shop, not the
+ * company). Prefers a 'connected' row, then most-recently-updated.
+ */
+export async function getConnectionByShopDomain(
+  shopDomain: string
+): Promise<ShopifyConnectionRow | null> {
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT ${SELECT_COLS} FROM shopify_connections
+      WHERE "shopDomain" = $1
+      ORDER BY ("status" = 'connected') DESC, "updatedAt" DESC
+      LIMIT 1`,
+    shopDomain
+  )) as ShopifyConnectionRow[];
+  return rows[0] ?? null;
+}
+
 export async function listConnections(
   companyId: string
 ): Promise<ShopifyConnectionRow[]> {

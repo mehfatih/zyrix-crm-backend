@@ -4,20 +4,22 @@ import { runShopifySync } from "../services/shopify/sync";
 import type { ShopifyConnectionRow } from "../services/shopify/connections.service";
 
 // ============================================================================
-// SHOPIFY OAUTH CONNECTION SYNC SCHEDULER
+// SHOPIFY OAUTH CONNECTION RECONCILIATION SYNC
 // ----------------------------------------------------------------------------
-// Hourly: sync 'connected' shopify_connections whose lastSyncAt is stale (or
-// null). Self-contained from the legacy ecommerce.service engine so OAuth
-// tokens stay encrypted at rest. Mutex prevents overlapping ticks; per-store
-// delay keeps us polite. needs_reauth/revoked connections are skipped (they
-// require the merchant to reconnect).
+// RECONCILIATION SAFETY NET — real-time webhooks (services/shopify/webhooks.ts)
+// are the PRIMARY sync path. This low-frequency poll (every 6h) re-syncs
+// 'connected' shopify_connections whose lastSyncAt is stale, to catch any
+// webhook that was missed (delivery failure, downtime, etc.). Self-contained
+// so OAuth tokens stay encrypted at rest. Mutex prevents overlapping ticks;
+// per-store delay keeps us polite. needs_reauth/revoked connections are
+// skipped (they require the merchant to reconnect).
 //
 // Disable with DISABLE_CRON_SYNC=true (shared with the legacy sync flag).
 // ============================================================================
 
-const SYNC_INTERVAL_MS = 60 * 60 * 1000;
+const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // re-sync if not synced in 6h
 const PER_STORE_DELAY_MS = 2000;
-const CRON_EXPRESSION = "23 * * * *"; // :23 past the hour (offset from legacy sync)
+const CRON_EXPRESSION = "23 */6 * * *"; // every 6h at :23 — reconciliation only
 
 let isRunning = false;
 
@@ -86,5 +88,7 @@ export function startShopifyConnectionSync(): void {
       console.error("[cron] unhandled shopify sync rejection:", e)
     );
   });
-  console.log(`[cron] shopify connection sync registered — "${CRON_EXPRESSION}" (hourly)`);
+  console.log(
+    `[cron] shopify reconciliation sync registered — "${CRON_EXPRESSION}" (every 6h; webhooks are primary)`
+  );
 }
