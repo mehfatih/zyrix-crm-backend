@@ -20,12 +20,12 @@ const genAI = env.GEMINI_API_KEY
   : null;
 
 // ──────────────────────────────────────────────────────────────────────
-// AI helpers — all use gemini-2.0-flash per handoff
+// AI helpers — all use gemini-2.5-flash per handoff
 // ──────────────────────────────────────────────────────────────────────
 
 async function geminiText(prompt: string): Promise<string> {
   if (!genAI) throw new Error("GEMINI_API_KEY is not configured");
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
   const result = await model.generateContent(prompt);
   return result.response.text().trim();
 }

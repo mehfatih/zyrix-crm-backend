@@ -116,12 +116,11 @@ export async function generateReply(history: SupportTurn[], userMessage: string)
     };
   }
   const model = genAI.getGenerativeModel({
-    // Stable model — supports controlled generation (responseSchema). The
-    // experimental "gemini-2.0-flash-exp" rejects responseSchema, which is why
-    // the support reply (the only AI path combining exp + responseSchema) was
-    // failing while schema-less exp calls (AI CFO) and schema calls on this
-    // stable model (Ask AI) both worked.
-    model: "gemini-2.0-flash",
+    // Current stable model with controlled generation (responseSchema) support.
+    // gemini-2.0-flash and gemini-2.0-flash-exp were both retired by Google
+    // (generateContent returns 404 "no longer available"), so all services
+    // moved to gemini-2.5-flash.
+    model: "gemini-2.5-flash",
     systemInstruction: SYSTEM_PROMPT,
     generationConfig: {
       temperature: 0.4,

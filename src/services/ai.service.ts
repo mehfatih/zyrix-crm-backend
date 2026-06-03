@@ -39,7 +39,7 @@ export async function extractCustomerDataFromMessage(
   }
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-2.5-flash",
     generationConfig: {
       temperature: 0.3,
       responseMimeType: "application/json",
@@ -121,7 +121,7 @@ export async function generateReplySuggestion(
   }
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-2.5-flash",
     generationConfig: { temperature: 0.7 },
   });
 
@@ -162,7 +162,7 @@ export async function summarizeConversation(
   }
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-2.5-flash",
     generationConfig: { temperature: 0.3 },
   });
 

@@ -413,7 +413,7 @@ Rules:
 Today's date: ${snapshot.generatedAt.slice(0, 10)}`;
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-2.5-flash",
     systemInstruction: systemPrompt,
     generationConfig: {
       temperature: 0.5,
@@ -448,7 +448,7 @@ Analyze the data and respond.`;
     question,
     answer,
     snapshot,
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-2.5-flash",
     locale,
     generatedAt: new Date().toISOString(),
   };

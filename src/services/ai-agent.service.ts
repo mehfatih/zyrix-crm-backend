@@ -24,7 +24,7 @@ import { notFound, badRequest } from "../middleware/errorHandler";
 import { SALES_AGENT_TOOLS, executeTool } from "./ai-agent-tools";
 
 const MAX_TOOL_CALLS_PER_TURN = 5;
-const MODEL_NAME = "gemini-2.0-flash";
+const MODEL_NAME = "gemini-2.5-flash";
 
 const genAI = env.GEMINI_API_KEY
   ? new GoogleGenerativeAI(env.GEMINI_API_KEY)

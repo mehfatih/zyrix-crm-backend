@@ -180,7 +180,7 @@ export async function classifyConversation(
       suggestedNextStep: null,
     };
   }
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
   const prompt = `Classify this customer message. Reply strict JSON only.
 {
   "sentiment": "positive|neutral|negative",
@@ -464,7 +464,7 @@ export async function ingestMeeting(
   let actionItems: string[] = [];
   if (genAI) {
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const prompt = `Summarize this meeting transcript in 3 bullet points, then list action items.
 Return strict JSON: { "summary": "...", "actionItems": ["...", "..."] }
 
