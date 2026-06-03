@@ -50,6 +50,9 @@ import whatsappWebhookReceiver from "./routes/integrations/whatsapp-webhooks.rou
 import metaLeadsIntegrationRoutes from "./routes/integrations/meta-leads.routes";
 import metaLeadsWebhookReceiver from "./routes/integrations/meta-leads-webhooks.routes";
 import metaWebhookReceiver from "./routes/integrations/meta-webhooks.routes";
+import supportRoutes from "./routes/support.routes";
+import supportAdminRoutes from "./routes/support-admin.routes";
+import { startSupportFallbackCron } from "./cron/support-fallback";
 import brandRoutes from "./routes/brand.routes";
 import commentsRoutes from "./routes/comments.routes";
 import notificationsRoutes from "./routes/notifications.routes";
@@ -219,6 +222,11 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/advanced", advancedRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
+app.use("/api/support", supportRoutes);
+// Support Console — mounted BEFORE /api/admin so its SSE stream (?token= auth)
+// isn't intercepted by the admin router's global requireSuperAdmin. Distinct
+// from /api/admin/tickets (the existing support_tickets system).
+app.use("/api/admin/support-console", supportAdminRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/payments", paymentRoutes);
@@ -296,6 +304,7 @@ const server = app.listen(env.PORT, () => {
   startScheduledReportsWorker();
   startRetentionCron();
   startDocumentsReindexCron();
+  startSupportFallbackCron();
 
   // Seed curated templates — idempotent upsert by slug. Failures here
   // shouldn't crash the server; template gallery will just show whatever

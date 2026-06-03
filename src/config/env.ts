@@ -99,6 +99,14 @@ const envSchema = z.object({
   META_PAGE_ID: z.string().optional(),           // {PAGE_ID}/messages send endpoint
   INSTAGRAM_ACCOUNT_ID: z.string().optional(),   // linked IG professional account id
 
+  // ── AI Support Widget (Sprint 4) ────────────────────────────────────
+  // Reuses GEMINI_API_KEY (AI) + RESEND_API_KEY/EMAIL_FROM (mailer) above.
+  // All optional → the widget degrades gracefully (no AI key → route to
+  // human/email; no mailer → transcript/fallback emails no-op).
+  SUPPORT_NOTIFY_EMAIL: z.string().optional(),      // escalations → Zyrix team
+  SUPPORT_SLACK_WEBHOOK_URL: z.string().optional(), // optional Slack escalation ping
+  SUPPORT_FALLBACK_MINUTES: z.coerce.number().default(15), // auto email-fallback window
+
   // Admin Panel Bootstrap
   ADMIN_BOOTSTRAP_TOKEN: z.string().optional(),
   SUPER_ADMIN_EMAILS: z.string().optional(),

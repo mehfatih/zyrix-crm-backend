@@ -1883,6 +1883,54 @@ model MetaLeadForm {
   @@map("meta_lead_forms")
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// AI SUPPORT WIDGET (Sprint 4) — live AI chat + human handoff + survey.
+// NEW tables; the existing support_tickets system is a separate concern.
+// ─────────────────────────────────────────────────────────────────────────
+model SupportConversation {
+  id              String    @id @default(uuid())
+  companyId       String
+  userId          String?
+  status          String    @default("open_ai") // open_ai | awaiting_human | human | closed
+  contactEmail    String?
+  transcriptOptIn Boolean   @default(false)
+  assignedAdminId String?
+  subject         String?
+  escalatedAt     DateTime?
+  fallbackSentAt  DateTime?
+  createdAt       DateTime  @default(now())
+  lastMessageAt   DateTime?
+  closedAt        DateTime?
+
+  @@index([companyId])
+  @@index([status])
+  @@index([lastMessageAt])
+  @@map("support_conversations")
+}
+
+model SupportMessage {
+  id             String   @id @default(uuid())
+  conversationId String
+  sender         String // user | ai | human | system
+  body           String
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@map("support_messages")
+}
+
+model SupportSurvey {
+  id             String   @id @default(uuid())
+  conversationId String   @unique
+  qQuality       Int?
+  qService       Int?
+  qResolvedFast  Int?
+  createdAt      DateTime @default(now())
+
+  @@map("support_surveys")
+}
+
 // Maps a platform-scoped DM sender id (PSID/IGSID) → a CRM contact, so
 // Messenger/Instagram conversations resolve to the right customer (DMs carry
 // no phone/email). One row per (company, channel, externalId).

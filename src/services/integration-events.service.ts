@@ -38,7 +38,11 @@ export type IntegrationEventType =
   | "meta_msg_in"
   | "meta_msg_out"
   | "meta_msg_send_failed"
-  | "meta_msg_webhook_invalid";
+  | "meta_msg_webhook_invalid"
+  | "support_chat_started"
+  | "support_ai_reply"
+  | "support_ai_failed"
+  | "support_escalated";
 
 export interface RecordIntegrationEventInput {
   companyId?: string | null;
