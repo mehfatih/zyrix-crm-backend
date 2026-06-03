@@ -1845,6 +1845,70 @@ model IntegrationEvent {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// META LEAD ADS (Sprint 2) — Facebook/Instagram Instant Forms → pipeline.
+// Reuses customers/deals. Attribution lives in lead_sources (1 row per lead).
+// ─────────────────────────────────────────────────────────────────────────
+
+// Maps a Facebook page_id → company so the app-level `leadgen` webhook routes
+// to the right tenant. Holds the Page access token SEALED at rest (tokenCipher).
+model MetaLeadPage {
+  id              String   @id @default(uuid())
+  companyId       String
+  pageId          String   @unique
+  pageName        String?
+  tokenCiphertext String?
+  tokenIv         String?
+  tokenTag        String?
+  status          String   @default("connected")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("meta_lead_pages")
+}
+
+// Optional cache of a lead form's field schema (form name + question keys).
+model MetaLeadForm {
+  id              String   @id @default(uuid())
+  companyId       String
+  formId          String
+  pageId          String?
+  name            String?
+  fieldSchemaJson Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([companyId, formId])
+  @@index([companyId])
+  @@map("meta_lead_forms")
+}
+
+// Attribution for a contact/deal sourced from a Meta Lead Ad. leadgenId is
+// UNIQUE → the idempotency key for Meta webhook retries.
+model LeadSource {
+  id         String   @id @default(uuid())
+  companyId  String
+  contactId  String?
+  dealId     String?
+  source     String   @default("meta_lead_ad")
+  leadgenId  String   @unique
+  campaignId String?
+  adsetId    String?
+  adId       String?
+  formId     String?
+  pageId     String?
+  platform   String?
+  rawJson    Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([companyId])
+  @@index([contactId])
+  @@index([dealId])
+  @@index([createdAt])
+  @@map("lead_sources")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // WHITE-LABEL BRAND SETTINGS
 // ─────────────────────────────────────────────────────────────────────────
 // Per-company branding overrides. Used to customize the dashboard

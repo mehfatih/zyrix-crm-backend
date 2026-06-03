@@ -80,6 +80,17 @@ const envSchema = z.object({
   // bump when Meta releases the next version.
   WHATSAPP_GRAPH_API_VERSION: z.string().default("v25.0"),
 
+  // ── Meta Lead Ads (new /api/integrations/meta/leads module, Sprint 2) ──
+  // Reuses the SAME Meta app as WhatsApp (META_APP_ID/META_APP_SECRET above).
+  // All optional: the leadgen webhook + fetch short-circuit gracefully at
+  // request time when these are missing, so the app boots fine before they
+  // are added on Railway. Neutral META_* names (not WHATSAPP_-prefixed).
+  META_LEADS_PAGE_ACCESS_TOKEN: z.string().optional(), // long-lived Page token
+  META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),    // leadgen GET handshake
+  // Graph API version for the leads module. Confirmed v25.0 (Feb 2026) against
+  // Meta's changelog in recon; same value as WhatsApp but a neutral var.
+  META_GRAPH_API_VERSION: z.string().default("v25.0"),
+
   // Admin Panel Bootstrap
   ADMIN_BOOTSTRAP_TOKEN: z.string().optional(),
   SUPER_ADMIN_EMAILS: z.string().optional(),
