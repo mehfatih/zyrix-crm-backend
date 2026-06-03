@@ -21,5 +21,6 @@ router.post("/connect", ctrl.connect);
 router.get("/status", ctrl.status);
 router.post("/disconnect", ctrl.disconnect);
 router.get("/health", ctrl.health);
+router.get("/products", ctrl.products);
 
 export default router;

@@ -433,6 +433,39 @@ export async function health(req: Request, res: Response, next: NextFunction) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// GET /products — imported Shopify products for the current company.
+// ──────────────────────────────────────────────────────────────────────
+export async function products(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const limit = Math.min(
+      Math.max(parseInt(String(req.query.limit ?? "120"), 10) || 120, 1),
+      250
+    );
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id","externalId","title","handle","vendor","productType","status",
+              "variantsCount","sku","price"::text AS "price","inventoryQuantity","imageUrl","updatedAt"
+         FROM shopify_products
+        WHERE "companyId" = $1
+        ORDER BY "updatedAt" DESC
+        LIMIT $2`,
+      companyId,
+      limit
+    );
+    const totalRow = (await prisma.$queryRawUnsafe(
+      `SELECT count(*)::int AS n FROM shopify_products WHERE "companyId" = $1`,
+      companyId
+    )) as Array<{ n: number }>;
+    res.status(200).json({
+      success: true,
+      data: { products: rows, total: totalRow[0]?.n ?? 0 },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Minimal cookie reader (cookie-parser isn't installed). Parses the raw
 // Cookie header for a single named value.
 // ──────────────────────────────────────────────────────────────────────
