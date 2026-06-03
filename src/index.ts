@@ -47,6 +47,8 @@ import shopifyIntegrationRoutes from "./routes/integrations/shopify.routes";
 import shopifyWebhookReceiver from "./routes/integrations/shopify-webhooks.routes";
 import whatsappIntegrationRoutes from "./routes/integrations/whatsapp.routes";
 import whatsappWebhookReceiver from "./routes/integrations/whatsapp-webhooks.routes";
+import metaLeadsIntegrationRoutes from "./routes/integrations/meta-leads.routes";
+import metaLeadsWebhookReceiver from "./routes/integrations/meta-leads-webhooks.routes";
 import brandRoutes from "./routes/brand.routes";
 import commentsRoutes from "./routes/comments.routes";
 import notificationsRoutes from "./routes/notifications.routes";
@@ -119,6 +121,10 @@ app.use("/api/integrations/shopify/webhooks", shopifyWebhookReceiver);
 // Mounted before express.json; more specific than the /api/integrations/whatsapp
 // router (mounted later) so only /api/integrations/whatsapp/webhooks lands here.
 app.use("/api/integrations/whatsapp/webhooks", whatsappWebhookReceiver);
+// Meta Lead Ads webhook — raw body for X-Hub-Signature-256 (GET handshake +
+// POST leadgen). Mounted before express.json; dedicated URL so it never
+// overlaps the WhatsApp messages webhook. Object=page, field=leadgen.
+app.use("/api/integrations/meta/leads/webhook", metaLeadsWebhookReceiver);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -222,6 +228,7 @@ app.use("/api/ai-agents", aiAgentsRoutes);
 app.use("/api/oauth", oauthRoutes);
 app.use("/api/integrations/shopify", shopifyIntegrationRoutes);
 app.use("/api/integrations/whatsapp", whatsappIntegrationRoutes);
+app.use("/api/integrations/meta/leads", metaLeadsIntegrationRoutes);
 app.use("/api/brand", brandRoutes);
 app.use("/api/comments", commentsRoutes);
 app.use("/api/notifications", notificationsRoutes);

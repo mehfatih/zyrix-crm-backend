@@ -35,6 +35,12 @@ export type IntegrationErrorCode =
   | "WHATSAPP_WINDOW_EXPIRED"
   | "WHATSAPP_TEMPLATE_REQUIRED"
   | "WHATSAPP_SEND_FAILED"
+  // Meta Lead Ads
+  | "META_LEADS_NOT_CONFIGURED"
+  | "META_LEAD_SIGNATURE_INVALID"
+  | "META_LEAD_FETCH_FAILED"
+  | "META_LEAD_TOKEN_EXPIRED"
+  | "META_LEAD_MAP_FAILED"
   | "INTERNAL_ERROR";
 
 interface CodeSpec {
@@ -129,6 +135,31 @@ export const INTEGRATION_ERROR_SPECS: Record<IntegrationErrorCode, CodeSpec> = {
     httpStatus: 502,
     category: "messaging",
     userMessageKey: "IntegrationErrors.WHATSAPP_SEND_FAILED",
+  },
+  META_LEADS_NOT_CONFIGURED: {
+    httpStatus: 501,
+    category: "config",
+    userMessageKey: "IntegrationErrors.META_LEADS_NOT_CONFIGURED",
+  },
+  META_LEAD_SIGNATURE_INVALID: {
+    httpStatus: 401,
+    category: "messaging",
+    userMessageKey: "IntegrationErrors.META_LEAD_SIGNATURE_INVALID",
+  },
+  META_LEAD_FETCH_FAILED: {
+    httpStatus: 502,
+    category: "upstream",
+    userMessageKey: "IntegrationErrors.META_LEAD_FETCH_FAILED",
+  },
+  META_LEAD_TOKEN_EXPIRED: {
+    httpStatus: 409,
+    category: "token",
+    userMessageKey: "IntegrationErrors.META_LEAD_TOKEN_EXPIRED",
+  },
+  META_LEAD_MAP_FAILED: {
+    httpStatus: 422,
+    category: "validation",
+    userMessageKey: "IntegrationErrors.META_LEAD_MAP_FAILED",
   },
   INTERNAL_ERROR: {
     httpStatus: 500,
