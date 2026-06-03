@@ -91,6 +91,14 @@ const envSchema = z.object({
   // Meta's changelog in recon; same value as WhatsApp but a neutral var.
   META_GRAPH_API_VERSION: z.string().default("v25.0"),
 
+  // ── Meta Messaging (Messenger + Instagram DM, Sprint 3) ──────────────
+  // Same Meta app; reuses META_APP_SECRET (signature) + META_WEBHOOK_VERIFY_TOKEN
+  // (handshake) + META_GRAPH_API_VERSION above. All optional → boots without
+  // them; the messaging webhook/send fail gracefully at request time.
+  META_PAGE_ACCESS_TOKEN: z.string().optional(), // Page token w/ messaging scopes
+  META_PAGE_ID: z.string().optional(),           // {PAGE_ID}/messages send endpoint
+  INSTAGRAM_ACCOUNT_ID: z.string().optional(),   // linked IG professional account id
+
   // Admin Panel Bootstrap
   ADMIN_BOOTSTRAP_TOKEN: z.string().optional(),
   SUPER_ADMIN_EMAILS: z.string().optional(),

@@ -34,7 +34,11 @@ export type IntegrationEventType =
   | "whatsapp_webhook_invalid"
   | "meta_lead_received"
   | "meta_lead_fetch_failed"
-  | "meta_lead_webhook_invalid";
+  | "meta_lead_webhook_invalid"
+  | "meta_msg_in"
+  | "meta_msg_out"
+  | "meta_msg_send_failed"
+  | "meta_msg_webhook_invalid";
 
 export interface RecordIntegrationEventInput {
   companyId?: string | null;

@@ -10,6 +10,7 @@ import {
 import * as numbers from "../../services/whatsapp/numbers.service";
 import * as conv from "../../services/whatsapp/conversations.service";
 import { sendText, sendTemplate, listTemplates } from "../../services/whatsapp/send";
+import { sendMessage as sendMetaMessage } from "../../services/meta-messaging/send";
 import {
   recordIntegrationEvent,
   countEventsByType,
@@ -129,7 +130,9 @@ export async function messages(req: Request, res: Response, next: NextFunction) 
   }
 }
 
-// POST /conversations/:id/messages — reply (text inside window, or template)
+// POST /conversations/:id/messages — reply. Dispatches by the conversation's
+// channel: Messenger/Instagram → Meta Send API (24h window + message tag);
+// WhatsApp → text inside window or an approved template.
 export async function reply(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, companyId } = auth(req);
@@ -137,8 +140,24 @@ export async function reply(req: Request, res: Response, next: NextFunction) {
     const body = (req.body ?? {}) as {
       text?: string;
       type?: string;
+      tag?: string;
       template?: { name: string; language?: string; components?: unknown };
     };
+
+    // Channel dispatch — the unified inbox spans whatsapp | messenger | instagram.
+    const conversation = await conv.getConversation(companyId, id);
+    if (!conversation) {
+      return res
+        .status(404)
+        .json({ success: false, error: { code: "NOT_FOUND", message: "Conversation not found" } });
+    }
+    if (conversation.channel === "messenger" || conversation.channel === "instagram") {
+      const text = typeof body.text === "string" ? body.text.trim() : "";
+      if (!text) throw badRequest("Message text is required");
+      const tag = typeof body.tag === "string" && body.tag ? body.tag : null;
+      const r = await sendMetaMessage(companyId, id, text, userId, tag);
+      return res.status(200).json({ success: true, data: { messageId: r.messageId } });
+    }
 
     if (body.type === "template" && body.template?.name) {
       const r = await sendTemplate(
