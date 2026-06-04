@@ -33,7 +33,7 @@ export interface ActionSpec {
   type: string;
   label: { en: string; ar: string; tr: string };
   description: { en: string; ar: string; tr: string };
-  category: "messaging" | "crm" | "external";
+  category: "messaging" | "crm" | "external" | "assignment" | "flow";
   configFields: SpecField[];
 }
 
@@ -205,6 +205,100 @@ export const TRIGGERS: TriggerSpec[] = [
       "activity.id",
       "activity.type",
       "activity.title",
+      "customer.id",
+      "customer.fullName",
+    ],
+  },
+  {
+    type: "lead.captured",
+    label: { en: "Lead captured", ar: "التقاط عميل محتمل", tr: "Potansiyel müşteri yakalandı" },
+    description: {
+      en: "Fires when a lead is captured from an external source (e.g. Meta Lead Ads)",
+      ar: "يعمل عند التقاط عميل محتمل من مصدر خارجي (مثل إعلانات ليدز ميتا)",
+      tr: "Harici bir kaynaktan (ör. Meta Lead Ads) bir potansiyel müşteri yakalandığında tetiklenir",
+    },
+    category: "crm",
+    configFields: [
+      {
+        key: "source",
+        label: { en: "Source contains (optional)", ar: "المصدر يحتوي (اختياري)", tr: "Kaynak içerir (isteğe bağlı)" },
+        type: "text",
+        placeholder: "meta_lead_ad",
+        helpText: {
+          en: "Leave blank to match any lead source",
+          ar: "اتركه فارغاً لمطابقة أي مصدر",
+          tr: "Herhangi bir kaynakla eşleştirmek için boş bırakın",
+        },
+      },
+    ],
+    payloadFields: [
+      "customer.id",
+      "customer.fullName",
+      "customer.email",
+      "customer.phone",
+      "customer.source",
+      "deal.id",
+      "deal.title",
+    ],
+  },
+  {
+    type: "tag.added",
+    label: { en: "Tag added to customer", ar: "إضافة وسم لعميل", tr: "Müşteriye etiket eklendi" },
+    description: {
+      en: "Fires when a tag is added to a customer",
+      ar: "يعمل عند إضافة وسم إلى عميل",
+      tr: "Bir müşteriye etiket eklendiğinde tetiklenir",
+    },
+    category: "crm",
+    configFields: [
+      {
+        key: "tagName",
+        label: { en: "Tag name (optional)", ar: "اسم الوسم (اختياري)", tr: "Etiket adı (isteğe bağlı)" },
+        type: "text",
+        placeholder: "vip",
+        helpText: {
+          en: "Leave blank to fire on any tag",
+          ar: "اتركه فارغاً ليعمل مع أي وسم",
+          tr: "Herhangi bir etikette tetiklemek için boş bırakın",
+        },
+      },
+    ],
+    payloadFields: ["customer.id", "customer.fullName", "tag.name"],
+  },
+  {
+    type: "deal.idle",
+    label: { en: "Deal gone idle", ar: "صفقة خاملة", tr: "Anlaşma hareketsiz kaldı" },
+    description: {
+      en: "Fires once when an open deal has had no update for N days (daily scan)",
+      ar: "يعمل مرة واحدة عندما لا يطرأ تحديث على صفقة مفتوحة لمدة N يوم (فحص يومي)",
+      tr: "Açık bir anlaşma N gün boyunca güncellenmediğinde bir kez tetiklenir (günlük tarama)",
+    },
+    category: "crm",
+    configFields: [
+      {
+        key: "idleDays",
+        label: { en: "Idle days", ar: "أيام الخمول", tr: "Hareketsiz gün" },
+        type: "number",
+        required: true,
+        placeholder: "3",
+      },
+      {
+        key: "stage",
+        label: { en: "Only this stage (optional)", ar: "هذه المرحلة فقط (اختياري)", tr: "Yalnızca bu aşama (isteğe bağlı)" },
+        type: "text",
+        helpText: {
+          en: "Leave blank to scan all open deals",
+          ar: "اتركه فارغاً لفحص كل الصفقات المفتوحة",
+          tr: "Tüm açık anlaşmaları taramak için boş bırakın",
+        },
+      },
+    ],
+    payloadFields: [
+      "deal.id",
+      "deal.title",
+      "deal.value",
+      "deal.stage",
+      "deal.idleDays",
       "customer.id",
       "customer.fullName",
     ],
@@ -424,6 +518,102 @@ export const ACTIONS: ActionSpec[] = [
         label: { en: "Tag name", ar: "اسم الوسم", tr: "Etiket adı" },
         type: "text",
         required: true,
+      },
+    ],
+  },
+  {
+    type: "assign_owner",
+    label: { en: "Assign owner", ar: "تعيين مالك", tr: "Sahip ata" },
+    description: {
+      en: "Assigns the triggering record's owner — fixed user, round-robin, or by territory",
+      ar: "يعيّن مالك السجل — مستخدم ثابت أو تناوب أو حسب الإقليم",
+      tr: "Tetikleyen kaydın sahibini atar — sabit kullanıcı, sıralı dağıtım veya bölgeye göre",
+    },
+    category: "assignment",
+    configFields: [
+      {
+        key: "mode",
+        label: { en: "Mode", ar: "الوضع", tr: "Mod" },
+        type: "select",
+        required: true,
+        options: ["fixed", "round_robin", "territory"],
+        helpText: {
+          en: "fixed = one user; round_robin = rotate over a pool; territory = match by territory rules",
+          ar: "ثابت = مستخدم واحد؛ تناوب = توزيع على مجموعة؛ إقليم = مطابقة حسب قواعد الإقليم",
+          tr: "sabit = tek kullanıcı; round_robin = havuz üzerinde döndür; territory = bölge kurallarına göre eşleştir",
+        },
+      },
+      {
+        key: "userId",
+        label: { en: "User ID (fixed mode)", ar: "معرّف المستخدم (وضع ثابت)", tr: "Kullanıcı ID (sabit mod)" },
+        type: "text",
+      },
+      {
+        key: "territoryId",
+        label: { en: "Territory ID (round-robin over members)", ar: "معرّف الإقليم (تناوب على الأعضاء)", tr: "Bölge ID (üyeler arasında sıralı)" },
+        type: "text",
+        helpText: {
+          en: "In round_robin mode, rotate over this territory's members; leave blank to rotate over all active company users",
+          ar: "في وضع التناوب، يتم التوزيع على أعضاء هذا الإقليم؛ اتركه فارغاً للتوزيع على كل مستخدمي الشركة النشطين",
+          tr: "round_robin modunda bu bölgenin üyeleri arasında döndürür; tüm aktif şirket kullanıcıları için boş bırakın",
+        },
+      },
+    ],
+  },
+  {
+    type: "wait",
+    label: { en: "Wait", ar: "انتظار", tr: "Bekle" },
+    description: {
+      en: "Pauses the workflow for a set duration before running the next steps",
+      ar: "يوقف الـ workflow لمدة محددة قبل تشغيل الخطوات التالية",
+      tr: "Sonraki adımları çalıştırmadan önce iş akışını belirli bir süre duraklatır",
+    },
+    category: "flow",
+    configFields: [
+      {
+        key: "days",
+        label: { en: "Days", ar: "أيام", tr: "Gün" },
+        type: "number",
+      },
+      {
+        key: "hours",
+        label: { en: "Hours", ar: "ساعات", tr: "Saat" },
+        type: "number",
+      },
+      {
+        key: "minutes",
+        label: { en: "Minutes", ar: "دقائق", tr: "Dakika" },
+        type: "number",
+      },
+    ],
+  },
+  {
+    type: "webhook_out",
+    label: { en: "Signed webhook (HMAC)", ar: "webhook موقّع (HMAC)", tr: "İmzalı webhook (HMAC)" },
+    description: {
+      en: "POSTs the payload with an HMAC-SHA256 signature header and retries up to 2 times",
+      ar: "يرسل POST بالمحتوى مع ترويسة توقيع HMAC-SHA256 ويعيد المحاولة حتى مرتين",
+      tr: "Yükü HMAC-SHA256 imza başlığıyla POST eder ve en fazla 2 kez yeniden dener",
+    },
+    category: "external",
+    configFields: [
+      {
+        key: "url",
+        label: { en: "URL", ar: "الرابط", tr: "URL" },
+        type: "text",
+        required: true,
+        placeholder: "https://example.com/hook",
+      },
+      {
+        key: "secret",
+        label: { en: "Signing secret", ar: "سر التوقيع", tr: "İmzalama sırrı" },
+        type: "text",
+        required: true,
+        helpText: {
+          en: "Used to compute the X-Zyrix-Signature: sha256=… header",
+          ar: "يُستخدم لحساب ترويسة X-Zyrix-Signature: sha256=…",
+          tr: "X-Zyrix-Signature: sha256=… başlığını hesaplamak için kullanılır",
+        },
       },
     ],
   },

@@ -14,6 +14,7 @@
 
 import { randomUUID } from "crypto";
 import { prisma } from "../../config/database";
+import { dispatchLeadCaptured } from "../workflow-events.service";
 import type { FetchedLead, LeadFieldDatum } from "./fetch";
 
 // Known Meta lead-form field keys → CRM contact fields. Match by key.
@@ -191,6 +192,29 @@ export async function ingestLead(params: {
     platform,
     JSON.stringify({ fieldKeys: lead.fieldData.map((f) => f.name), createdTime: lead.createdTime })
   );
+
+  // Fire the lead.captured automation trigger (fire-and-forget — ingest must
+  // succeed even if no workflow matches or matching errors).
+  dispatchLeadCaptured(
+    companyId,
+    {
+      id: contactId,
+      fullName: mapped.fullName ?? "Lead",
+      email: mapped.email ?? null,
+      phone: mapped.phone ?? null,
+      status: "new",
+      source: "meta_lead_ad",
+    },
+    {
+      id: deal.id,
+      title: mapped.fullName ? `Lead: ${mapped.fullName}` : "Meta Lead",
+      value: 0,
+      currency: "USD",
+      stage: "lead",
+      customerId: contactId,
+    },
+    "meta_lead_ad"
+  ).catch(() => {});
 
   return { idempotent: false, contactId, dealId: deal.id };
 }

@@ -1,4 +1,5 @@
 import { prisma } from "../config/database";
+import { dispatchTagAdded } from "./workflow-events.service";
 
 // ============================================================================
 // BULK ACTIONS SERVICE
@@ -177,7 +178,7 @@ export async function bulkAction(
         // Validate tag
         const tag = await prisma.tag.findFirst({
           where: { id: dto.params.tagId, companyId },
-          select: { id: true },
+          select: { id: true, name: true },
         });
         if (!tag) {
           const err: any = new Error("Tag not found");
@@ -194,6 +195,22 @@ export async function bulkAction(
           skipDuplicates: true,
         });
         result.succeeded = r.count;
+
+        // Fire the tag.added automation trigger for each tagged customer
+        // (fire-and-forget — bulk action must succeed regardless).
+        if (r.count > 0) {
+          const customers = await prisma.customer.findMany({
+            where: { id: { in: validIds }, companyId },
+            select: { id: true, fullName: true },
+          });
+          for (const c of customers) {
+            dispatchTagAdded(
+              companyId,
+              { id: c.id, fullName: c.fullName },
+              { id: tag.id, name: tag.name }
+            ).catch(() => {});
+          }
+        }
       } else {
         result.errors.push("addTag only applies to customers");
       }

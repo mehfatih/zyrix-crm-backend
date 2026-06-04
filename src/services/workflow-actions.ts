@@ -8,6 +8,7 @@
 // whether to retry.
 // ============================================================================
 
+import { createHmac } from "crypto";
 import { prisma } from "../config/database";
 import { sendEmail } from "./email.service";
 import { sendViaMetaCloud } from "./whatsapp.service";
@@ -496,6 +497,278 @@ async function runCallWebhook(
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// assign_owner — fixed / round-robin / territory assignment
+// ----------------------------------------------------------------------------
+// Sets ownerId on the triggering customer and/or deal. Round-robin uses an
+// ATOMIC pointer bump so concurrent runs (and AC #1's "second lead → other
+// user") distribute correctly even under the multi-instance worker:
+//   • territory pool → UPDATE territories SET rrIndex = rrIndex+1 RETURNING
+//   • company pool   → INSERT ... ON CONFLICT DO UPDATE SET idx = idx+1 RETURNING
+// ──────────────────────────────────────────────────────────────────────
+
+/** Active users for a company, stable order (oldest first) for predictable RR. */
+async function getActiveCompanyUsers(companyId: string): Promise<string[]> {
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT id FROM users
+     WHERE "companyId" = $1 AND status = 'active'
+     ORDER BY "createdAt" ASC, id ASC`,
+    companyId
+  )) as { id: string }[];
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Atomically advance the company-level RR pointer for a scope and return the
+ * zero-based slot to use. First call returns 0, then 1, 2, … (wrap handled by
+ * the caller via modulo over the pool size).
+ */
+async function nextCompanyRrSlot(
+  companyId: string,
+  scope: string
+): Promise<number> {
+  const rows = (await prisma.$queryRawUnsafe(
+    `INSERT INTO automation_rr_pointers ("companyId", scope, idx, "updatedAt")
+     VALUES ($1, $2, 0, NOW())
+     ON CONFLICT ("companyId", scope)
+       DO UPDATE SET idx = automation_rr_pointers.idx + 1, "updatedAt" = NOW()
+     RETURNING idx`,
+    companyId,
+    scope
+  )) as { idx: number }[];
+  return Number(rows[0]?.idx ?? 0);
+}
+
+/** Find the first territory whose criteria match a customer row. */
+async function matchTerritoryForCustomer(
+  companyId: string,
+  customerId: string
+): Promise<{ id: string; ownerId: string | null; memberUserIds: string[] } | null> {
+  const custRows = (await prisma.$queryRawUnsafe(
+    `SELECT country, city, "companyName", source FROM customers
+     WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    customerId,
+    companyId
+  )) as {
+    country: string | null;
+    city: string | null;
+    companyName: string | null;
+    source: string | null;
+  }[];
+  if (custRows.length === 0) return null;
+  const c = custRows[0];
+
+  const terrs = (await prisma.$queryRawUnsafe(
+    `SELECT id, criteria, "ownerId", "memberUserIds" FROM territories
+     WHERE "companyId" = $1 ORDER BY name ASC`,
+    companyId
+  )) as {
+    id: string;
+    criteria: any;
+    ownerId: string | null;
+    memberUserIds: any;
+  }[];
+
+  for (const t of terrs) {
+    const cr = (typeof t.criteria === "string" ? JSON.parse(t.criteria) : t.criteria) || {};
+    const matches =
+      (!cr.country ||
+        (Array.isArray(cr.country) && cr.country.includes(c.country))) &&
+      (!cr.city || (Array.isArray(cr.city) && cr.city.includes(c.city))) &&
+      (!cr.sourceContains ||
+        (c.source ?? "")
+          .toLowerCase()
+          .includes(String(cr.sourceContains).toLowerCase())) &&
+      (!cr.companyNameContains ||
+        (c.companyName ?? "")
+          .toLowerCase()
+          .includes(String(cr.companyNameContains).toLowerCase()));
+    if (matches) {
+      const members =
+        typeof t.memberUserIds === "string"
+          ? JSON.parse(t.memberUserIds)
+          : t.memberUserIds;
+      return {
+        id: t.id,
+        ownerId: t.ownerId,
+        memberUserIds: Array.isArray(members) ? members : [],
+      };
+    }
+  }
+  return null;
+}
+
+/** Round-robin over a territory's member pool via an atomic rrIndex bump. */
+async function nextTerritoryMember(
+  territoryId: string,
+  members: string[]
+): Promise<string | null> {
+  if (members.length === 0) return null;
+  const rows = (await prisma.$queryRawUnsafe(
+    `UPDATE territories SET "rrIndex" = "rrIndex" + 1, "updatedAt" = NOW()
+     WHERE id = $1 RETURNING "rrIndex"`,
+    territoryId
+  )) as { rrIndex: number }[];
+  // rrIndex is post-increment; subtract 1 so the first assignment lands on member[0].
+  const slot = ((Number(rows[0]?.rrIndex ?? 1) - 1) % members.length + members.length) %
+    members.length;
+  return members[slot];
+}
+
+async function runAssignOwner(
+  companyId: string,
+  config: Record<string, unknown>,
+  payload: unknown
+): Promise<ActionResult> {
+  try {
+    const mode = String(config.mode ?? "").trim();
+    const customerId = (payload as any)?.customer?.id ?? (payload as any)?.customerId ?? null;
+    const dealId = (payload as any)?.deal?.id ?? null;
+    if (!customerId && !dealId) {
+      return { ok: false, error: "No customer or deal in payload to assign" };
+    }
+
+    let assignee: string | null = null;
+    let detail: Record<string, unknown> = { mode };
+
+    if (mode === "fixed") {
+      assignee = String(config.userId ?? "").trim() || null;
+      if (!assignee) return { ok: false, error: "fixed mode requires userId" };
+    } else if (mode === "round_robin") {
+      const territoryId = String(config.territoryId ?? "").trim();
+      if (territoryId) {
+        const terrRows = (await prisma.$queryRawUnsafe(
+          `SELECT "memberUserIds" FROM territories WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+          territoryId,
+          companyId
+        )) as { memberUserIds: any }[];
+        if (terrRows.length === 0) {
+          return { ok: false, error: "territory not found" };
+        }
+        const members =
+          typeof terrRows[0].memberUserIds === "string"
+            ? JSON.parse(terrRows[0].memberUserIds)
+            : terrRows[0].memberUserIds;
+        const pool = Array.isArray(members) ? members : [];
+        assignee = await nextTerritoryMember(territoryId, pool);
+        detail.territoryId = territoryId;
+        if (!assignee) {
+          return { ok: false, error: "territory has no members to round-robin" };
+        }
+      } else {
+        const users = await getActiveCompanyUsers(companyId);
+        if (users.length === 0) {
+          return { ok: false, error: "no active users to round-robin" };
+        }
+        const slot = await nextCompanyRrSlot(companyId, "company");
+        assignee = users[slot % users.length];
+      }
+    } else if (mode === "territory") {
+      if (!customerId) {
+        return { ok: false, error: "territory mode needs a customer in the payload" };
+      }
+      const matched = await matchTerritoryForCustomer(companyId, customerId);
+      if (!matched) {
+        return { ok: false, error: "no territory matched the customer", output: { mode } };
+      }
+      detail.territoryId = matched.id;
+      // Prefer the territory's default owner; otherwise round-robin its members.
+      assignee = matched.ownerId
+        ? matched.ownerId
+        : await nextTerritoryMember(matched.id, matched.memberUserIds);
+      if (!assignee) {
+        return { ok: false, error: "matched territory has neither owner nor members" };
+      }
+    } else {
+      return { ok: false, error: `unknown assign mode: ${mode}` };
+    }
+
+    const updated: { customer: boolean; deal: boolean } = { customer: false, deal: false };
+    if (customerId) {
+      const r = (await prisma.$queryRawUnsafe(
+        `UPDATE customers SET "ownerId" = $1, "updatedAt" = NOW()
+         WHERE id = $2 AND "companyId" = $3 RETURNING id`,
+        assignee,
+        customerId,
+        companyId
+      )) as { id: string }[];
+      updated.customer = r.length > 0;
+    }
+    if (dealId) {
+      const r = (await prisma.$queryRawUnsafe(
+        `UPDATE deals SET "ownerId" = $1, "updatedAt" = NOW()
+         WHERE id = $2 AND "companyId" = $3 RETURNING id`,
+        assignee,
+        dealId,
+        companyId
+      )) as { id: string }[];
+      updated.deal = r.length > 0;
+    }
+
+    return { ok: true, output: { assignedUserId: assignee, ...detail, updated } };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "assign_owner failed" };
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// webhook_out — signed outbound POST with HMAC-SHA256 + up to 2 retries
+// ──────────────────────────────────────────────────────────────────────
+
+async function runWebhookOut(
+  _companyId: string,
+  config: Record<string, unknown>,
+  payload: unknown
+): Promise<ActionResult> {
+  const url = interpolate(String(config.url ?? ""), payload).trim();
+  const secret = String(config.secret ?? "");
+  if (!url || !url.startsWith("http")) {
+    return { ok: false, error: "url is invalid or missing" };
+  }
+  if (!secret) return { ok: false, error: "signing secret is required" };
+
+  const body = JSON.stringify(payload ?? {});
+  const signature = createHmac("sha256", secret).update(body).digest("hex");
+
+  // 1 initial attempt + 2 retries = 3 total.
+  const MAX_TRIES = 3;
+  let lastError = "unknown error";
+  for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Zyrix-Signature": `sha256=${signature}`,
+          "X-Zyrix-Delivery-Attempt": String(attempt),
+        },
+        body,
+        signal: controller.signal,
+      });
+      const text = await resp.text();
+      if (resp.ok) {
+        return {
+          ok: true,
+          output: { status: resp.status, attempt, responseSnippet: text.slice(0, 500) },
+        };
+      }
+      lastError = `HTTP ${resp.status}: ${text.slice(0, 200)}`;
+    } catch (e: any) {
+      lastError = e?.name === "AbortError" ? "timed out after 10s" : e?.message || "request failed";
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    // Linear backoff between retries (0.5s, 1s) — short, since the worker
+    // slot is held for the duration.
+    if (attempt < MAX_TRIES) {
+      await new Promise((r) => setTimeout(r, attempt * 500));
+    }
+  }
+  return { ok: false, error: `webhook_out failed after ${MAX_TRIES} attempts: ${lastError}` };
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Dispatcher
 // ──────────────────────────────────────────────────────────────────────
 
@@ -519,9 +792,17 @@ export async function runAction(
       return runUpdateCustomerStatus(companyId, config, payload);
     case "add_tag":
       return runAddTag(companyId, config, payload);
+    case "assign_owner":
+      return runAssignOwner(companyId, config, payload);
+    case "webhook_out":
+      return runWebhookOut(companyId, config, payload);
     case "call_webhook":
     case "webhook_call":
       return runCallWebhook(companyId, config, payload);
+    case "wait":
+      // Wait steps are intercepted by the worker before reaching here; this
+      // defensive no-op keeps a stray wait from failing a run.
+      return { ok: true, output: { note: "wait handled by scheduler" } };
     // ── P10 AI-native step types ───────────────────────────────────
     case "ai_generate_email":
       return runAiGenerateEmail(companyId, config, payload);

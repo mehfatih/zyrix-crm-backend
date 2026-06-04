@@ -46,7 +46,10 @@ export type IntegrationEventType =
   // Google Workspace (Drive + Sheets) — Sprint 5
   | "google_export"
   | "google_import"
-  | "google_save_to_drive";
+  | "google_save_to_drive"
+  // Automation engine — Sprint 6
+  | "workflow_run_completed"
+  | "workflow_run_failed";
 
 export interface RecordIntegrationEventInput {
   companyId?: string | null;

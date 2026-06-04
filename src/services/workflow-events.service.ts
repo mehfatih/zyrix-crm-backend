@@ -192,6 +192,64 @@ export async function dispatchDealStageChanged(
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// LEAD CAPTURE EVENTS (external sources — e.g. Meta Lead Ads)
+// ──────────────────────────────────────────────────────────────────────
+
+export async function dispatchLeadCaptured(
+  companyId: string,
+  customer: CustomerPayload,
+  deal: DealPayload | null,
+  source: string | null
+): Promise<void> {
+  await safeDispatch(
+    "lead.captured",
+    companyId,
+    {
+      event: "lead.captured",
+      timestamp: new Date().toISOString(),
+      customer,
+      deal,
+      customerId: customer.id,
+      source,
+    },
+    // Optional source filter (substring match, case-insensitive).
+    (cfg) => {
+      const want = typeof cfg.source === "string" ? cfg.source.trim() : "";
+      if (!want) return true;
+      return (source ?? "").toLowerCase().includes(want.toLowerCase());
+    }
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// TAG EVENTS
+// ──────────────────────────────────────────────────────────────────────
+
+export async function dispatchTagAdded(
+  companyId: string,
+  customer: { id: string; fullName: string },
+  tag: { id: string; name: string }
+): Promise<void> {
+  await safeDispatch(
+    "tag.added",
+    companyId,
+    {
+      event: "tag.added",
+      timestamp: new Date().toISOString(),
+      customer,
+      customerId: customer.id,
+      tag,
+    },
+    // Optional tagName filter — exact (case-insensitive) match.
+    (cfg) => {
+      const want = typeof cfg.tagName === "string" ? cfg.tagName.trim() : "";
+      if (!want) return true;
+      return want.toLowerCase() === tag.name.toLowerCase();
+    }
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // ACTIVITY EVENTS
 // ──────────────────────────────────────────────────────────────────────
 
