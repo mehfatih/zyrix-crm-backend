@@ -84,16 +84,38 @@ interface MappedContact {
   custom: Record<string, string>;
 }
 
+// ISO-3166 alpha-2 → E.164 dialing code, for the countries Zyrix supports
+// (mirrors lib/locale/country-profiles phonePrefix on the web). Used to infer
+// the country code for bare NATIONAL numbers from the company's own country
+// rather than hardcoding one market.
+const DIAL_CODES: Record<string, string> = {
+  TR: "90",
+  SA: "966",
+  AE: "971",
+  EG: "20",
+  KW: "965",
+  QA: "974",
+  BH: "973",
+  OM: "968",
+  IQ: "964",
+};
+
+/** Resolve a company country (ISO-2, case-insensitive) to its dialing code. */
+export function dialCodeForCountry(country: string | null | undefined): string | null {
+  if (!country) return null;
+  return DIAL_CODES[country.trim().toUpperCase()] ?? null;
+}
+
 /**
- * E.164 normalization. Google lead forms usually deliver phone in E.164 already
- * (a leading '+'); we canonicalize the prefix and strip spaces/punctuation.
- * Rules, in order: keep an existing '+'; turn a '00' international prefix into
- * '+'; otherwise default a BARE NATIONAL number to the Türkiye country code
- * (+90) for the two common TR shapes — trunk-0 "05XXXXXXXXX" (11 digits) and
- * local mobile "5XXXXXXXXX" (10 digits). Any other shape is left as digits
- * rather than guessing a foreign country code.
+ * E.164 normalization. Numbers that already carry an international prefix are
+ * canonicalized unchanged in meaning: a leading '+' is kept, a leading '00' is
+ * turned into '+', and spaces/punctuation are stripped (this is how Google
+ * actually delivers leads). For a BARE NATIONAL number (no + / 00) we infer the
+ * company's `defaultDialCode` when provided — dropping a leading trunk '0'
+ * (e.g. TR "0532 415 67 89" + "90" → "+905324156789"; SA "0501234567" + "966"
+ * → "+966501234567"). With no country context the digits are left as-is.
  */
-export function normalizeE164(raw: string): string {
+export function normalizeE164(raw: string, defaultDialCode?: string | null): string {
   const trimmed = raw.trim();
   if (!trimmed) return "";
   const hasPlus = trimmed.startsWith("+");
@@ -101,16 +123,16 @@ export function normalizeE164(raw: string): string {
   if (!digits) return "";
   if (hasPlus) return "+" + digits; // already international
   if (digits.startsWith("00")) return "+" + digits.slice(2); // 00 intl prefix → +
-  // Bare national → default to the Türkiye country code (+90).
-  if (digits.length === 11 && digits.startsWith("0")) return "+90" + digits.slice(1); // 05XXXXXXXXX
-  if (digits.length === 10 && digits.startsWith("5")) return "+90" + digits; // 5XXXXXXXXX (mobile)
-  return digits; // unknown shape — leave as-is
+  // Bare national → infer the company's country code, dropping a trunk 0.
+  if (defaultDialCode) return "+" + defaultDialCode + digits.replace(/^0+/, "");
+  return digits; // no country context — leave as-is
 }
 
 /** Reduce user_column_data to known CRM fields (by column_id) + a custom bag. */
 export function mapColumns(
   columns: GoogleLeadColumn[],
-  mappingOverride: Record<string, string> | null
+  mappingOverride: Record<string, string> | null,
+  defaultDialCode?: string | null
 ): MappedContact {
   let firstName = "";
   let lastName = "";
@@ -142,7 +164,7 @@ export function mapColumns(
       case "firstName": firstName = val; break;
       case "lastName": lastName = val; break;
       case "email": out.email = val; break;
-      case "phone": out.phone = normalizeE164(val); break;
+      case "phone": out.phone = normalizeE164(val, defaultDialCode); break;
       case "companyName": out.companyName = val; break;
       case "position": out.position = val; break;
       case "city": out.city = val; break;
@@ -231,7 +253,15 @@ export async function ingestGoogleLead(params: {
   )) as Array<{ id: string }>;
   if (seen.length) return { idempotent: true, isTest };
 
-  const mapped = mapColumns(payload.user_column_data ?? [], mapping);
+  // Infer the default dialing code from the company's country so bare national
+  // numbers normalize to E.164 for this tenant's market (TR→+90, SA→+966, …).
+  const companyRow = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { country: true },
+  });
+  const defaultDialCode = dialCodeForCountry(companyRow?.country);
+
+  const mapped = mapColumns(payload.user_column_data ?? [], mapping, defaultDialCode);
   const contactId = await upsertContact(companyId, mapped);
 
   const stage = defaultPipelineStage?.trim() || "lead";
