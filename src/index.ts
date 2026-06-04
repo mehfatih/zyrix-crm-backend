@@ -50,6 +50,7 @@ import whatsappWebhookReceiver from "./routes/integrations/whatsapp-webhooks.rou
 import metaLeadsIntegrationRoutes from "./routes/integrations/meta-leads.routes";
 import metaLeadsWebhookReceiver from "./routes/integrations/meta-leads-webhooks.routes";
 import metaWebhookReceiver from "./routes/integrations/meta-webhooks.routes";
+import googleAdsWebhookReceiver from "./routes/integrations/google-ads-webhooks.routes";
 import googleIntegrationRoutes from "./routes/integrations/google.routes";
 import importRoutes from "./routes/import.routes";
 import supportRoutes from "./routes/support.routes";
@@ -136,6 +137,11 @@ app.use("/api/integrations/meta/leads/webhook", metaLeadsWebhookReceiver);
 // Ads ingest, Messenger/IG messaging → unified inbox. Raw body, before
 // express.json. WhatsApp's webhook (separate object/URL) is NOT touched.
 app.use("/api/integrations/meta/webhook", metaWebhookReceiver);
+// Google Ads Lead Forms webhook (Sprint 7) — PUBLIC, self-contained JSON POST
+// (no HMAC; the shared key is in the body). Company id is the URL param. Its
+// own router applies a SCOPED express.json(), so it's mounted before the global
+// express.json() below. Mirrors the Meta lead webhook placement.
+app.use("/api/integrations/google-ads/leads/webhook", googleAdsWebhookReceiver);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
