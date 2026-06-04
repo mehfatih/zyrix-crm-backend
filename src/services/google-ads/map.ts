@@ -85,21 +85,26 @@ interface MappedContact {
 }
 
 /**
- * Conservative E.164 normalization. Google lead forms usually deliver phone in
- * E.164 already; we just canonicalize the prefix without guessing a country
- * code: keep a leading '+', turn a leading '00' into '+', and strip spaces /
- * punctuation. If there is no country indication we leave the digits as-is.
+ * E.164 normalization. Google lead forms usually deliver phone in E.164 already
+ * (a leading '+'); we canonicalize the prefix and strip spaces/punctuation.
+ * Rules, in order: keep an existing '+'; turn a '00' international prefix into
+ * '+'; otherwise default a BARE NATIONAL number to the Türkiye country code
+ * (+90) for the two common TR shapes — trunk-0 "05XXXXXXXXX" (11 digits) and
+ * local mobile "5XXXXXXXXX" (10 digits). Any other shape is left as digits
+ * rather than guessing a foreign country code.
  */
 export function normalizeE164(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return "";
   const hasPlus = trimmed.startsWith("+");
-  const intlPrefix = !hasPlus && trimmed.replace(/[\s().-]/g, "").startsWith("00");
   const digits = trimmed.replace(/\D/g, "");
   if (!digits) return "";
-  if (hasPlus) return "+" + digits;
-  if (intlPrefix) return "+" + digits.replace(/^00/, "");
-  return digits;
+  if (hasPlus) return "+" + digits; // already international
+  if (digits.startsWith("00")) return "+" + digits.slice(2); // 00 intl prefix → +
+  // Bare national → default to the Türkiye country code (+90).
+  if (digits.length === 11 && digits.startsWith("0")) return "+90" + digits.slice(1); // 05XXXXXXXXX
+  if (digits.length === 10 && digits.startsWith("5")) return "+90" + digits; // 5XXXXXXXXX (mobile)
+  return digits; // unknown shape — leave as-is
 }
 
 /** Reduce user_column_data to known CRM fields (by column_id) + a custom bag. */
