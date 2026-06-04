@@ -1499,7 +1499,13 @@ model WorkflowExecution {
   triggerPayload Json
 
   status String @default("pending")
-  // pending | running | completed | failed | skipped_conditions
+  // pending | running | waiting | completed | failed | skipped_conditions
+  // 'waiting' rows are parked on a wait step; the worker resumes them when
+  // scheduledAt <= now, picking up the chain at currentStep.
+
+  // Wait-step support: cursor into the action chain + next resume time.
+  currentStep Int       @default(0)
+  scheduledAt DateTime?
 
   // Action-by-action log. Shape:
   //   [{ actionId, actionType, status: 'success'|'failed'|'skipped',
@@ -1521,6 +1527,7 @@ model WorkflowExecution {
   @@index([companyId])
   @@index([status])
   @@index([status, nextRetryAt])
+  @@index([status, scheduledAt])
   @@index([companyId, queuedAt])
   @@map("workflow_executions")
 }
@@ -2339,13 +2346,32 @@ model Territory {
   //   { country?: string[], city?: string[], sourceContains?: string,
   //     companyNameContains?: string }
   criteria    Json     @default("{}")
-  ownerId     String?  // default owner for customers assigned here
+  ownerId     String?  // default owner for customers assigned here (territory-match)
+  // Round-robin assignment pool. memberUserIds is a JSON array of user ids that
+  // share inbound leads for this territory; rrIndex is the rotating pointer,
+  // bumped atomically by the assign_owner action.
+  memberUserIds Json   @default("[]")
+  rrIndex       Int    @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@unique([companyId, name])
   @@index([companyId])
   @@map("territories")
+}
+
+// Company-level round-robin pointers for assign_owner when rotating over the
+// whole company (scope='company') rather than a territory. One row per
+// (companyId, scope); the pointer is incremented atomically via raw SQL
+// INSERT ... ON CONFLICT DO UPDATE SET idx = idx + 1 RETURNING idx.
+model RrPointer {
+  companyId String
+  scope     String   @default("company")
+  idx       Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([companyId, scope])
+  @@map("automation_rr_pointers")
 }
 
 model Quota {
