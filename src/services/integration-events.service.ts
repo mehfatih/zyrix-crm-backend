@@ -35,6 +35,8 @@ export type IntegrationEventType =
   | "meta_lead_received"
   | "meta_lead_fetch_failed"
   | "meta_lead_webhook_invalid"
+  | "google_ads_lead_received"
+  | "google_ads_lead_invalid"
   | "meta_msg_in"
   | "meta_msg_out"
   | "meta_msg_send_failed"
