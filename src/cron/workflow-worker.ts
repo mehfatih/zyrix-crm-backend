@@ -123,6 +123,36 @@ interface StepResult {
   output?: unknown;
 }
 
+// Deterministic-failure message fragments. A failed action whose runner sets
+// retryable:false, OR whose error matches one of these, will never succeed on
+// retry (bad config / missing payload context / not-found reference) — so the
+// worker dead-letters it immediately instead of cycling the backoff ladder.
+const NON_RETRYABLE_PATTERNS = [
+  "is empty",
+  "is required",
+  "are required",
+  "requires",
+  "no customer",
+  "no deal",
+  "needs a customer",
+  "not found",
+  "unknown action",
+  "unknown assign",
+  "unsupported",
+  "no active users",
+  "no members",
+  "no territory matched",
+  "neither owner",
+  "is invalid",
+  "invalid or missing",
+];
+
+function isNonRetryableFailure(result: { retryable?: boolean; error?: string }): boolean {
+  if (result.retryable === false) return true;
+  const e = (result.error ?? "").toLowerCase();
+  return NON_RETRYABLE_PATTERNS.some((p) => e.includes(p));
+}
+
 /** Compute a wait step's duration in ms from its config (days/hours/minutes). */
 function waitDurationMs(config: Record<string, unknown>): number {
   const days = Number(config.days ?? 0) || 0;
@@ -136,7 +166,7 @@ function waitDurationMs(config: Record<string, unknown>): number {
 }
 
 type ChainResult =
-  | { kind: "done"; ok: boolean; steps: StepResult[] }
+  | { kind: "done"; ok: boolean; steps: StepResult[]; retryable: boolean }
   | { kind: "wait"; resumeAt: Date; nextStep: number; steps: StepResult[] };
 
 /**
@@ -156,6 +186,10 @@ async function runChain(
 ): Promise<ChainResult> {
   const steps: StepResult[] = [...priorSteps];
   let overallOk = true;
+  // A deterministic failure (bad config / missing payload context / not-found
+  // assignee) will never succeed on retry — surface it so the caller can
+  // dead-letter immediately instead of cycling the 6-attempt backoff.
+  let retryable = true;
   for (let i = startIndex; i < actions.length; i++) {
     const action = actions[i];
     const startedAt = new Date().toISOString();
@@ -209,6 +243,8 @@ async function runChain(
       });
       if (action.stopOnError !== false) {
         overallOk = false;
+        // Permanent (deterministic) error → don't retry.
+        if (isNonRetryableFailure(result)) retryable = false;
         // Mark remaining actions as skipped so the UI shows them
         // distinctly from successful ones.
         const remaining = actions.slice(i + 1);
@@ -225,7 +261,7 @@ async function runChain(
       }
     }
   }
-  return { kind: "done", ok: overallOk, steps };
+  return { kind: "done", ok: overallOk, steps, retryable };
 }
 
 /**
@@ -333,7 +369,10 @@ async function processOne(exec: PendingExecution): Promise<void> {
     chainResult.steps.find((s) => s.status === "failed")?.error ??
     "unknown error";
 
-  if (exec.attempts < MAX_ATTEMPTS) {
+  // Retry only transient failures. A non-retryable (deterministic) failure —
+  // bad config, missing payload context, unknown assignee — dead-letters at
+  // once instead of cycling the backoff ladder for hours.
+  if (chainResult.retryable && exec.attempts < MAX_ATTEMPTS) {
     const backoffSec =
       RETRY_BACKOFF_SECONDS[exec.attempts - 1] ??
       RETRY_BACKOFF_SECONDS[RETRY_BACKOFF_SECONDS.length - 1];

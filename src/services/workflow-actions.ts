@@ -233,6 +233,10 @@ export interface ActionResult {
   ok: boolean;
   output?: unknown;
   error?: string;
+  // false = deterministic failure (bad config / missing payload context /
+  // not-found reference) — the worker dead-letters instead of retrying.
+  // Omitted/true = transient (network/API/DB), eligible for backoff retry.
+  retryable?: boolean;
 }
 
 // ──────────────────────────────────────────────────────────────────────
