@@ -12,6 +12,7 @@ import { createHmac } from "crypto";
 import { prisma } from "../config/database";
 import { sendEmail } from "./email.service";
 import { sendViaMetaCloud } from "./whatsapp.service";
+import { createTask } from "./task.service";
 import { interpolate } from "./workflows.service";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { env } from "../config/env";
@@ -161,7 +162,29 @@ async function runSendNotification(
         body: message || null,
       } as any,
     });
-    return { ok: true };
+
+    // Spec: notify = in-app + email. Best-effort — a missing email or a
+    // Resend hiccup logs 'skipped' but never fails the run.
+    let emailed = false;
+    try {
+      const rows = (await prisma.$queryRawUnsafe(
+        `SELECT email FROM users WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+        userId,
+        companyId
+      )) as { email: string | null }[];
+      const to = rows[0]?.email;
+      if (to) {
+        emailed = await sendEmail({
+          to,
+          subject: title,
+          html: `<p>${message || title}</p>`,
+          text: message || title,
+        });
+      }
+    } catch {
+      /* email is best-effort; in-app notification already succeeded */
+    }
+    return { ok: true, output: { emailed } };
   } catch (e: any) {
     return { ok: false, error: e?.message || "send_notification failed" };
   }
@@ -268,7 +291,13 @@ async function runSendEmail(
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// create_task — creates an Activity of type 'task'
+// create_task — creates a real Task via task.service (tasks table)
+// ----------------------------------------------------------------------------
+// Reuses task.service.createTask so the task lands in the `tasks` table with
+// the correct columns and shows up in the Tasks UI. (The old hand-rolled
+// INSERT into `activities` referenced a non-existent "assignedToId" column →
+// Postgres 42703, failing every create_task run.) customerId/dealId are
+// optional now — a schedule/idle trigger can create an unattached task.
 // ──────────────────────────────────────────────────────────────────────
 
 async function runCreateTask(
@@ -281,10 +310,11 @@ async function runCreateTask(
     const title = interpolate(String(config.title ?? ""), payload).trim();
     if (!title) return { ok: false, error: "title is empty" };
 
-    const assigneeId =
-      typeof config.assigneeId === "string" && config.assigneeId.trim().length > 0
-        ? config.assigneeId
-        : fallbackUserId;
+    const assigneeRaw =
+      typeof config.assigneeId === "string"
+        ? interpolate(config.assigneeId, payload).trim()
+        : "";
+    const assignedToId = assigneeRaw.length > 0 ? assigneeRaw : fallbackUserId;
 
     const dueDays =
       typeof config.dueDays === "number" && config.dueDays > 0
@@ -294,33 +324,20 @@ async function runCreateTask(
       ? new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000)
       : null;
 
-    // Resolve a customerId from the payload if one is present. Required
-    // by the Activity schema.
     const customerId =
       (payload as any)?.customer?.id ?? (payload as any)?.customerId ?? null;
+    const dealId = (payload as any)?.deal?.id ?? null;
 
-    if (!customerId) {
-      return {
-        ok: false,
-        error: "No customer context in payload — task action needs a customer",
-      };
-    }
-
-    const rows = (await prisma.$queryRawUnsafe(
-      `INSERT INTO activities
-         (id, "companyId", "customerId", "assignedToId", type, title,
-          "dueDate", "createdAt", "updatedAt")
-       VALUES (gen_random_uuid(), $1, $2, $3, 'task', $4, $5, NOW(), NOW())
-       RETURNING id`,
-      companyId,
-      customerId,
-      assigneeId,
+    const task = await createTask(companyId, fallbackUserId, {
       title,
-      dueDate
-    )) as { id: string }[];
-    return { ok: true, output: { activityId: rows[0]?.id } };
+      assignedToId,
+      customerId,
+      dealId,
+      dueDate,
+    });
+    return { ok: true, output: { taskId: task.id } };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "Unknown error" };
+    return { ok: false, error: e?.message || "create_task failed" };
   }
 }
 
