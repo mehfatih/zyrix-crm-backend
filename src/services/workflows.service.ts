@@ -600,7 +600,8 @@ function catalogSummary(): string {
 }
 
 export async function aiBuildDraft(
-  _companyId: string,
+  companyId: string,
+  creatorUserId: string,
   promptText: string,
   locale: string = "en"
 ): Promise<AiAutomationDraft> {
@@ -610,6 +611,14 @@ export async function aiBuildDraft(
   if (!promptText || promptText.trim().length < 3) {
     throw badRequest("Describe the automation you want");
   }
+
+  // Real active users in the company — the AI must never invent ids; any
+  // recipient/assignee id it emits is validated against this set.
+  const userRows = (await prisma.$queryRawUnsafe(
+    `SELECT id FROM users WHERE "companyId" = $1 AND status = 'active'`,
+    companyId
+  )) as { id: string }[];
+  const validUserIds = new Set(userRows.map((r) => r.id));
 
   const model = aiClient.getGenerativeModel({
     model: "gemini-2.5-flash",
@@ -633,6 +642,7 @@ Rules:
 - Use ONLY trigger/action types from the lists above. If unsure, pick the closest.
 - config keys must come from that type's listed config keys. Use {{customer.phone}}, {{customer.email}}, {{deal.id}} style templates where a value should come from the triggering record.
 - conditions may be an empty array. steps must have at least one item.
+- NEVER invent user ids. For recipient/assignee fields (assigneeId, userId), leave the value as an empty string "" — the system assigns the workflow creator by default.
 - Return JSON only, no markdown.`;
 
   const result = await model.generateContent(`${sys}\n\nUSER DESCRIPTION (${locale}):\n${promptText}`);
@@ -690,6 +700,26 @@ Rules:
   if (actions.length === 0) {
     flags.push({ path: "steps", reason: "No steps were produced — add at least one" });
   }
+
+  // Resolve recipient/assignee ids: blank → the creator; a non-existent id →
+  // flagged AND replaced with the creator (never a fabricated id like "1").
+  const USER_ID_KEYS = ["assigneeId", "userId"];
+  actions.forEach((a, i) => {
+    const cfg = a.config as Record<string, unknown>;
+    for (const key of USER_ID_KEYS) {
+      if (!(key in cfg)) continue;
+      const val = typeof cfg[key] === "string" ? (cfg[key] as string).trim() : "";
+      if (!val) {
+        cfg[key] = creatorUserId;
+      } else if (!validUserIds.has(val)) {
+        flags.push({
+          path: `steps[${i}].config.${key}`,
+          reason: `Unknown user "${val}" — defaulted to you (the creator)`,
+        });
+        cfg[key] = creatorUserId;
+      }
+    }
+  });
 
   return {
     name: String(parsed?.name ?? "AI automation").slice(0, 200),

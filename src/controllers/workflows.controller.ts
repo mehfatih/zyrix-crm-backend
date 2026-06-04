@@ -281,7 +281,7 @@ export async function aiBuilder(
   next: NextFunction
 ) {
   try {
-    const { companyId, role } = auth(req);
+    const { userId, companyId, role } = auth(req);
     if (role !== "owner" && role !== "admin" && role !== "manager") {
       return res.status(403).json({
         success: false,
@@ -292,7 +292,7 @@ export async function aiBuilder(
       });
     }
     const { prompt, locale } = aiBuilderSchema.parse(req.body);
-    const draft = await aiBuildDraft(companyId, prompt, locale ?? "en");
+    const draft = await aiBuildDraft(companyId, userId, prompt, locale ?? "en");
     res.status(200).json({ success: true, data: draft });
   } catch (err) {
     next(err);

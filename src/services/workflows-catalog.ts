@@ -11,7 +11,17 @@
 export interface SpecField {
   key: string;
   label: { en: string; ar: string; tr: string };
-  type: "text" | "number" | "select" | "textarea" | "boolean" | "cron";
+  // userSelect / territorySelect render as pickers in the builder (company
+  // users / territories) instead of raw id text inputs.
+  type:
+    | "text"
+    | "number"
+    | "select"
+    | "textarea"
+    | "boolean"
+    | "cron"
+    | "userSelect"
+    | "territorySelect";
   required?: boolean;
   options?: string[];   // for type=select
   placeholder?: string;
@@ -451,8 +461,8 @@ export const ACTIONS: ActionSpec[] = [
       },
       {
         key: "assigneeId",
-        label: { en: "Assignee user id", ar: "معرّف الشخص المسؤول", tr: "Atanan kullanıcı kimliği" },
-        type: "text",
+        label: { en: "Assignee", ar: "الشخص المسؤول", tr: "Atanan kişi" },
+        type: "userSelect",
         helpText: {
           en: "Leave blank to assign to the workflow creator",
           ar: "اتركه فارغاً لتعيينه لمنشئ الـ workflow",
@@ -545,13 +555,13 @@ export const ACTIONS: ActionSpec[] = [
       },
       {
         key: "userId",
-        label: { en: "User ID (fixed mode)", ar: "معرّف المستخدم (وضع ثابت)", tr: "Kullanıcı ID (sabit mod)" },
-        type: "text",
+        label: { en: "User (fixed mode)", ar: "المستخدم (وضع ثابت)", tr: "Kullanıcı (sabit mod)" },
+        type: "userSelect",
       },
       {
         key: "territoryId",
-        label: { en: "Territory ID (round-robin over members)", ar: "معرّف الإقليم (تناوب على الأعضاء)", tr: "Bölge ID (üyeler arasında sıralı)" },
-        type: "text",
+        label: { en: "Territory (round-robin over members)", ar: "الإقليم (تناوب على الأعضاء)", tr: "Bölge (üyeler arasında sıralı)" },
+        type: "territorySelect",
         helpText: {
           en: "In round_robin mode, rotate over this territory's members; leave blank to rotate over all active company users",
           ar: "في وضع التناوب، يتم التوزيع على أعضاء هذا الإقليم؛ اتركه فارغاً للتوزيع على كل مستخدمي الشركة النشطين",
@@ -792,8 +802,8 @@ ACTIONS.push(
     configFields: [
       {
         key: "userId",
-        label: { en: "User ID", ar: "معرّف المستخدم", tr: "Kullanıcı ID" },
-        type: "text",
+        label: { en: "Recipient", ar: "المستلم", tr: "Alıcı" },
+        type: "userSelect",
         required: true,
       },
       {
