@@ -50,6 +50,8 @@ import whatsappWebhookReceiver from "./routes/integrations/whatsapp-webhooks.rou
 import metaLeadsIntegrationRoutes from "./routes/integrations/meta-leads.routes";
 import metaLeadsWebhookReceiver from "./routes/integrations/meta-leads-webhooks.routes";
 import metaWebhookReceiver from "./routes/integrations/meta-webhooks.routes";
+import googleIntegrationRoutes from "./routes/integrations/google.routes";
+import importRoutes from "./routes/import.routes";
 import supportRoutes from "./routes/support.routes";
 import supportAdminRoutes from "./routes/support-admin.routes";
 import { startSupportFallbackCron } from "./cron/support-fallback";
@@ -243,6 +245,8 @@ app.use("/api/oauth", oauthRoutes);
 app.use("/api/integrations/shopify", shopifyIntegrationRoutes);
 app.use("/api/integrations/whatsapp", whatsappIntegrationRoutes);
 app.use("/api/integrations/meta/leads", metaLeadsIntegrationRoutes);
+app.use("/api/integrations/google", googleIntegrationRoutes);
+app.use("/api/import", importRoutes);
 app.use("/api/brand", brandRoutes);
 app.use("/api/comments", commentsRoutes);
 app.use("/api/notifications", notificationsRoutes);

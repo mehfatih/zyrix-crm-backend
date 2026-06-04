@@ -16,8 +16,22 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
 
+  // Google SIGN-IN / login (existing — do NOT reuse for the integration).
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+
+  // ── Google Workspace integration (Drive + Sheets, Sprint 5) ──────────
+  // SEPARATE OAuth client from login above so login is never at risk. All
+  // optional → the connect/callback routes short-circuit with a typed
+  // GOOGLE_NOT_CONFIGURED error and /status returns available:false, so the
+  // app boots fine and the web hides all Google UI until these are set.
+  // Scope is fixed in code to the non-sensitive `drive.file` (+ openid email
+  // profile) — never add a sensitive/restricted scope here.
+  GOOGLE_INTEGRATION_CLIENT_ID: z.string().optional(),
+  GOOGLE_INTEGRATION_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_INTEGRATION_REDIRECT_URI: z
+    .string()
+    .optional(), // e.g. https://api.crm.zyrix.co/api/integrations/google/callback
 
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().optional(),

@@ -42,7 +42,11 @@ export type IntegrationEventType =
   | "support_chat_started"
   | "support_ai_reply"
   | "support_ai_failed"
-  | "support_escalated";
+  | "support_escalated"
+  // Google Workspace (Drive + Sheets) — Sprint 5
+  | "google_export"
+  | "google_import"
+  | "google_save_to_drive";
 
 export interface RecordIntegrationEventInput {
   companyId?: string | null;

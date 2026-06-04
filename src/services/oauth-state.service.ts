@@ -21,7 +21,7 @@ import { prisma } from "../config/database";
 
 const STATE_TTL_MINUTES = 15;
 
-export type OAuthProvider = "salla" | "shopify";
+export type OAuthProvider = "salla" | "shopify" | "google";
 
 export interface CreateStateInput {
   provider: OAuthProvider;

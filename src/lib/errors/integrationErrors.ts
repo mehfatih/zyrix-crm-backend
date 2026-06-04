@@ -47,6 +47,12 @@ export type IntegrationErrorCode =
   | "META_MSG_WINDOW_EXPIRED"
   | "META_MSG_TAG_REQUIRED"
   | "META_MSG_SEND_FAILED"
+  // Google Workspace (Drive + Sheets) — Sprint 5
+  | "GOOGLE_NOT_CONFIGURED"
+  | "GOOGLE_AUTH_FAILED"
+  | "GOOGLE_CODE_EXCHANGE_FAILED"
+  | "GOOGLE_NOT_CONNECTED"
+  | "GOOGLE_API_FAILED"
   | "INTERNAL_ERROR";
 
 interface CodeSpec {
@@ -191,6 +197,31 @@ export const INTEGRATION_ERROR_SPECS: Record<IntegrationErrorCode, CodeSpec> = {
     httpStatus: 502,
     category: "messaging",
     userMessageKey: "IntegrationErrors.META_MSG_SEND_FAILED",
+  },
+  GOOGLE_NOT_CONFIGURED: {
+    httpStatus: 501,
+    category: "config",
+    userMessageKey: "IntegrationErrors.GOOGLE_NOT_CONFIGURED",
+  },
+  GOOGLE_AUTH_FAILED: {
+    httpStatus: 401,
+    category: "oauth",
+    userMessageKey: "IntegrationErrors.GOOGLE_AUTH_FAILED",
+  },
+  GOOGLE_CODE_EXCHANGE_FAILED: {
+    httpStatus: 502,
+    category: "oauth",
+    userMessageKey: "IntegrationErrors.GOOGLE_CODE_EXCHANGE_FAILED",
+  },
+  GOOGLE_NOT_CONNECTED: {
+    httpStatus: 409,
+    category: "token",
+    userMessageKey: "IntegrationErrors.GOOGLE_NOT_CONNECTED",
+  },
+  GOOGLE_API_FAILED: {
+    httpStatus: 502,
+    category: "upstream",
+    userMessageKey: "IntegrationErrors.GOOGLE_API_FAILED",
   },
   INTERNAL_ERROR: {
     httpStatus: 500,

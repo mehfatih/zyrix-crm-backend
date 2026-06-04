@@ -229,6 +229,38 @@ function mapCommissionRow(c: any): Record<string, any> {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// PUBLIC: buildEntityRows — headers + plain row objects for an entity.
+// Shared by exportData (csv/xlsx) and the Google Sheets export so all three
+// surfaces use exactly the same columns as the list views.
+// ──────────────────────────────────────────────────────────────────────
+export async function buildEntityRows(
+  companyId: string,
+  entityType: ExportOptions["entityType"],
+  filters: Record<string, any> = {}
+): Promise<{ headers: string[]; rows: Record<string, any>[] }> {
+  let rows: Record<string, any>[] = [];
+  switch (entityType) {
+    case "customers":
+      rows = (await fetchCustomersForExport(companyId, filters)).map(mapCustomerRow);
+      break;
+    case "deals":
+      rows = (await fetchDealsForExport(companyId, filters)).map(mapDealRow);
+      break;
+    case "quotes":
+      rows = (await fetchQuotesForExport(companyId, filters)).map(mapQuoteRow);
+      break;
+    case "contracts":
+      rows = (await fetchContractsForExport(companyId, filters)).map(mapContractRow);
+      break;
+    case "commissions":
+      rows = (await fetchCommissionsForExport(companyId, filters)).map(mapCommissionRow);
+      break;
+  }
+  const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+  return { headers, rows };
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // PUBLIC: exportData returns content + mime type + filename
 // ──────────────────────────────────────────────────────────────────────
 export interface ExportOutput {
