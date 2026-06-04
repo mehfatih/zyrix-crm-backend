@@ -10,9 +10,13 @@
 // deploy and the code works there unchanged.
 // ============================================================================
 
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "../config/database";
+import { env } from "../config/env";
 import { notFound, AppError, badRequest } from "../middleware/errorHandler";
 import {
+  TRIGGERS,
+  ACTIONS,
   VALID_TRIGGER_TYPES,
   VALID_ACTION_TYPES,
   CONDITION_OPERATORS,
@@ -510,4 +514,189 @@ export async function getExecution(
   )) as any[];
   if (rows.length === 0) throw notFound("Execution not found");
   return rows[0];
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// DRY-RUN (test without side effects)
+// ----------------------------------------------------------------------------
+// Evaluates the conditions against a sample payload and returns a plan of
+// what WOULD happen — no messages sent, no records touched. Distinct from
+// createTestExecution, which enqueues a real run.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function dryRunWorkflow(
+  companyId: string,
+  id: string,
+  samplePayload: unknown
+): Promise<{
+  conditionsPassed: boolean;
+  plan: { step: number; actionType: string; preview: Record<string, string>; isWait: boolean }[];
+}> {
+  const wf = await getWorkflow(companyId, id);
+  const conditions = (wf as any).conditions as WorkflowCondition[];
+  const parsedConditions =
+    typeof conditions === "string" ? JSON.parse(conditions as any) : conditions;
+  const conditionsPassed = evaluateConditions(parsedConditions ?? [], samplePayload ?? {});
+
+  const actionsRaw = (wf as any).actions;
+  const actions: WorkflowAction[] =
+    typeof actionsRaw === "string" ? JSON.parse(actionsRaw) : actionsRaw ?? [];
+
+  const plan = actions.map((a, i) => {
+    // Interpolate string config values so the user sees the resolved preview
+    // (e.g. the actual phone/subject) without sending anything.
+    const preview: Record<string, string> = {};
+    for (const [k, v] of Object.entries(a.config ?? {})) {
+      if (typeof v === "string") preview[k] = interpolate(v, samplePayload ?? {});
+      else if (v != null) preview[k] = String(v);
+    }
+    return { step: i + 1, actionType: a.type, preview, isWait: a.type === "wait" };
+  });
+
+  return { conditionsPassed, plan };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// AI BUILDER — natural-language → reviewable automation draft
+// ----------------------------------------------------------------------------
+// Gemini drafts an automation from a free-text description (any language).
+// We validate the draft against the trigger/action registry server-side and
+// flag invalid parts so the UI can highlight them. The draft is NEVER auto-
+// activated — it's handed back for the user to review + save as a draft.
+// ──────────────────────────────────────────────────────────────────────
+
+const aiClient = env.GEMINI_API_KEY ? new GoogleGenerativeAI(env.GEMINI_API_KEY) : null;
+
+export interface AiDraftFlag {
+  path: string;
+  reason: string;
+}
+
+export interface AiAutomationDraft {
+  name: string;
+  description: string;
+  trigger: WorkflowTrigger;
+  conditions: WorkflowCondition[];
+  actions: WorkflowAction[];
+  flags: AiDraftFlag[];
+}
+
+function catalogSummary(): string {
+  const trigs = TRIGGERS.map(
+    (t) =>
+      `- ${t.type}: ${t.label.en}. config keys: [${t.configFields
+        .map((f) => f.key)
+        .join(", ")}]`
+  ).join("\n");
+  const acts = ACTIONS.map(
+    (a) =>
+      `- ${a.type}: ${a.label.en}. config keys: [${a.configFields
+        .map((f) => f.key)
+        .join(", ")}]`
+  ).join("\n");
+  return `TRIGGERS (pick exactly one):\n${trigs}\n\nACTIONS (steps, in order):\n${acts}\n\nCONDITION operators: ${CONDITION_OPERATORS.join(
+    ", "
+  )}`;
+}
+
+export async function aiBuildDraft(
+  _companyId: string,
+  promptText: string,
+  locale: string = "en"
+): Promise<AiAutomationDraft> {
+  if (!aiClient) {
+    throw new AppError("AI is not configured", 503, "AI_UNAVAILABLE");
+  }
+  if (!promptText || promptText.trim().length < 3) {
+    throw badRequest("Describe the automation you want");
+  }
+
+  const model = aiClient.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    generationConfig: { responseMimeType: "application/json" },
+  });
+
+  const sys = `You are an automation builder for a CRM. Given a user's description (which may be in Arabic, Turkish, or English), produce ONE automation as strict JSON.
+
+${catalogSummary()}
+
+Output JSON shape EXACTLY:
+{
+  "name": "short name in the user's language",
+  "description": "one sentence",
+  "trigger": { "type": "<one trigger type from the list>", "config": { } },
+  "conditions": [ { "field": "deal.value", "operator": "<operator>", "value": "1000" } ],
+  "steps": [ { "type": "<one action type from the list>", "config": { } } ]
+}
+
+Rules:
+- Use ONLY trigger/action types from the lists above. If unsure, pick the closest.
+- config keys must come from that type's listed config keys. Use {{customer.phone}}, {{customer.email}}, {{deal.id}} style templates where a value should come from the triggering record.
+- conditions may be an empty array. steps must have at least one item.
+- Return JSON only, no markdown.`;
+
+  const result = await model.generateContent(`${sys}\n\nUSER DESCRIPTION (${locale}):\n${promptText}`);
+  const raw = result.response.text().trim();
+  const jsonText = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new AppError("AI returned malformed JSON — try rephrasing", 502, "AI_BAD_OUTPUT");
+  }
+
+  const flags: AiDraftFlag[] = [];
+
+  // Validate trigger
+  const triggerType = String(parsed?.trigger?.type ?? "");
+  if (!VALID_TRIGGER_TYPES.has(triggerType)) {
+    flags.push({ path: "trigger.type", reason: `Unknown trigger "${triggerType}"` });
+  }
+  const trigger: WorkflowTrigger = {
+    type: triggerType,
+    config:
+      parsed?.trigger?.config && typeof parsed.trigger.config === "object"
+        ? parsed.trigger.config
+        : {},
+  };
+
+  // Validate conditions
+  const conditions: WorkflowCondition[] = Array.isArray(parsed?.conditions)
+    ? parsed.conditions.map((c: any, i: number) => {
+        if (!(CONDITION_OPERATORS as readonly string[]).includes(c?.operator)) {
+          flags.push({
+            path: `conditions[${i}].operator`,
+            reason: `Unknown operator "${c?.operator}"`,
+          });
+        }
+        return { field: String(c?.field ?? ""), operator: c?.operator, value: c?.value };
+      })
+    : [];
+
+  // Validate steps → actions (with generated ids the builder expects)
+  const stepsIn = Array.isArray(parsed?.steps) ? parsed.steps : [];
+  const actions: WorkflowAction[] = stepsIn.map((s: any, i: number) => {
+    const type = String(s?.type ?? "");
+    if (!VALID_ACTION_TYPES.has(type)) {
+      flags.push({ path: `steps[${i}].type`, reason: `Unknown action "${type}"` });
+    }
+    return {
+      id: `ai-${i + 1}`,
+      type,
+      config: s?.config && typeof s.config === "object" ? s.config : {},
+    };
+  });
+  if (actions.length === 0) {
+    flags.push({ path: "steps", reason: "No steps were produced — add at least one" });
+  }
+
+  return {
+    name: String(parsed?.name ?? "AI automation").slice(0, 200),
+    description: String(parsed?.description ?? ""),
+    trigger,
+    conditions,
+    actions,
+    flags,
+  };
 }

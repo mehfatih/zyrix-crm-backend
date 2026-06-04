@@ -10,6 +10,9 @@ router.use(gateFeature("ai_workflows"));
 // Spec catalog for the visual builder (triggers, actions, condition operators)
 router.get("/catalog", ctrl.catalog);
 
+// AI builder — natural-language description → reviewable draft
+router.post("/ai-builder", ctrl.aiBuilder);
+
 // Executions — more specific routes BEFORE the :id param route so
 // /executions doesn't get interpreted as a workflow id.
 router.get("/executions", ctrl.executions);

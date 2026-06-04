@@ -280,9 +280,13 @@ export async function upsertTerritory(
     name: string;
     criteria: Record<string, unknown>;
     ownerId?: string | null;
+    memberUserIds?: string[];
   }
 ) {
   if (!input.name?.trim()) throw badRequest("name required");
+  const members = Array.isArray(input.memberUserIds)
+    ? input.memberUserIds.filter((m) => typeof m === "string" && m.length > 0)
+    : undefined;
   if (input.id) {
     return prisma.territory.update({
       where: { id: input.id },
@@ -290,6 +294,7 @@ export async function upsertTerritory(
         name: input.name.trim(),
         criteria: input.criteria as any,
         ownerId: input.ownerId ?? null,
+        ...(members !== undefined ? { memberUserIds: members as any } : {}),
       },
     });
   }
@@ -299,8 +304,18 @@ export async function upsertTerritory(
       name: input.name.trim(),
       criteria: input.criteria as any,
       ownerId: input.ownerId ?? null,
+      memberUserIds: (members ?? []) as any,
     },
   });
+}
+
+export async function deleteTerritory(
+  companyId: string,
+  id: string
+): Promise<{ deleted: true }> {
+  // Scope the delete to the company so a tenant can't remove another's row.
+  await prisma.territory.deleteMany({ where: { id, companyId } });
+  return { deleted: true };
 }
 
 export async function assignTerritories(

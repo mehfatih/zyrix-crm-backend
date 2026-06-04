@@ -98,6 +98,7 @@ const territorySchema = z.object({
   name: z.string().min(1).max(200),
   criteria: z.record(z.string(), z.any()),
   ownerId: z.string().nullable().optional(),
+  memberUserIds: z.array(z.string()).optional(),
 });
 
 export async function upsertTerritory(
@@ -123,6 +124,20 @@ export async function assignTerritories(
   try {
     const { companyId } = auth(req);
     const data = await BonusSvc.assignTerritories(companyId);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteTerritory(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId } = auth(req);
+    const data = await BonusSvc.deleteTerritory(companyId, req.params.id as string);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);

@@ -33,6 +33,7 @@ router.post(
 router.get("/territories", gateFeature("territories"), ctrl.listTerritories);
 router.put("/territories", gateFeature("territories"), ctrl.upsertTerritory);
 router.post("/territories/assign", gateFeature("territories"), ctrl.assignTerritories);
+router.delete("/territories/:id", gateFeature("territories"), ctrl.deleteTerritory);
 // B5 — quota / forecast
 router.get("/quotas", gateFeature("quota_forecast"), ctrl.listQuotas);
 router.put("/quotas", gateFeature("quota_forecast"), ctrl.upsertQuota);

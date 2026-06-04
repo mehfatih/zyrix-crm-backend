@@ -8,6 +8,8 @@ import {
   updateWorkflow,
   deleteWorkflow,
   createTestExecution,
+  dryRunWorkflow,
+  aiBuildDraft,
   listExecutions,
   getExecution,
 } from "../services/workflows.service";
@@ -212,6 +214,9 @@ export async function remove(
 
 const testRunSchema = z.object({
   payload: z.record(z.any()).optional(),
+  // When true, evaluate conditions + return a plan of what WOULD happen
+  // without enqueuing a real run (nothing is sent or written).
+  dryRun: z.boolean().optional(),
 });
 
 export async function testRun(
@@ -230,7 +235,17 @@ export async function testRun(
         },
       });
     }
-    const { payload } = testRunSchema.parse(req.body);
+    const { payload, dryRun } = testRunSchema.parse(req.body);
+
+    if (dryRun) {
+      const result = await dryRunWorkflow(
+        companyId,
+        req.params.id as string,
+        payload ?? {}
+      );
+      return res.status(200).json({ success: true, data: { dryRun: true, ...result } });
+    }
+
     const data = await createTestExecution(
       companyId,
       req.params.id as string,
@@ -246,6 +261,39 @@ export async function testRun(
       ...extractRequestMeta(req),
     });
     res.status(202).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// AI BUILDER — natural-language → reviewable draft (never auto-activated)
+// ──────────────────────────────────────────────────────────────────────
+
+const aiBuilderSchema = z.object({
+  prompt: z.string().min(3).max(2000),
+  locale: z.enum(["en", "ar", "tr"]).optional(),
+});
+
+export async function aiBuilder(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { companyId, role } = auth(req);
+    if (role !== "owner" && role !== "admin" && role !== "manager") {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "FORBIDDEN",
+          message: "Only owners, admins, and managers can use the AI builder.",
+        },
+      });
+    }
+    const { prompt, locale } = aiBuilderSchema.parse(req.body);
+    const draft = await aiBuildDraft(companyId, prompt, locale ?? "en");
+    res.status(200).json({ success: true, data: draft });
   } catch (err) {
     next(err);
   }
