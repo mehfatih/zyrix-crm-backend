@@ -1983,6 +1983,28 @@ model LeadSource {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// GOOGLE ADS LEAD FORMS (Sprint 7) — Google Ads lead-form assets → pipeline.
+// Self-contained webhook (full lead arrives in the POST, no Graph fetch). One
+// config row per company. webhookKey is the shared secret Google echoes as
+// `google_key`; SEALED at rest (tokenCipher) and shown in the UI (rotatable).
+// Leads land in the shared lead_sources table with source='google_ads_lead'.
+// ─────────────────────────────────────────────────────────────────────────
+model GoogleAdsConfig {
+  id                   String   @id @default(uuid())
+  companyId            String   @unique
+  webhookKeyCiphertext String
+  webhookKeyIv         String
+  webhookKeyTag        String
+  mapping              Json?
+  defaultPipelineStage String?
+  status               String   @default("active")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("google_ads_configs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // WHITE-LABEL BRAND SETTINGS
 // ─────────────────────────────────────────────────────────────────────────
 // Per-company branding overrides. Used to customize the dashboard
