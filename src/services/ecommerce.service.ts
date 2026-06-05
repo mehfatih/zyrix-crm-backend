@@ -282,8 +282,12 @@ async function runSyncJob(
       data: {
         syncStatus: "success",
         lastSyncAt: new Date(),
-        totalCustomersImported: { increment: result.imported },
-        totalOrdersImported: { increment: result.orders },
+        // SET (not increment): each sync re-upserts the same records, so the
+        // count is "records seen on the last sync" — the real store total. The
+        // old `increment` double-counted on every run (levana showed 475 for a
+        // 95-customer store) and the success banner would surface that.
+        totalCustomersImported: result.imported,
+        totalOrdersImported: result.orders,
       },
     });
     recordIntegrationEvent({
