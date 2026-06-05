@@ -59,6 +59,11 @@ model Company {
   // can resume where it left off.
   onboardingProgress Json @default("{}")
 
+  // Sprint 8 — how a deal's `value` is derived.
+  //   'manual'    = user-entered (default; preserves existing values)
+  //   'items_sum' = auto-recompute from the deal's deal_items total
+  dealValueMode String @default("manual")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -785,6 +790,97 @@ model QuoteItem {
 
   @@index([quoteId])
   @@map("quote_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PRODUCTS & INVENTORY (Sprint 8)
+// ─────────────────────────────────────────────────────────────────────────
+// Unified catalog: locally-created products AND e-commerce-synced products
+// (Shopify today; Salla/Zid later) live here. `source` + `externalId` identify
+// origin. companyId is a scalar (no Company relation) to match the
+// shopify_products precedent and keep the Company model decoupled.
+model Product {
+  id          String   @id @default(uuid())
+  companyId   String
+  sku         String?
+  name        String
+  description String?
+  price       Decimal  @default(0) @db.Decimal(14, 2)
+  cost        Decimal? @db.Decimal(14, 2)
+  currency    String   @default("TRY")
+  taxRate     Decimal? @db.Decimal(5, 2)
+  unit        String? // piece | kg | hour | ...
+  imageUrl    String?
+  source      String   @default("local") // local | shopify | salla | zid | ...
+  externalId  String?
+  status      String   @default("active") // active | archived
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stockLevels StockLevel[]
+  movements   StockMovement[]
+  dealItems   DealItem[]
+
+  // NOTE: a PARTIAL unique index uq_products_company_source_ext on
+  // ("companyId", source, "externalId") WHERE "externalId" IS NOT NULL is
+  // enforced in raw SQL (Prisma can't express partial indexes). The Shopify
+  // bridge upsert targets it.
+  @@index([companyId, status])
+  @@map("products")
+}
+
+model StockLevel {
+  id                String   @id @default(uuid())
+  productId         String
+  location          String   @default("main")
+  qty               Decimal  @default(0) @db.Decimal(14, 3)
+  lowStockThreshold Decimal? @db.Decimal(14, 3)
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, location])
+  @@map("stock_levels")
+}
+
+model StockMovement {
+  id        String  @id @default(uuid())
+  companyId String
+  productId String
+  location  String  @default("main")
+  type      String // in | out | adjust
+  qty       Decimal @db.Decimal(14, 3)
+  reason    String? // purchase | sale | return | correction | manual
+  refType   String?
+  refId     String?
+  userId    String?
+
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, createdAt])
+  @@map("stock_movements")
+}
+
+model DealItem {
+  id          String  @id @default(uuid())
+  companyId   String
+  dealId      String
+  productId   String?
+  name        String // snapshot (survives product edits)
+  qty         Decimal @default(1) @db.Decimal(14, 3)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  discountPct Decimal @default(0) @db.Decimal(5, 2)
+  taxRate     Decimal? @db.Decimal(5, 2)
+  total       Decimal @db.Decimal(14, 2)
+  position    Int     @default(0)
+
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([dealId])
+  @@map("deal_items")
 }
 
 // ─────────────────────────────────────────────────────────────────────────
