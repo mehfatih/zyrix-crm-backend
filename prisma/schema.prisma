@@ -1661,6 +1661,12 @@ model Workflow {
   // Overall on/off switch — triggers ignore disabled workflows entirely.
   isEnabled Boolean @default(true)
 
+  // Sprint 11 — distinguishes classic automations from compiled cadences and
+  // visual journeys (all share this one engine). canvas holds the journey's
+  // node/edge layout JSON (null for non-journeys).
+  kind   String  @default("automation") // automation | journey | cadence
+  canvas String?
+
   // Trigger: one per workflow in this MVP. Shape:
   //   { type: "customer.created" | "deal.stage_changed" | "schedule.daily" | ...,
   //     config: { ...type-specific fields } }
@@ -1694,6 +1700,56 @@ model Workflow {
   @@index([companyId])
   @@index([companyId, isEnabled])
   @@map("workflows")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CADENCES (Sprint 11) — linear follow-up sequences compiled to a workflow.
+// Standalone models (scalar FKs).
+// ─────────────────────────────────────────────────────────────────────────
+model Cadence {
+  id           String   @id @default(uuid())
+  companyId    String
+  name         String
+  description  String?
+  steps        String // JSON [{channel, delayDays, delayHours, templateRef|subject|body, name}]
+  exitRules    String // JSON {onReply, onDealWon, onUnsubscribe}
+  status       String   @default("draft") // draft | active | paused
+  automationId String? // compiled engine workflow id (latest version)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@map("cadences")
+}
+
+model CadenceEnrollment {
+  id          String    @id @default(uuid())
+  companyId   String
+  cadenceId   String
+  contactId   String
+  runId       String? // engine execution running this enrollment
+  currentStep Int       @default(0)
+  status      String    @default("active") // active | exited | completed
+  exitReason  String? // replied | deal_won | manual | unsubscribed | completed
+  enrolledAt  DateTime  @default(now())
+  endedAt     DateTime?
+
+  @@index([companyId, contactId, status])
+  @@index([runId])
+  @@map("cadence_enrollments")
+}
+
+model CadenceStepStat {
+  id        String @id @default(uuid())
+  cadenceId String
+  stepIndex Int
+  sent      Int    @default(0)
+  opened    Int    @default(0)
+  clicked   Int    @default(0)
+  replied   Int    @default(0)
+
+  @@unique([cadenceId, stepIndex])
+  @@map("cadence_step_stats")
 }
 
 // One row per run. Pending rows are claimed by the worker; on completion
