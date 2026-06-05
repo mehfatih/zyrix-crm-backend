@@ -1,8 +1,12 @@
 import { prisma } from "../config/database";
-import { notFound } from "../middleware/errorHandler";
+import { notFound, badRequest, AppError } from "../middleware/errorHandler";
 import type { Prisma } from "@prisma/client";
 import { randomBytes } from "crypto";
 import * as cpqCalc from "./cpq-calc.service";
+import * as discountSvc from "./cpq-discount.service";
+import { recordQuoteEvent } from "./quote-events.service";
+import { createTask } from "./task.service";
+import { createNotification, createBulkNotifications } from "./notifications.service";
 
 // ============================================================================
 // QUOTE SERVICE
@@ -383,8 +387,184 @@ export async function updateQuote(
 // ─────────────────────────────────────────────────────────────────────────
 // STATUS TRANSITIONS
 // ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// DISCOUNT GOVERNANCE (Sprint 9)
+// ─────────────────────────────────────────────────────────────────────────
+// Evaluate the quote's largest line discount against the QUOTE CREATOR's rule
+// (the salesperson whose discount authority is being exercised).
+async function evaluateQuoteDiscount(quote: {
+  companyId: string;
+  createdById: string;
+  items: Array<{ discountPercent: Prisma.Decimal | number }>;
+}): Promise<discountSvc.DiscountEvaluation> {
+  const creator = await prisma.user.findUnique({
+    where: { id: quote.createdById },
+    select: { role: true },
+  });
+  const rule = await discountSvc.resolveDiscountRuleForUser(
+    quote.companyId,
+    quote.createdById,
+    creator?.role ?? "member"
+  );
+  const maxPct = cpqCalc.maxLineDiscountPct(
+    quote.items.map((i) => ({
+      quantity: 1,
+      unitPrice: 0,
+      discountPct: Number(i.discountPercent),
+    }))
+  );
+  return discountSvc.evaluateDiscount(rule, maxPct);
+}
+
+async function approverIds(companyId: string): Promise<string[]> {
+  const approvers = await prisma.user.findMany({
+    where: { companyId, role: { in: ["owner", "admin"] } },
+    select: { id: true },
+  });
+  return approvers.map((a) => a.id);
+}
+
+// Request manager approval for an over-cap discount. Sets approvalStatus
+// 'pending', creates an approval task + notifies approvers, logs the event.
+export async function requestQuoteApproval(
+  companyId: string,
+  quoteId: string,
+  requestedByUserId: string
+) {
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, companyId },
+    include: { items: true, customer: { select: { fullName: true } } },
+  });
+  if (!quote) throw notFound("Quote");
+
+  const evalResult = await evaluateQuoteDiscount(quote);
+  if (evalResult.decision === "ok") {
+    throw badRequest("This quote is within the discount limit and needs no approval.");
+  }
+  if (evalResult.decision === "blocked") {
+    throw new AppError(
+      `Discount of ${evalResult.requestedPct}% exceeds the allowed ceiling${
+        evalResult.approvalAbovePct != null ? ` of ${evalResult.approvalAbovePct}%` : ""
+      } and cannot be approved.`,
+      422,
+      "DISCOUNT_BLOCKED"
+    );
+  }
+
+  const approvers = await approverIds(companyId);
+  const customerName = quote.customer?.fullName ?? "customer";
+  const title = `Quote ${quote.quoteNumber} needs discount approval`;
+  const body = `${quote.title} for ${customerName} — ${evalResult.requestedPct}% discount (limit ${evalResult.maxPct}%).`;
+
+  await createTask(companyId, requestedByUserId, {
+    title,
+    description: body,
+    assignedToId: approvers[0] ?? null,
+    dealId: quote.dealId ?? null,
+    priority: "high",
+  }).catch(() => {});
+
+  await createBulkNotifications(companyId, approvers, {
+    kind: "quote_approval",
+    title,
+    body,
+    link: `/quotes`,
+    entityType: "quote",
+    entityId: quote.id,
+  }).catch(() => {});
+
+  await recordQuoteEvent(companyId, quoteId, "approval_requested", {
+    requestedBy: requestedByUserId,
+    requestedPct: evalResult.requestedPct,
+    maxPct: evalResult.maxPct,
+  });
+
+  return prisma.quote.update({
+    where: { id: quoteId },
+    data: { approvalStatus: "pending" },
+    include: quoteInclude,
+  });
+}
+
+// Approve or reject a pending discount approval (owner/admin only — enforced
+// at the route). Logs the event and notifies the requester.
+export async function decideQuoteApproval(
+  companyId: string,
+  quoteId: string,
+  approverUserId: string,
+  approve: boolean
+) {
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, companyId },
+    select: { id: true, createdById: true, quoteNumber: true, approvalStatus: true },
+  });
+  if (!quote) throw notFound("Quote");
+  if (quote.approvalStatus !== "pending") {
+    throw badRequest("This quote has no pending approval.");
+  }
+
+  const updated = await prisma.quote.update({
+    where: { id: quoteId },
+    data: {
+      approvalStatus: approve ? "approved" : "rejected",
+      approvedBy: approve ? approverUserId : null,
+    },
+    include: quoteInclude,
+  });
+
+  await recordQuoteEvent(companyId, quoteId, approve ? "approved" : "approval_rejected", {
+    by: approverUserId,
+  });
+
+  await createNotification({
+    companyId,
+    userId: quote.createdById,
+    kind: "quote_approval",
+    title: approve
+      ? `Quote ${quote.quoteNumber} discount approved`
+      : `Quote ${quote.quoteNumber} discount rejected`,
+    body: approve
+      ? "You can now send this quote."
+      : "The requested discount was not approved.",
+    link: `/quotes`,
+    entityType: "quote",
+    entityId: quoteId,
+  }).catch(() => {});
+
+  return updated;
+}
+
 export async function sendQuote(companyId: string, quoteId: string) {
-  return updateQuote(companyId, quoteId, { status: "sent" });
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, companyId },
+    include: { items: true },
+  });
+  if (!quote) throw notFound("Quote");
+
+  // Discount governance — an already-approved quote bypasses the check.
+  if (quote.approvalStatus !== "approved") {
+    const evalResult = await evaluateQuoteDiscount(quote);
+    if (evalResult.decision === "blocked") {
+      throw new AppError(
+        `Discount of ${evalResult.requestedPct}% exceeds the allowed ceiling${
+          evalResult.approvalAbovePct != null ? ` of ${evalResult.approvalAbovePct}%` : ""
+        }. Reduce the discount to send.`,
+        422,
+        "DISCOUNT_BLOCKED"
+      );
+    }
+    if (evalResult.decision === "approval") {
+      throw new AppError(
+        `This ${evalResult.requestedPct}% discount needs manager approval before sending. Request approval first.`,
+        409,
+        "APPROVAL_REQUIRED"
+      );
+    }
+  }
+
+  const updated = await updateQuote(companyId, quoteId, { status: "sent" });
+  await recordQuoteEvent(companyId, quoteId, "sent", {});
+  return updated;
 }
 
 export async function acceptQuote(companyId: string, quoteId: string) {

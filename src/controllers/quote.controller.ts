@@ -190,6 +190,42 @@ export async function reject(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+export async function requestApproval(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId, userId } = auth(req);
+    const id = req.params.id as string;
+    const data = await QuoteSvc.requestQuoteApproval(companyId, id, userId);
+    audit(req, "quote.request_approval", id, null, data);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function approve(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId, userId } = auth(req);
+    const id = req.params.id as string;
+    const data = await QuoteSvc.decideQuoteApproval(companyId, id, userId, true);
+    audit(req, "quote.approve", id, null, data);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deny(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId, userId } = auth(req);
+    const id = req.params.id as string;
+    const data = await QuoteSvc.decideQuoteApproval(companyId, id, userId, false);
+    audit(req, "quote.deny_approval", id, null, data);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function remove(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
