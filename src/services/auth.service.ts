@@ -597,6 +597,7 @@ export async function updateProfile(
 
 export interface UpdateCompanyDto {
   name?: string;
+  emailTrackingEnabled?: boolean;
 }
 
 export async function updateCompany(
@@ -610,6 +611,8 @@ export async function updateCompany(
 
   const updateData: any = {};
   if (dto.name !== undefined) updateData.name = dto.name;
+  if (dto.emailTrackingEnabled !== undefined)
+    updateData.emailTrackingEnabled = dto.emailTrackingEnabled;
 
   if (Object.keys(updateData).length === 0) {
     throw badRequest("No fields to update", "NO_FIELDS");
@@ -625,6 +628,7 @@ export async function updateCompany(
       name: true,
       slug: true,
       plan: true,
+      emailTrackingEnabled: true,
     },
   });
 

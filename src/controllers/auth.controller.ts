@@ -75,6 +75,7 @@ const updateProfileSchema = z.object({
 
 const updateCompanySchema = z.object({
   name: z.string().min(2).max(100).optional(),
+  emailTrackingEnabled: z.boolean().optional(),
 });
 
 const changePasswordSchema = z.object({
