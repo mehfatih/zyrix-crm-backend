@@ -101,6 +101,20 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
   {
+    // Sprint 15B — live FX conversion in multi-currency reports. ALL_ON now;
+    // off → reports fall back to the manual/DEFAULT conversion chain.
+    key: "live_fx",
+    category: "sales",
+    label: { en: "Live FX conversion", ar: "تحويل عملات حي", tr: "Canlı döviz çevirisi" },
+    description: {
+      en: "Reports convert currencies using daily live exchange rates",
+      ar: "تحوّل التقارير العملات بأسعار صرف حية يومية",
+      tr: "Raporlar para birimlerini günlük canlı kurlarla çevirir",
+    },
+    icon: "Coins",
+    defaultByPlan: ALL_ON,
+  },
+  {
     key: "contracts",
     category: "sales",
     label: { en: "Contracts", ar: "العقود", tr: "Sözleşmeler" },

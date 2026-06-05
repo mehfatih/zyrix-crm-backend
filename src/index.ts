@@ -105,6 +105,7 @@ import { requestId } from "./middleware/requestId";
 import { startWorkflowWorker } from "./cron/workflow-worker";
 import { startScheduledReportsWorker } from "./cron/scheduled-reports-worker";
 import { startSavedAiReportsWorker } from "./cron/saved-ai-reports-worker";
+import { startFxRatesWorker } from "./cron/fx-rates-worker";
 
 const app: Express = express();
 
@@ -351,6 +352,7 @@ const server = app.listen(env.PORT, () => {
   startWorkflowWorker();
   startScheduledReportsWorker();
   startSavedAiReportsWorker();
+  startFxRatesWorker();
   startRetentionCron();
   startDocumentsReindexCron();
   startSupportFallbackCron();

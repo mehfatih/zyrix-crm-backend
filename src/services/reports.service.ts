@@ -1,6 +1,13 @@
 import { prisma } from "../config/database";
 import { notFound } from "../middleware/errorHandler";
 import type { Prisma } from "@prisma/client";
+import { isFeatureEnabled } from "./feature-flags.service";
+import {
+  getLiveUsdRateMap,
+  latestRateDate,
+  FX_BASE,
+  FX_TARGETS,
+} from "./fx-rates.service";
 
 // ============================================================================
 // MULTI-CURRENCY REPORTS SERVICE
@@ -91,14 +98,39 @@ export async function deleteRate(companyId: string, id: string) {
 // CONVERSION ENGINE
 // ─────────────────────────────────────────────────────────────────────────
 export async function buildRateMap(companyId: string) {
-  const rates = await prisma.exchangeRate.findMany({
-    where: { companyId },
-  });
   const map = new Map<string, number>(); // key: "FROM->TO", value: rate
+
+  // Sprint 15B — seed LIVE FX cross-pairs first (gated by live_fx). usdRate(X)
+  // = units of X per 1 USD, so from→to = usdRate(to)/usdRate(from). Best-effort:
+  // any failure leaves the manual/DEFAULT chain intact.
+  try {
+    if (await isFeatureEnabled(companyId, "live_fx")) {
+      const usd = await getLiveUsdRateMap([FX_BASE, ...FX_TARGETS]);
+      const codes = Array.from(usd.keys());
+      for (const from of codes) {
+        for (const to of codes) {
+          if (from === to) continue;
+          const rf = usd.get(from)!;
+          const rt = usd.get(to)!;
+          if (rf > 0) map.set(`${from}->${to}`, rt / rf);
+        }
+      }
+    }
+  } catch {
+    /* live FX best-effort */
+  }
+
+  // Company manual rates take priority — overlay them on top.
+  const rates = await prisma.exchangeRate.findMany({ where: { companyId } });
   for (const r of rates) {
     map.set(`${r.fromCurrency}->${r.toCurrency}`, Number(r.rate));
   }
   return map;
+}
+
+// The date of the most recent live rate, for the "FX rates as of …" footnote.
+export async function reportFxAsOf(): Promise<string | null> {
+  return latestRateDate();
 }
 
 export function convert(
@@ -199,6 +231,7 @@ export async function getRevenueReport(
 
   return {
     baseCurrency: base,
+    fxAsOf: await latestRateDate(),
     totalRevenue: Math.round(totalConverted * 100) / 100,
     dealCount: deals.length,
     byCurrency,
@@ -261,6 +294,7 @@ export async function getPipelineReport(
 
   return {
     baseCurrency: base,
+    fxAsOf: await latestRateDate(),
     totalOpenValue: Math.round(totalValue * 100) / 100,
     totalWeightedValue: Math.round(totalWeighted * 100) / 100,
     dealCount: deals.length,
@@ -288,6 +322,7 @@ export async function getFinancialSummary(
 
   return {
     baseCurrency: baseCurrency.toUpperCase(),
+    fxAsOf: await latestRateDate(),
     revenue30d: {
       total: revenue30d.totalRevenue,
       dealCount: revenue30d.dealCount,
@@ -546,6 +581,7 @@ export async function getEcommerceAnalytics(
 
   return {
     baseCurrency: base,
+    fxAsOf: await latestRateDate(),
     windowDays,
     generatedAt: now.toISOString(),
     totals: {
