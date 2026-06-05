@@ -14,6 +14,7 @@ import productRoutes from "./routes/product.routes";
 import activityRoutes from "./routes/activity.routes";
 import taskRoutes from "./routes/task.routes";
 import quoteRoutes from "./routes/quote.routes";
+import cpqRoutes from "./routes/cpq.routes";
 import loyaltyRoutes from "./routes/loyalty.routes";
 import taxRoutes from "./routes/tax.routes";
 import cashflowRoutes from "./routes/cashflow.routes";
@@ -195,6 +196,7 @@ app.get("/api", (_req, res) => {
       activities: "/api/activities",
       tasks: "/api/tasks",
       quotes: "/api/quotes",
+      cpq: "/api/cpq",
       loyalty: "/api/loyalty",
       tax: "/api/tax",
       cashflow: "/api/cashflow",
@@ -223,6 +225,7 @@ app.use("/api/products", productRoutes);
 app.use("/api/activities", activityRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/quotes", quoteRoutes);
+app.use("/api/cpq", cpqRoutes);
 app.use("/api/loyalty", loyaltyRoutes);
 app.use("/api/tax", taxRoutes);
 app.use("/api/cashflow", cashflowRoutes);
