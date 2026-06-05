@@ -128,6 +128,8 @@ export async function listCustomers(
 
   const where: Prisma.CustomerWhereInput = {
     companyId,
+    // Sprint 13: hide contacts soft-deleted by a merge.
+    deletedAt: null,
     ...(status && { status }),
     ...(ownerId && { ownerId }),
     // brandId filter: 'unbranded' matches NULL, a UUID matches exact
