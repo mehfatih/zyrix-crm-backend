@@ -22,6 +22,7 @@ import {
 } from "../services/workflows.service";
 import { runAction } from "../services/workflow-actions";
 import { recordIntegrationEvent } from "../services/integration-events.service";
+import { contactHadEmailEvent } from "../services/email-query.service";
 
 // Backoff ladder in seconds. Index = attempts count. Last value = max.
 const RETRY_BACKOFF_SECONDS = [30, 120, 600, 1800, 7200];
@@ -193,6 +194,48 @@ async function runChain(
   for (let i = startIndex; i < actions.length; i++) {
     const action = actions[i];
     const startedAt = new Date().toISOString();
+
+    // ── end step: stop this path (journey terminal node) ───────────────
+    if (action.type === "end") {
+      steps.push({ actionId: action.id, actionType: "end", status: "success", startedAt, finishedAt: new Date().toISOString() });
+      return { kind: "done", ok: overallOk, steps, retryable };
+    }
+
+    // ── branch step: evaluate conditions, jump the chain index ─────────
+    // config: { conditions: [...], trueGoto?: number, falseGoto?: number }.
+    // Goto indices are positions in this same action array (set by the journey
+    // compiler). Missing goto = fall through to the next action.
+    if (action.type === "branch") {
+      // Behavioral branch (opened/clicked within N days) needs a DB lookup;
+      // otherwise evaluate plain payload conditions.
+      let passed: boolean;
+      const behavior = action.config?.behavior as string | undefined;
+      if (behavior === "opened" || behavior === "clicked") {
+        const p = payload as { contactId?: string; customerId?: string } | null;
+        const contactId = p?.contactId ?? p?.customerId ?? null;
+        const withinDays = Number(action.config?.withinDays) || 2;
+        passed = contactId
+          ? await contactHadEmailEvent(companyId, contactId, behavior === "clicked" ? "click" : "open", withinDays)
+          : false;
+      } else {
+        passed = evaluateConditions((action.config?.conditions as WorkflowCondition[]) ?? [], payload);
+      }
+      const trueGoto = action.config?.trueGoto;
+      const falseGoto = action.config?.falseGoto;
+      const goto = passed ? trueGoto : falseGoto;
+      steps.push({
+        actionId: action.id,
+        actionType: "branch",
+        status: "success",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        output: { passed, goto: goto ?? null },
+      });
+      if (typeof goto === "number" && goto > i && goto <= actions.length) {
+        i = goto - 1; // -1 because the for-loop will ++ ; only forward jumps
+      }
+      continue;
+    }
 
     // ── wait step: park the run and resume later ──────────────────────
     if (action.type === "wait") {

@@ -95,6 +95,26 @@ export async function composeAndSend(companyId: string, userId: string, dto: Com
   return r.emailId ? getEmail(companyId, r.emailId) : { ok: true };
 }
 
+// Did the contact open/click any tracked email within the last N days? Used by
+// journey behavioral branches ("opened within 2 days").
+export async function contactHadEmailEvent(
+  companyId: string,
+  contactId: string,
+  type: "open" | "click",
+  withinDays: number
+): Promise<boolean> {
+  const since = new Date(Date.now() - Math.max(1, withinDays) * 24 * 60 * 60 * 1000);
+  const msgs = await prisma.emailMessage.findMany({
+    where: { companyId, contactId },
+    select: { id: true },
+  });
+  if (!msgs.length) return false;
+  const count = await prisma.emailEvent.count({
+    where: { emailId: { in: msgs.map((m) => m.id) }, type, createdAt: { gte: since } },
+  });
+  return count > 0;
+}
+
 // Best send time from the contact's open histogram. Null under 3 opens (honesty
 // over guessing). Hours computed in Europe/Istanbul (the app's display tz).
 const TZ_OFFSET_HOURS = 3; // Europe/Istanbul (UTC+3, no DST)
