@@ -269,6 +269,11 @@ model Customer {
   // territory assignment service). Null = unassigned.
   territory        String?
 
+  // Sprint 13 Data Tools — soft-delete marker set when this contact is merged
+  // into another. Main customer list + dedupe scan filter deletedAt IS NULL.
+  deletedAt        DateTime?
+  mergedIntoId     String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3016,4 +3021,65 @@ model DocArticleMeta {
   @@unique([locale, category, slug])
   @@index([status])
   @@map("doc_article_meta")
+}
+
+// ── Sprint 13 — Custom Actions + AI Studio + Data Tools ───────────────────
+
+model ActionRecipe {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  type      String   // webhook_out | compute_field | conditional_update
+  config    String   // JSON per type
+  enabled   Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("action_recipes")
+}
+
+model CompanyAiProfile {
+  id                 String   @id @default(uuid())
+  companyId          String   @unique
+  tone               String?  // formal | friendly | concise
+  businessContext    String?
+  preferredLanguage  String?
+  customInstructions String?
+  updatedAt          DateTime @default(now()) @updatedAt
+
+  @@map("company_ai_profiles")
+}
+
+model SavedAiReport {
+  id         String    @id @default(uuid())
+  companyId  String
+  name       String
+  prompt     String
+  schedule   String    @default("weekly") // daily | weekly | manual
+  recipients String?   // JSON emails
+  lastRunAt  DateTime?
+  lastResult String?
+  status     String    @default("active")
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([companyId])
+  @@map("saved_ai_reports")
+}
+
+model MergeLog {
+  id              String   @id @default(uuid())
+  companyId       String
+  kind            String   @default("merge") // merge | cleanup
+  keptContactId   String?
+  mergedContactId String?
+  snapshot        String   // JSON pre-state + moved-ref counts
+  undone          Boolean  @default(false)
+  userId          String?
+  createdAt       DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@map("merge_logs")
 }
