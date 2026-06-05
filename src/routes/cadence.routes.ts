@@ -13,6 +13,9 @@ router.use(gateFeature("marketing_automation"));
 
 router.get("/", controller.list);
 router.post("/", controller.create);
+// Smart Follow-up preset (gated by SMART_FOLLOWUP_ON_ENGINE, default OFF)
+router.get("/smart-followup", controller.smartFollowupStatus);
+router.post("/smart-followup/seed", controller.seedSmartFollowup);
 router.get("/contact/:contactId/enrollments", controller.contactEnrollments);
 router.post("/enrollments/:enrollmentId/unenroll", controller.unenroll);
 router.get("/:id", controller.getOne);

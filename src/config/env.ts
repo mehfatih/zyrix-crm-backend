@@ -49,6 +49,10 @@ const envSchema = z.object({
   // Sprint 10: Resend webhook signing secret (Svix). Webhook verify is skipped
   // (503) until set — see docs at STOP-2.
   RESEND_WEBHOOK_SECRET: z.string().optional(),
+  // Sprint 11: global cutover flag to run Smart Follow-up as an engine preset
+  // cadence. Default OFF — the standalone Smart Follow-up is unchanged until
+  // this is flipped. "true" enables.
+  SMART_FOLLOWUP_ON_ENGINE: z.string().optional(),
 
   GEMINI_API_KEY: z.string().optional(),
 

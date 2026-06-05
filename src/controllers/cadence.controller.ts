@@ -108,6 +108,20 @@ export async function unenroll(req: Request, res: Response, next: NextFunction) 
   } catch (err) { next(err); }
 }
 
+export async function smartFollowupStatus(req: Request, res: Response, next: NextFunction) {
+  try {
+    auth(req);
+    res.status(200).json({ success: true, data: { onEngine: Cad.smartFollowupOnEngine() } });
+  } catch (err) { next(err); }
+}
+
+export async function seedSmartFollowup(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId, userId } = auth(req);
+    res.status(200).json({ success: true, data: await Cad.seedSmartFollowupPreset(companyId, userId) });
+  } catch (err) { next(err); }
+}
+
 export async function funnel(req: Request, res: Response, next: NextFunction) {
   try {
     res.status(200).json({ success: true, data: await Cad.getCadenceFunnel(auth(req).companyId, req.params.id as string) });

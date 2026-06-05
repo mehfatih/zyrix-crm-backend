@@ -10,6 +10,7 @@
 // ============================================================================
 
 import { prisma } from "../config/database";
+import { env } from "../config/env";
 import { AppError, badRequest, notFound } from "../middleware/errorHandler";
 import { enqueueExecution, cancelExecution } from "./workflows.service";
 import { dispatchCadenceExited } from "./workflow-events.service";
@@ -413,6 +414,57 @@ export async function unenroll(companyId: string, enrollmentId: string): Promise
   if (!enr) return { exited: false };
   await exitEnrollmentRow(companyId, enr, "manual");
   return { exited: true };
+}
+
+// ── Smart Follow-up preset (Sprint 11 Phase F) ──────────────────────────────
+// Behind the SMART_FOLLOWUP_ON_ENGINE env flag (default OFF). When OFF, the
+// standalone Smart Follow-up feature is completely untouched and this seeds
+// nothing — the cutover is a later, deliberate flip.
+export function smartFollowupOnEngine(): boolean {
+  return String(env.SMART_FOLLOWUP_ON_ENGINE).toLowerCase() === "true";
+}
+
+const SMART_FOLLOWUP_NAME = "Smart Follow-up";
+
+// The preset mirrors the follow-up intent: a task now, an email nudge in a few
+// days, then a call task — auto-exits on reply or a won deal.
+function smartFollowupSteps(): CadenceStep[] {
+  return [
+    { channel: "call_task", name: "Follow up with this contact", delayDays: 0 },
+    {
+      channel: "email",
+      delayDays: 3,
+      subject: "Just checking in",
+      body: "Hi,\n\nWanted to follow up and see if you had any questions. Happy to help.\n\nBest regards",
+    },
+    { channel: "call_task", name: "Call — still no response", delayDays: 7 },
+  ];
+}
+
+// Idempotent: returns the existing preset cadence if already seeded.
+export async function seedSmartFollowupPreset(companyId: string, _userId: string) {
+  if (!smartFollowupOnEngine()) {
+    throw new AppError(
+      "Smart Follow-up on the engine is disabled (SMART_FOLLOWUP_ON_ENGINE is off).",
+      409,
+      "SMART_FOLLOWUP_OFF"
+    );
+  }
+  const existing = await prisma.cadence.findFirst({
+    where: { companyId, name: SMART_FOLLOWUP_NAME },
+  });
+  if (existing) return { ...shape(existing), preset: true };
+  const row = await prisma.cadence.create({
+    data: {
+      companyId,
+      name: SMART_FOLLOWUP_NAME,
+      description: "Built-in preset migrated from Smart Follow-up.",
+      steps: JSON.stringify(smartFollowupSteps()),
+      exitRules: JSON.stringify(DEFAULT_EXIT),
+      status: "draft",
+    },
+  });
+  return { ...shape(row), preset: true };
 }
 
 // Enrollments for a contact (for the contact cadence badge).
