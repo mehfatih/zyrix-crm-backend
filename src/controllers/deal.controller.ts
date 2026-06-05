@@ -41,7 +41,7 @@ const updateSchema = z.object({
 
 const listSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+  limit: z.coerce.number().int().positive().max(500).default(20),
   stage: z.string().optional(),
   customerId: z.string().uuid().optional(),
   ownerId: z.string().uuid().optional(),
