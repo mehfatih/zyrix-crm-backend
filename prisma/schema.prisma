@@ -1451,6 +1451,7 @@ model EcommerceStore {
   syncError               String?
   totalCustomersImported  Int       @default(0)
   totalOrdersImported     Int       @default(0)
+  totalProductsImported   Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
