@@ -385,6 +385,54 @@ export const TRIGGERS: TriggerSpec[] = [
     ],
   },
   {
+    type: "email.opened",
+    label: {
+      en: "Email opened",
+      ar: "تم فتح البريد",
+      tr: "E-posta açıldı",
+    },
+    description: {
+      en: "Fires when a tracked CRM email is opened. Use openCount (e.g. ≥ 3) or firstOpen for 'opened N times' rules.",
+      ar: "يعمل عند فتح بريد CRM متتبَّع. استخدم openCount (مثلاً ≥ 3) أو firstOpen لقواعد 'فُتح N مرة'.",
+      tr: "İzlenen bir CRM e-postası açıldığında tetiklenir. 'N kez açıldı' kuralları için openCount (örn. ≥ 3) veya firstOpen kullanın.",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: ["emailId", "customerId", "openCount", "firstOpen", "replied"],
+  },
+  {
+    type: "email.clicked",
+    label: {
+      en: "Email link clicked",
+      ar: "تم النقر على رابط البريد",
+      tr: "E-posta bağlantısına tıklandı",
+    },
+    description: {
+      en: "Fires when a recipient clicks a tracked link in a CRM email",
+      ar: "يعمل عند نقر المستلم على رابط متتبَّع في بريد CRM",
+      tr: "Alıcı bir CRM e-postasındaki izlenen bağlantıya tıkladığında tetiklenir",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: ["emailId", "customerId", "url", "replied"],
+  },
+  {
+    type: "email.bounced",
+    label: {
+      en: "Email bounced",
+      ar: "ارتد البريد",
+      tr: "E-posta geri döndü",
+    },
+    description: {
+      en: "Fires when a CRM email hard/soft bounces (from the Resend delivery webhook)",
+      ar: "يعمل عند ارتداد بريد CRM (من ويب هوك تسليم Resend)",
+      tr: "Bir CRM e-postası geri döndüğünde tetiklenir (Resend teslimat webhook'undan)",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: ["emailId", "customerId"],
+  },
+  {
     type: "schedule.daily",
     label: { en: "Daily schedule", ar: "جدولة يومية", tr: "Günlük zamanlama" },
     description: {

@@ -8,6 +8,7 @@ import {
   fromB64url,
   visitorHash,
 } from "../services/email-tracking.service";
+import { onEmailOpened, onEmailClicked } from "../services/email-events.service";
 
 // ============================================================================
 // EMAIL TRACKING — PUBLIC routes /api/t/* (Sprint 10)
@@ -41,8 +42,10 @@ router.get("/o/:token", limiter, (req: Request, res: Response) => {
   const token = String(req.params.token || "");
   const ua = String(req.headers["user-agent"] || "");
   const vhash = visitorHash(clientIp(req), ua);
-  // Fire-and-forget so the pixel is served instantly. (Automation emit wired in Phase C.)
-  recordOpen(token, vhash, ua).catch(() => {});
+  // Fire-and-forget so the pixel is served instantly; emit on new opens.
+  recordOpen(token, vhash, ua)
+    .then((r) => onEmailOpened(r))
+    .catch(() => {});
   res.set({
     "Content-Type": "image/gif",
     "Cache-Control": "no-store, no-cache, must-revalidate, private",
@@ -61,7 +64,9 @@ router.get("/c/:token", limiter, (req: Request, res: Response) => {
       const decoded = fromB64url(u);
       if (/^https?:\/\//i.test(decoded)) {
         const ua = String(req.headers["user-agent"] || "");
-        recordClick(token, decoded, visitorHash(clientIp(req), ua), ua).catch(() => {});
+        recordClick(token, decoded, visitorHash(clientIp(req), ua), ua)
+          .then((r) => onEmailClicked(r, decoded))
+          .catch(() => {});
         res.redirect(302, decoded);
         return;
       }

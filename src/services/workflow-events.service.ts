@@ -358,3 +358,45 @@ export async function dispatchQuoteAccepted(
     dealId: quote.dealId,
   });
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// EMAIL EVENTS (Sprint 10)
+// ──────────────────────────────────────────────────────────────────────
+
+interface EmailEventPayload {
+  emailId: string;
+  customerId: string | null;
+  openCount?: number;
+  firstOpen?: boolean;
+  replied?: boolean; // always false this sprint — reply detection deferred
+  url?: string;
+}
+
+// Emitted on every genuinely-new open (deduped). `openCount` + `firstOpen` let
+// merchants build either "first open" (openCount eq 1 / firstOpen isTrue) or
+// "opened ≥ N times" (openCount gte N) conditions on the existing engine.
+export async function dispatchEmailOpened(companyId: string, p: EmailEventPayload): Promise<void> {
+  await safeDispatch("email.opened", companyId, {
+    event: "email.opened",
+    timestamp: new Date().toISOString(),
+    ...p,
+    replied: false,
+  });
+}
+
+export async function dispatchEmailClicked(companyId: string, p: EmailEventPayload): Promise<void> {
+  await safeDispatch("email.clicked", companyId, {
+    event: "email.clicked",
+    timestamp: new Date().toISOString(),
+    ...p,
+    replied: false,
+  });
+}
+
+export async function dispatchEmailBounced(companyId: string, p: EmailEventPayload): Promise<void> {
+  await safeDispatch("email.bounced", companyId, {
+    event: "email.bounced",
+    timestamp: new Date().toISOString(),
+    ...p,
+  });
+}

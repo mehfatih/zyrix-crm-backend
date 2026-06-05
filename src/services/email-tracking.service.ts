@@ -120,6 +120,7 @@ export async function sendTrackedEmail(
 // Returns context so callers (Phase C) can emit automation events. Never throws.
 export interface OpenResult {
   found: boolean;
+  recorded: boolean; // a new open event was inserted (false when deduped)
   firstOpen: boolean;
   emailId: string | null;
   companyId: string | null;
@@ -128,7 +129,7 @@ export interface OpenResult {
 }
 
 export async function recordOpen(token: string, vhash: string, ua: string): Promise<OpenResult> {
-  const none: OpenResult = { found: false, firstOpen: false, emailId: null, companyId: null, contactId: null, openCount: 0 };
+  const none: OpenResult = { found: false, recorded: false, firstOpen: false, emailId: null, companyId: null, contactId: null, openCount: 0 };
   try {
     const msg = await prisma.emailMessage.findUnique({
       where: { trackToken: token },
@@ -144,13 +145,14 @@ export async function recordOpen(token: string, vhash: string, ua: string): Prom
     });
     const priorOpens = await prisma.emailEvent.count({ where: { emailId: msg.id, type: "open" } });
     if (recent) {
-      return { found: true, firstOpen: false, emailId: msg.id, companyId: msg.companyId, contactId: msg.contactId, openCount: priorOpens };
+      return { found: true, recorded: false, firstOpen: false, emailId: msg.id, companyId: msg.companyId, contactId: msg.contactId, openCount: priorOpens };
     }
     await prisma.emailEvent.create({
       data: { emailId: msg.id, type: "open", meta: JSON.stringify({ v: vhash, ua: ua.slice(0, 200) }) },
     });
     return {
       found: true,
+      recorded: true,
       firstOpen: priorOpens === 0,
       emailId: msg.id,
       companyId: msg.companyId,

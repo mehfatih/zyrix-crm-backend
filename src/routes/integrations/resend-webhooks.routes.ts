@@ -5,6 +5,7 @@ import {
   processResendEvent,
   logResendWebhook,
 } from "../../services/resend-webhook.service";
+import { onEmailBounced } from "../../services/email-events.service";
 
 // ============================================================================
 // RESEND WEBHOOK RECEIVER — Sprint 10
@@ -40,7 +41,7 @@ router.post("/", raw({ type: "*/*", limit: "1mb" }), async (req: Request, res: R
   try {
     const r = await processResendEvent(payload);
     logResendWebhook(r.companyId, payload.type ?? "?", true);
-    // Phase C: emit email.bounced automation when r.bounced.
+    if (r.bounced) void onEmailBounced(r);
   } catch (e) {
     console.error("[resend-webhook] processing failed:", (e as Error).message);
     logResendWebhook(null, payload.type ?? "?", false);
