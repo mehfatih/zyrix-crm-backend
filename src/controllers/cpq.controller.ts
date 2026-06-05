@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as Catalog from "../services/cpq-catalog.service";
+import * as Discount from "../services/cpq-discount.service";
 import type { AuthenticatedRequest } from "../types";
 
 // ============================================================================
@@ -9,7 +10,7 @@ import type { AuthenticatedRequest } from "../types";
 
 function auth(req: Request) {
   const r = req as AuthenticatedRequest;
-  return { userId: r.user.userId, companyId: r.user.companyId };
+  return { userId: r.user.userId, companyId: r.user.companyId, role: r.user.role };
 }
 
 const segmentSchema = z
@@ -49,6 +50,34 @@ const bundleSchema = z.object({
   bundlePrice: z.coerce.number().min(0),
   status: z.enum(["active", "archived"]).optional(),
 });
+
+// ── Builder resolvers ────────────────────────────────────────────────────────
+// Auto-pick the price book for a customer (segment → default → null).
+export async function resolvePriceBook(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const customerId = String(req.query.customerId ?? "");
+    if (!customerId) {
+      res.status(200).json({ success: true, data: null });
+      return;
+    }
+    const data = await Catalog.resolvePriceBookForCustomer(companyId, customerId);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// The discount rule that governs the calling user (cap indicator + enforcement).
+export async function myDiscountRule(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId, userId, role } = auth(req);
+    const data = await Discount.resolveDiscountRuleForUser(companyId, userId, role);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
 
 // ── Price books ──────────────────────────────────────────────────────────────
 export async function listPriceBooks(req: Request, res: Response, next: NextFunction) {

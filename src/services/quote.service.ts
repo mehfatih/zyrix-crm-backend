@@ -36,6 +36,7 @@ export interface CreateQuoteDto {
   validUntil?: Date | null;
   notes?: string | null;
   terms?: string | null;
+  priceBookId?: string | null;
   items: QuoteItemInput[];
 }
 
@@ -49,6 +50,7 @@ export interface UpdateQuoteDto {
   validUntil?: Date | null;
   notes?: string | null;
   terms?: string | null;
+  priceBookId?: string | null;
   items?: QuoteItemInput[];
 }
 
@@ -162,6 +164,7 @@ export async function createQuote(
       validUntil: dto.validUntil ?? null,
       notes: dto.notes?.trim() || null,
       terms: dto.terms?.trim() || null,
+      priceBookId: dto.priceBookId ?? null,
       publicToken,
       subtotal: totals.subtotal,
       discountAmount: totals.discountAmount,
@@ -323,6 +326,7 @@ export async function updateQuote(
   if (dto.validUntil !== undefined) data.validUntil = dto.validUntil;
   if (dto.notes !== undefined) data.notes = dto.notes?.trim() || null;
   if (dto.terms !== undefined) data.terms = dto.terms?.trim() || null;
+  if (dto.priceBookId !== undefined) data.priceBookId = dto.priceBookId;
 
   if (dto.customerId !== undefined)
     data.customer = { connect: { id: dto.customerId } };

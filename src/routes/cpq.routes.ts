@@ -14,6 +14,10 @@ const router = Router();
 router.use(authenticateToken);
 router.use(gateFeature("quotes"));
 
+// Builder resolvers
+router.get("/resolve-price-book", controller.resolvePriceBook);
+router.get("/my-discount-rule", controller.myDiscountRule);
+
 // Price books
 router.get("/price-books", controller.listPriceBooks);
 router.post("/price-books", controller.createPriceBook);

@@ -61,6 +61,7 @@ const createQuoteSchema = z.object({
   validUntil: z.coerce.date().optional().nullable(),
   notes: z.string().max(10000).optional().nullable(),
   terms: z.string().max(10000).optional().nullable(),
+  priceBookId: z.string().optional().nullable(),
   items: z.array(itemSchema).min(1),
 });
 
