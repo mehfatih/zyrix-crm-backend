@@ -211,14 +211,40 @@ function parseRetryAfter(header: string | null): number | null {
  * — Shopify and many others limit per-shop, not per-application-token, so
  * this is the correct bucketing dimension.
  */
+// Per-request timeout (ms). Slow WordPress/WooCommerce hosts can take many
+// seconds per page; a single hung request must not stall a whole sync forever.
+// Overridable via ECOMMERCE_FETCH_TIMEOUT_MS (default 30s).
+const DEFAULT_FETCH_TIMEOUT_MS = Number(process.env.ECOMMERCE_FETCH_TIMEOUT_MS) || 30_000;
+
+// fetch with an AbortController timeout (same pattern as meta-leads/shopify).
+// Throws an Error tagged `name === "TimeoutError"` on timeout so callers can
+// distinguish it from transport errors.
+async function timedFetch(input: string, init: RequestInit | undefined, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      const e = new Error(`Request to ${input} timed out after ${timeoutMs}ms`);
+      e.name = "TimeoutError";
+      throw e;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function fetchWithLimit(
   platform: string,
   shopKey: string | undefined,
   input: string,
-  init?: RequestInit
+  init?: RequestInit,
+  timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS
 ): Promise<Response> {
   await acquire(platform, shopKey);
-  let resp = await fetch(input, init);
+  let resp = await timedFetch(input, init, timeoutMs);
   if (resp.status === 429) {
     const retryAfterMs = parseRetryAfter(resp.headers.get("retry-after"));
     // Cap the 429-induced wait at 10 seconds — any longer and we let the
@@ -226,7 +252,7 @@ export async function fetchWithLimit(
     const waitMs = Math.min(retryAfterMs ?? 2000, 10_000);
     await sleep(waitMs);
     await acquire(platform, shopKey);
-    resp = await fetch(input, init);
+    resp = await timedFetch(input, init, timeoutMs);
   }
   return resp;
 }

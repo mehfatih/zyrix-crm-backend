@@ -2,6 +2,7 @@ import { prisma } from "../config/database";
 import { notFound } from "../middleware/errorHandler";
 import { getPlatform, PLATFORMS, listPlatforms, type PlatformDefinition } from "./ecommerce-platforms.registry";
 import { fetchWithLimit } from "../utils/rateLimiter";
+import { recordIntegrationEvent } from "./integration-events.service";
 
 // ============================================================================
 // GENERALIZED E-COMMERCE INTEGRATION SERVICE
@@ -171,19 +172,23 @@ export async function disconnectStore(companyId: string, id: string) {
 // ──────────────────────────────────────────────────────────────────────
 // SYNC - routes to platform-specific adapter
 // ──────────────────────────────────────────────────────────────────────
-export async function syncStore(companyId: string, id: string) {
-  const store = await prisma.ecommerceStore.findFirst({
-    where: { id, companyId, isActive: true },
-  });
-  if (!store) throw notFound("Store");
+// If a sync has been "syncing" longer than this, treat it as crashed/stale and
+// allow a fresh trigger (un-sticks a sync lost to a process restart).
+const STUCK_SYNC_MS = 15 * 60 * 1000;
 
+type StoreRow = NonNullable<Awaited<ReturnType<typeof findStoreForSync>>>;
+
+function findStoreForSync(companyId: string, id: string) {
+  return prisma.ecommerceStore.findFirst({ where: { id, companyId, isActive: true } });
+}
+
+function assertSyncablePlatform(store: StoreRow): PlatformDefinition {
   const platform = getPlatform(store.platform);
   if (!platform) {
     const err: any = new Error(`Unknown platform: ${store.platform}`);
     err.statusCode = 400;
     throw err;
   }
-
   if (platform.status === "csv_only" || platform.status === "planned") {
     const err: any = new Error(
       `${platform.name} does not support automatic sync yet. Please use CSV import instead.`
@@ -191,13 +196,74 @@ export async function syncStore(companyId: string, id: string) {
     err.statusCode = 400;
     throw err;
   }
+  return platform;
+}
 
-  // Mark as syncing
+// TRIGGER (API): validate, mark syncing, and kick off the import in the
+// background. Returns immediately (controller responds 202) — client polls
+// /status. The hourly cron (cron/sync.ts) is the durable backstop on restart.
+export async function syncStore(companyId: string, id: string) {
+  const store = await findStoreForSync(companyId, id);
+  if (!store) throw notFound("Store");
+  const platform = assertSyncablePlatform(store);
+
+  // Stuck-guard: a recent in-flight sync wins — don't start a duplicate.
+  const updatedMs = store.updatedAt ? new Date(store.updatedAt).getTime() : 0;
+  if (store.syncStatus === "syncing" && Date.now() - updatedMs < STUCK_SYNC_MS) {
+    return { id, status: "syncing" as const, alreadyRunning: true };
+  }
+
   await prisma.ecommerceStore.update({
     where: { id },
     data: { syncStatus: "syncing", syncError: null },
   });
+  // Detached — swallow rejection (runSyncJob already records the error state).
+  runSyncJob(companyId, store, platform).catch(() => {});
 
+  return { id, status: "syncing" as const, alreadyRunning: false };
+}
+
+// BLOCKING entry point for the scheduled cron: awaits the import and returns
+// the counts (and rethrows on failure so the cron can tally stats).
+export async function syncStoreBlocking(companyId: string, id: string): Promise<SyncResult> {
+  const store = await findStoreForSync(companyId, id);
+  if (!store) throw notFound("Store");
+  const platform = assertSyncablePlatform(store);
+  await prisma.ecommerceStore.update({
+    where: { id },
+    data: { syncStatus: "syncing", syncError: null },
+  });
+  return runSyncJob(companyId, store, platform);
+}
+
+// Lightweight status for polling.
+export async function getStoreStatus(companyId: string, id: string) {
+  const store = await prisma.ecommerceStore.findFirst({
+    where: { id, companyId },
+    select: {
+      id: true,
+      syncStatus: true,
+      syncError: true,
+      lastSyncAt: true,
+      currency: true,
+      totalCustomersImported: true,
+      totalOrdersImported: true,
+      updatedAt: true,
+    },
+  });
+  if (!store) throw notFound("Store");
+  return store;
+}
+
+// The actual import. Updates the store's sync status + totals. Returns the
+// counts; rethrows on failure (after recording the error state) so blocking
+// callers can react — the detached API path swallows it.
+async function runSyncJob(
+  companyId: string,
+  store: StoreRow,
+  platform: PlatformDefinition
+): Promise<SyncResult> {
+  const startedAt = Date.now();
   try {
     const result = await syncByPlatform(
       platform,
@@ -212,7 +278,7 @@ export async function syncStore(companyId: string, id: string) {
     );
 
     await prisma.ecommerceStore.update({
-      where: { id },
+      where: { id: store.id },
       data: {
         syncStatus: "success",
         lastSyncAt: new Date(),
@@ -220,15 +286,27 @@ export async function syncStore(companyId: string, id: string) {
         totalOrdersImported: { increment: result.orders },
       },
     });
-
+    recordIntegrationEvent({
+      companyId,
+      platform: store.platform,
+      eventType: "sync_success",
+      durationMs: Date.now() - startedAt,
+      requestContext: { storeId: store.id, imported: result.imported, orders: result.orders },
+    });
     return result;
   } catch (e: any) {
     await prisma.ecommerceStore.update({
-      where: { id },
-      data: {
-        syncStatus: "error",
-        syncError: e.message || "Unknown error",
-      },
+      where: { id: store.id },
+      data: { syncStatus: "error", syncError: (e?.message || "Unknown error").slice(0, 500) },
+    });
+    recordIntegrationEvent({
+      companyId,
+      platform: store.platform,
+      eventType: "sync_failure",
+      errorCode: e?.name === "TimeoutError" ? "CONNECTION_TIMEOUT" : "SYNC_FAILED",
+      errorMessage: e?.message,
+      durationMs: Date.now() - startedAt,
+      requestContext: { storeId: store.id },
     });
     throw e;
   }
@@ -465,7 +543,7 @@ async function syncByPlatform(
     case "youcan":
       return syncYouCan(creds, companyId);
     case "woocommerce":
-      return syncWooCommerce(domain, creds, companyId);
+      return syncWooCommerce(domain, creds, companyId, storeId);
     case "easyorders":
       return syncEasyOrders(creds, companyId);
     case "expandcart":
@@ -1084,15 +1162,44 @@ async function syncYouCanOrders(
 }
 
 // ─── WOOCOMMERCE ──────────────────────────────────────────────────────
+// Fetch the store's base currency (e.g. TRY) once and persist it on the store
+// row — mirrors the Shopify per-store currency fix so imported deals carry the
+// real currency instead of a hardcoded default.
+async function fetchWooCommerceCurrency(
+  domain: string,
+  auth: string,
+  storeId: string
+): Promise<string | null> {
+  try {
+    const resp = await fetchWithLimit(
+      "woocommerce",
+      domain,
+      `https://${domain}/wp-json/wc/v3/data/currencies/current`,
+      { headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" } }
+    );
+    if (!resp.ok) return null;
+    const body = (await resp.json()) as { code?: string };
+    const code = typeof body?.code === "string" ? body.code.toUpperCase() : null;
+    if (code) {
+      await prisma.ecommerceStore.update({ where: { id: storeId }, data: { currency: code } });
+    }
+    return code;
+  } catch {
+    return null; // currency is best-effort; never fail the sync over it
+  }
+}
+
 async function syncWooCommerce(
   domain: string,
   creds: SyncCreds,
-  companyId: string
+  companyId: string,
+  storeId: string
 ): Promise<SyncResult> {
   if (!creds.apiKey || !creds.apiSecret) {
     throw new Error("WooCommerce requires both consumer key and consumer secret");
   }
   const auth = Buffer.from(`${creds.apiKey}:${creds.apiSecret}`).toString("base64");
+  const storeCurrency = await fetchWooCommerceCurrency(domain, auth, storeId);
   let imported = 0;
   let page = 1;
   const maxPages = 20;
@@ -1134,14 +1241,15 @@ async function syncWooCommerce(
     page++;
   }
 
-  const orders = await syncWooCommerceOrders(domain, auth, companyId);
+  const orders = await syncWooCommerceOrders(domain, auth, companyId, storeCurrency);
   return { imported, orders };
 }
 
 async function syncWooCommerceOrders(
   domain: string,
   auth: string,
-  companyId: string
+  companyId: string,
+  storeCurrency: string | null
 ): Promise<number> {
   let ordersSynced = 0;
   let page = 1;
@@ -1201,7 +1309,7 @@ async function syncWooCommerceOrders(
       await upsertOrderDeal(companyId, customerId, "woocommerce", {
         externalId: String(order.id),
         value,
-        currency: order.currency || null,
+        currency: order.currency || storeCurrency || null,
         isPaid,
         closedAt,
       });

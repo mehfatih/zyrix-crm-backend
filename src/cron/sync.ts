@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { prisma } from "../config/database";
-import { syncStore } from "../services/ecommerce.service";
+import { syncStoreBlocking } from "../services/ecommerce.service";
 import { retryPendingEvents } from "../services/webhook.service";
 
 // ============================================================================
@@ -67,7 +67,7 @@ export async function runScheduledSync(): Promise<{
     for (const store of stores) {
       stats.attempted++;
       try {
-        const res = await syncStore(store.companyId, store.id);
+        const res = await syncStoreBlocking(store.companyId, store.id);
         stats.ok++;
         console.log(
           `[cron] synced ${store.platform}/${store.shopDomain} — ${res.imported} customers, ${res.orders} orders`

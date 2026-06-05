@@ -65,6 +65,7 @@ router.get("/ecommerce/stores", controller.ecommerceListStores);
 router.post("/ecommerce/connect", controller.ecommerceConnect);
 router.delete("/ecommerce/stores/:id", controller.ecommerceDisconnect);
 router.post("/ecommerce/stores/:id/sync", controller.ecommerceSync);
+router.get("/ecommerce/stores/:id/status", controller.ecommerceSyncStatus);
 
 // ──────────────────────────────────────────────────────────────────────
 // ADVANCED SEARCH & FILTERS

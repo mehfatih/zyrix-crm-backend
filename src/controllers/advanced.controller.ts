@@ -405,7 +405,17 @@ export async function ecommerceDisconnect(req: Request, res: Response, next: Nex
 export async function ecommerceSync(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
+    // Kicks off the import in the background and returns immediately; the client
+    // polls /status. 202 Accepted = "started, not yet complete".
     const data = await EcommerceSvc.syncStore(companyId, req.params.id as string);
+    res.status(202).json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+export async function ecommerceSyncStatus(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const data = await EcommerceSvc.getStoreStatus(companyId, req.params.id as string);
     res.status(200).json({ success: true, data });
   } catch (err) { next(err); }
 }
