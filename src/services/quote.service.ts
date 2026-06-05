@@ -7,6 +7,11 @@ import * as discountSvc from "./cpq-discount.service";
 import { recordQuoteEvent } from "./quote-events.service";
 import { createTask } from "./task.service";
 import { createNotification, createBulkNotifications } from "./notifications.service";
+import { sendEmail } from "./email.service";
+import { sendViaMetaCloud } from "./whatsapp.service";
+import { generateQuotePdf } from "./quote-contract-pdf.service";
+import { dispatchQuoteViewed, dispatchQuoteAccepted } from "./workflow-events.service";
+import { env } from "../config/env";
 
 // ============================================================================
 // QUOTE SERVICE
@@ -272,7 +277,7 @@ export async function getQuoteByPublicToken(token: string) {
   });
   if (!quote) throw notFound("Quote");
 
-  // Mark viewed on first access
+  // Mark viewed on first access + log event + fire automation (quote.viewed).
   if (!quote.viewedAt) {
     await prisma.quote.update({
       where: { id: quote.id },
@@ -281,9 +286,34 @@ export async function getQuoteByPublicToken(token: string) {
         status: quote.status === "sent" ? "viewed" : quote.status,
       },
     });
+    await recordQuoteEvent(quote.companyId, quote.id, "viewed", {});
+    void dispatchQuoteViewed(quote.companyId, quotePayload(quote));
   }
 
   return quote;
+}
+
+// Compact payload for automation events.
+function quotePayload(q: {
+  id: string;
+  quoteNumber: string;
+  title: string;
+  status: string;
+  total: Prisma.Decimal | number;
+  currency: string;
+  customerId: string;
+  dealId: string | null;
+}) {
+  return {
+    id: q.id,
+    quoteNumber: q.quoteNumber,
+    title: q.title,
+    status: q.status,
+    total: Number(q.total),
+    currency: q.currency,
+    customerId: q.customerId,
+    dealId: q.dealId,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -534,10 +564,30 @@ export async function decideQuoteApproval(
   return updated;
 }
 
-export async function sendQuote(companyId: string, quoteId: string) {
+export interface SendChannels {
+  email?: boolean;
+  whatsapp?: boolean;
+}
+
+function publicQuoteUrl(token: string): string {
+  const base = (env.APP_URL || "https://crm.zyrix.co").replace(/\/$/, "");
+  // Public page lives at /[locale]/q/[token]; default to Arabic for the
+  // MENA-first audience (the page is locale-aware + RTL-safe regardless).
+  return `${base}/ar/q/${token}`;
+}
+
+export async function sendQuote(
+  companyId: string,
+  quoteId: string,
+  channels?: SendChannels
+) {
   const quote = await prisma.quote.findFirst({
     where: { id: quoteId, companyId },
-    include: { items: true },
+    include: {
+      items: true,
+      customer: { select: { fullName: true, email: true, phone: true, whatsappPhone: true } },
+      company: { select: { name: true } },
+    },
   });
   if (!quote) throw notFound("Quote");
 
@@ -562,14 +612,92 @@ export async function sendQuote(companyId: string, quoteId: string) {
     }
   }
 
+  // Ensure a public token exists (older quotes may predate it).
+  let token = quote.publicToken;
+  if (!token) {
+    token = generatePublicToken();
+    await prisma.quote.update({ where: { id: quoteId }, data: { publicToken: token } });
+  }
+  const url = publicQuoteUrl(token);
+
+  const email = quote.customer?.email ?? null;
+  const phone = quote.customer?.whatsappPhone || quote.customer?.phone || null;
+  // Channel resolution: explicit flags override; otherwise email-if-present and
+  // whatsapp-if-phone (Q2 default agreed with Mehmet).
+  const wantEmail = channels?.email ?? true;
+  const wantWhatsapp = channels?.whatsapp ?? !!phone;
+  const delivery: { email: boolean; whatsapp: boolean } = { email: false, whatsapp: false };
+
+  if (wantEmail && email) {
+    let attachments;
+    try {
+      const pdf = await generateQuotePdf(companyId, quoteId);
+      attachments = [{ filename: pdf.filename, content: pdf.buffer }];
+    } catch {
+      attachments = undefined; // PDF is best-effort; still send the link
+    }
+    delivery.email = await sendEmail({
+      to: email,
+      subject: `${quote.company?.name ?? "Zyrix"} — Quote ${quote.quoteNumber}`,
+      html: quoteEmailHtml(quote, url),
+      text: `View your quote ${quote.quoteNumber}: ${url}`,
+      attachments,
+    }).catch(() => false);
+  }
+
+  if (wantWhatsapp && phone) {
+    const msg = `${quote.company?.name ?? "Zyrix"}: ${quote.title} (${quote.quoteNumber}) — ${quoteCurrencyTotal(quote)}. View & accept: ${url}`;
+    const r = await sendViaMetaCloud(companyId, phone, msg).catch(() => ({ success: false }));
+    delivery.whatsapp = !!r.success;
+  }
+
   const updated = await updateQuote(companyId, quoteId, { status: "sent" });
-  await recordQuoteEvent(companyId, quoteId, "sent", {});
-  return updated;
+  await recordQuoteEvent(companyId, quoteId, "sent", {
+    via: delivery,
+    email: wantEmail && email ? email : null,
+    phone: wantWhatsapp && phone ? phone : null,
+  });
+  return { ...updated, delivery };
+}
+
+function quoteCurrencyTotal(q: { total: Prisma.Decimal | number; currency: string }) {
+  return `${Number(q.total).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${q.currency}`;
+}
+
+function quoteEmailHtml(
+  q: { quoteNumber: string; title: string; total: Prisma.Decimal | number; currency: string; company?: { name: string } | null },
+  url: string
+): string {
+  return `
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#F0F9FF; margin:0; padding:24px;">
+  <div style="max-width:560px; margin:0 auto; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.06);">
+    <div style="background:linear-gradient(135deg,#0891B2,#06B6D4); color:#fff; padding:28px 32px;">
+      <div style="font-size:13px; opacity:.85;">${q.company?.name ?? "Zyrix"}</div>
+      <h1 style="margin:6px 0 0; font-size:22px;">${q.title}</h1>
+    </div>
+    <div style="padding:28px 32px; color:#164E63;">
+      <p style="margin:0 0 8px;">Quote <strong>${q.quoteNumber}</strong></p>
+      <p style="margin:0 0 20px; font-size:24px; font-weight:700; color:#0E7490;">${quoteCurrencyTotal(q)}</p>
+      <div style="text-align:center; margin:24px 0;">
+        <a href="${url}" style="display:inline-block; background:#0891B2; color:#fff; padding:14px 36px; text-decoration:none; border-radius:8px; font-weight:700;">View &amp; accept your quote</a>
+      </div>
+      <p style="font-size:13px; color:#475569;">Or open this link:<br><a href="${url}" style="color:#0891B2; word-break:break-all;">${url}</a></p>
+    </div>
+    <div style="background:#F9FAFB; padding:18px; text-align:center; color:#6B7280; font-size:12px;">
+      &copy; ${new Date().getFullYear()} ${q.company?.name ?? "Zyrix"}
+    </div>
+  </div>
+</body></html>`;
 }
 
 export async function acceptQuote(companyId: string, quoteId: string) {
   const result = await updateQuote(companyId, quoteId, { status: "accepted" });
-  // If linked to a deal, auto-advance stage
+  await recordQuoteEvent(companyId, quoteId, "accepted", {});
+  // Fire automation (quote.accepted) — merchants automate move-to-Won, stock
+  // deduction, thank-you message. Keep the legacy stage bump as a fallback.
+  void dispatchQuoteAccepted(companyId, quotePayload(result));
   if (result.dealId) {
     try {
       await prisma.deal.update({
@@ -584,7 +712,9 @@ export async function acceptQuote(companyId: string, quoteId: string) {
 }
 
 export async function rejectQuote(companyId: string, quoteId: string) {
-  return updateQuote(companyId, quoteId, { status: "rejected" });
+  const result = await updateQuote(companyId, quoteId, { status: "rejected" });
+  await recordQuoteEvent(companyId, quoteId, "rejected", {});
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

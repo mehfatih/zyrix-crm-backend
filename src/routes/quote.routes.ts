@@ -12,6 +12,7 @@ router.get("/stats", controller.stats);
 router.get("/", controller.list);
 router.post("/", controller.create);
 router.get("/:id", controller.getOne);
+router.get("/:id/events", controller.events);
 router.patch("/:id", controller.update);
 router.post("/:id/send", controller.send);
 router.post("/:id/accept", controller.accept);

@@ -337,6 +337,54 @@ export const TRIGGERS: TriggerSpec[] = [
     ],
   },
   {
+    type: "quote.viewed",
+    label: {
+      en: "Quote viewed by client",
+      ar: "تمت مشاهدة العرض من العميل",
+      tr: "Teklif müşteri tarafından görüntülendi",
+    },
+    description: {
+      en: "Fires the first time a customer opens the public quote link",
+      ar: "يعمل أول مرة يفتح فيها العميل رابط العرض العام",
+      tr: "Müşteri herkese açık teklif bağlantısını ilk açtığında tetiklenir",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: [
+      "quote.id",
+      "quote.quoteNumber",
+      "quote.title",
+      "quote.total",
+      "quote.currency",
+      "customerId",
+      "dealId",
+    ],
+  },
+  {
+    type: "quote.accepted",
+    label: {
+      en: "Quote accepted by client",
+      ar: "تم قبول العرض من العميل",
+      tr: "Teklif müşteri tarafından kabul edildi",
+    },
+    description: {
+      en: "Fires when a customer accepts the quote from the public page — automate move to Won, stock deduction, thank-you message",
+      ar: "يعمل عندما يقبل العميل العرض من الصفحة العامة — لأتمتة النقل إلى مكسوب وخصم المخزون ورسالة شكر",
+      tr: "Müşteri herkese açık sayfadan teklifi kabul ettiğinde tetiklenir — Kazanıldı'ya taşıma, stok düşümü, teşekkür mesajı için",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: [
+      "quote.id",
+      "quote.quoteNumber",
+      "quote.title",
+      "quote.total",
+      "quote.currency",
+      "customerId",
+      "dealId",
+    ],
+  },
+  {
     type: "schedule.daily",
     label: { en: "Daily schedule", ar: "جدولة يومية", tr: "Günlük zamanlama" },
     description: {

@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as QuoteSvc from "../services/quote.service";
+import { listQuoteEvents } from "../services/quote-events.service";
 import type { AuthenticatedRequest } from "../types";
 import {
   recordAudit,
@@ -151,13 +152,29 @@ export async function update(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+const sendSchema = z.object({
+  email: z.boolean().optional(),
+  whatsapp: z.boolean().optional(),
+});
+
 export async function send(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
     const id = req.params.id as string;
+    const channels = sendSchema.parse(req.body ?? {});
     const before = await QuoteSvc.getQuote(companyId, id).catch(() => null);
-    const data = await QuoteSvc.sendQuote(companyId, id);
+    const data = await QuoteSvc.sendQuote(companyId, id, channels);
     audit(req, "quote.send", id, before, data);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function events(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const data = await listQuoteEvents(companyId, req.params.id as string);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);

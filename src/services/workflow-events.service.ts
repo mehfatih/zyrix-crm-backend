@@ -312,3 +312,49 @@ export async function dispatchProductLowStock(
     productId: product.id,
   });
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// QUOTE EVENTS (Sprint 9 — CPQ)
+// ──────────────────────────────────────────────────────────────────────
+
+interface QuotePayload {
+  id: string;
+  quoteNumber: string;
+  title: string;
+  status: string;
+  total: number;
+  currency: string;
+  customerId: string;
+  dealId: string | null;
+}
+
+/** Fired the first time a customer opens the public quote link. */
+export async function dispatchQuoteViewed(
+  companyId: string,
+  quote: QuotePayload
+): Promise<void> {
+  await safeDispatch("quote.viewed", companyId, {
+    event: "quote.viewed",
+    timestamp: new Date().toISOString(),
+    quote,
+    quoteId: quote.id,
+    customerId: quote.customerId,
+    dealId: quote.dealId,
+  });
+}
+
+/** Fired when a customer accepts the quote from the public page. Merchants
+ *  automate: move the deal to Won, deduct stock, send a thank-you message. */
+export async function dispatchQuoteAccepted(
+  companyId: string,
+  quote: QuotePayload
+): Promise<void> {
+  await safeDispatch("quote.accepted", companyId, {
+    event: "quote.accepted",
+    timestamp: new Date().toISOString(),
+    quote,
+    quoteId: quote.id,
+    customerId: quote.customerId,
+    dealId: quote.dealId,
+  });
+}

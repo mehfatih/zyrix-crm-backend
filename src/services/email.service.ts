@@ -10,11 +10,17 @@ if (resend) {
   console.warn("[Email] Resend not configured - emails will not be sent");
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer | string; // Buffer or base64 string
+}
+
 export interface SendEmailOptions {
   to: string;
   subject: string;
   html: string;
   text?: string;
+  attachments?: EmailAttachment[];
 }
 
 export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
@@ -30,6 +36,9 @@ export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
       subject: options.subject,
       html: options.html,
       text: options.text,
+      ...(options.attachments?.length
+        ? { attachments: options.attachments }
+        : {}),
     });
 
     if (error) {
