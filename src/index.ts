@@ -20,6 +20,7 @@ import emailRoutes from "./routes/email.routes";
 import cadenceRoutes from "./routes/cadence.routes";
 import journeyRoutes from "./routes/journey.routes";
 import formFlowsRoutes from "./routes/form-flows.routes";
+import formPublicRoutes from "./routes/form-public.routes";
 import loyaltyRoutes from "./routes/loyalty.routes";
 import taxRoutes from "./routes/tax.routes";
 import cashflowRoutes from "./routes/cashflow.routes";
@@ -264,6 +265,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
 // Email open-pixel + click-redirect (public, no auth, never errors to visitor)
 app.use("/api/t", trackingRoutes);
+// Public form flows (kiosk/wizard submit) — no auth, rate-limited
+app.use("/api/f", formPublicRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/webhooks", webhookAdminRouter);
 app.use("/api/onboarding", onboardingRoutes);

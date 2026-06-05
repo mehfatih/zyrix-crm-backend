@@ -415,3 +415,27 @@ export async function dispatchCadenceExited(
     customerId: p.contactId,
   });
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// FORM EVENTS (Sprint 12) — optional formId config filter
+// ──────────────────────────────────────────────────────────────────────
+export async function dispatchFormSubmitted(
+  companyId: string,
+  contact: { id: string; fullName: string; email: string | null; phone: string | null },
+  dealId: string | null,
+  form: { id: string; name: string }
+): Promise<void> {
+  await safeDispatch(
+    "form.submitted",
+    companyId,
+    {
+      event: "form.submitted",
+      timestamp: new Date().toISOString(),
+      customer: contact,
+      customerId: contact.id,
+      dealId,
+      form,
+    },
+    (cfg) => !cfg.formId || cfg.formId === form.id
+  );
+}

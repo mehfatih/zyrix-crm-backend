@@ -433,6 +433,29 @@ export const TRIGGERS: TriggerSpec[] = [
     payloadFields: ["emailId", "customerId"],
   },
   {
+    type: "form.submitted",
+    label: {
+      en: "Form submitted",
+      ar: "تم إرسال النموذج",
+      tr: "Form gönderildi",
+    },
+    description: {
+      en: "Fires when a form flow is submitted (public kiosk or internal wizard) and a contact is created/matched",
+      ar: "يعمل عند إرسال نموذج (كشك عام أو معالج داخلي) وإنشاء/مطابقة جهة اتصال",
+      tr: "Bir form gönderildiğinde (herkese açık kiosk veya dahili sihirbaz) ve bir kişi oluşturulduğunda tetiklenir",
+    },
+    category: "crm",
+    configFields: [
+      {
+        key: "formId",
+        label: { en: "Form (optional)", ar: "النموذج (اختياري)", tr: "Form (isteğe bağlı)" },
+        type: "text",
+        helpText: { en: "Blank = any form", ar: "فارغ = أي نموذج", tr: "Boş = herhangi bir form" },
+      },
+    ],
+    payloadFields: ["customer.id", "customer.fullName", "customer.email", "customer.phone", "dealId", "form.id", "form.name"],
+  },
+  {
     type: "cadence.exited",
     label: {
       en: "Contact exited a cadence",
