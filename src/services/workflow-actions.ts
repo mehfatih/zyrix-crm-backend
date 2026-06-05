@@ -26,6 +26,11 @@ function cadenceMeta(config: Record<string, unknown>): { cadenceId: string; step
 }
 import { createTask } from "./task.service";
 import { interpolate } from "./workflows.service";
+import {
+  getRecipe,
+  executeRecipeConfig,
+  type RecipeType,
+} from "./action-recipes.service";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { env } from "../config/env";
 
@@ -858,6 +863,10 @@ export async function runAction(
   payload: unknown,
   fallbackUserId: string
 ): Promise<ActionResult> {
+  // ── Sprint 13 Custom Actions: recipe-backed steps (type = "recipe:{id}") ──
+  if (type.startsWith("recipe:")) {
+    return runRecipeStep(companyId, type.slice("recipe:".length), payload);
+  }
   switch (type) {
     case "send_whatsapp_message":
       return runSendWhatsApp(companyId, config, payload);
@@ -900,4 +909,25 @@ export async function runAction(
     default:
       return { ok: false, error: `Unknown action type: ${type}` };
   }
+}
+
+// Load a recipe by id (tenant-scoped) and execute it. A disabled recipe logs a
+// clean "skipped" instead of failing the run; a deleted/foreign recipe fails.
+async function runRecipeStep(
+  companyId: string,
+  recipeId: string,
+  payload: unknown
+): Promise<ActionResult> {
+  const recipe = await getRecipe(companyId, recipeId);
+  if (!recipe) return { ok: false, error: `recipe ${recipeId} not found` };
+  if (!recipe.enabled) {
+    return { ok: true, output: { skipped: true, reason: "recipe disabled" } };
+  }
+  return executeRecipeConfig(
+    companyId,
+    recipe.type as RecipeType,
+    recipe.config,
+    payload,
+    { dryRun: false }
+  );
 }

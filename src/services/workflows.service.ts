@@ -19,6 +19,7 @@ import {
   ACTIONS,
   VALID_TRIGGER_TYPES,
   VALID_ACTION_TYPES,
+  isValidActionType,
   CONDITION_OPERATORS,
   type ConditionOperator,
 } from "./workflows-catalog";
@@ -96,7 +97,7 @@ function sanitizeActions(input: unknown): WorkflowAction[] {
     if (!raw || typeof raw !== "object") continue;
     const a = raw as Record<string, unknown>;
     if (typeof a.id !== "string" || typeof a.type !== "string") continue;
-    if (!VALID_ACTION_TYPES.has(a.type)) continue;
+    if (!isValidActionType(a.type)) continue;
     if (seen.has(a.id)) continue;
     seen.add(a.id);
     out.push({
@@ -738,7 +739,7 @@ Rules:
   const stepsIn = Array.isArray(parsed?.steps) ? parsed.steps : [];
   const actions: WorkflowAction[] = stepsIn.map((s: any, i: number) => {
     const type = String(s?.type ?? "");
-    if (!VALID_ACTION_TYPES.has(type)) {
+    if (!isValidActionType(type)) {
       flags.push({ path: `steps[${i}].type`, reason: `Unknown action "${type}"` });
     }
     return {

@@ -1053,3 +1053,10 @@ export type ConditionOperator = (typeof CONDITION_OPERATORS)[number];
 
 export const VALID_TRIGGER_TYPES = new Set(TRIGGERS.map((t) => t.type));
 export const VALID_ACTION_TYPES = new Set(ACTIONS.map((a) => a.type));
+
+// A step type is valid if it's a built-in action OR a per-company Custom Action
+// recipe reference ("recipe:{id}", Sprint 13). Recipe ids are validated against
+// the tenant at execution time; here we only accept the well-formed prefix.
+export function isValidActionType(type: string): boolean {
+  return VALID_ACTION_TYPES.has(type) || /^recipe:[\w-]{6,}$/.test(type);
+}
