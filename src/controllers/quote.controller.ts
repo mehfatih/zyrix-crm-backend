@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as QuoteSvc from "../services/quote.service";
 import { listQuoteEvents } from "../services/quote-events.service";
+import { suggestQuoteDiscount } from "../services/quote-ai.service";
 import type { AuthenticatedRequest } from "../types";
 import {
   recordAudit,
@@ -91,6 +92,28 @@ export async function stats(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
     const data = await QuoteSvc.getQuoteStats(companyId);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// AI discount suggestion grounded on the customer's history (?customerId&items=)
+export async function aiSuggest(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    // Accept customerId (canonical) or contactId (brief alias).
+    const customerId = String(req.query.customerId ?? req.query.contactId ?? "");
+    if (!customerId) {
+      res.status(200).json({ success: true, data: null });
+      return;
+    }
+    const rawItems = req.query.items;
+    const itemCount =
+      typeof rawItems === "string" && rawItems.trim()
+        ? rawItems.split(",").filter(Boolean).length
+        : undefined;
+    const data = await suggestQuoteDiscount(companyId, customerId, itemCount);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);

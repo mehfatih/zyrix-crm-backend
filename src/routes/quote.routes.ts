@@ -9,6 +9,7 @@ router.use(authenticateToken);
 router.use(gateFeature("quotes"));
 
 router.get("/stats", controller.stats);
+router.get("/ai-suggest", controller.aiSuggest);
 router.get("/", controller.list);
 router.post("/", controller.create);
 router.get("/:id", controller.getOne);
