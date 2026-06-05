@@ -60,6 +60,7 @@ import importRoutes from "./routes/import.routes";
 import supportRoutes from "./routes/support.routes";
 import supportAdminRoutes from "./routes/support-admin.routes";
 import { startSupportFallbackCron } from "./cron/support-fallback";
+import { startLowStockCron } from "./cron/product-low-stock";
 import brandRoutes from "./routes/brand.routes";
 import commentsRoutes from "./routes/comments.routes";
 import notificationsRoutes from "./routes/notifications.routes";
@@ -324,6 +325,7 @@ const server = app.listen(env.PORT, () => {
   startRetentionCron();
   startDocumentsReindexCron();
   startSupportFallbackCron();
+  startLowStockCron();
 
   // Seed curated templates — idempotent upsert by slug. Failures here
   // shouldn't crash the server; template gallery will just show whatever

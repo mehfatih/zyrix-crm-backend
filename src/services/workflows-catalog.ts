@@ -314,6 +314,29 @@ export const TRIGGERS: TriggerSpec[] = [
     ],
   },
   {
+    type: "product.low_stock",
+    label: {
+      en: "Product low on stock",
+      ar: "مخزون المنتج منخفض",
+      tr: "Ürün stoğu düşük",
+    },
+    description: {
+      en: "Fires when a product's on-hand quantity drops to or below its low-stock threshold",
+      ar: "يعمل عندما تنخفض كمية المنتج المتوفرة إلى حد التنبيه أو أقل",
+      tr: "Bir ürünün eldeki miktarı düşük stok eşiğine veya altına indiğinde tetiklenir",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: [
+      "product.id",
+      "product.name",
+      "product.sku",
+      "product.location",
+      "product.qty",
+      "product.lowStockThreshold",
+    ],
+  },
+  {
     type: "schedule.daily",
     label: { en: "Daily schedule", ar: "جدولة يومية", tr: "Günlük zamanlama" },
     description: {

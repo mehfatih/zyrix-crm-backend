@@ -282,3 +282,33 @@ export async function dispatchActivityCompleted(
     }
   );
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// PRODUCT EVENTS (Sprint 8)
+// ──────────────────────────────────────────────────────────────────────
+
+interface LowStockPayload {
+  id: string;
+  name: string;
+  sku: string | null;
+  location: string;
+  qty: number;
+  lowStockThreshold: number;
+}
+
+/**
+ * Fired by the daily low-stock cron when a product's on-hand level drops to
+ * or below its threshold. Merchants can build "notify owner + create purchase
+ * task" automations on the `product.low_stock` trigger.
+ */
+export async function dispatchProductLowStock(
+  companyId: string,
+  product: LowStockPayload
+): Promise<void> {
+  await safeDispatch("product.low_stock", companyId, {
+    event: "product.low_stock",
+    timestamp: new Date().toISOString(),
+    product,
+    productId: product.id,
+  });
+}
