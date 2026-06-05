@@ -296,6 +296,14 @@ export async function updateDeal(
       } catch {
         // Non-fatal: deal update should succeed even if commission fails
       }
+      // Cadence auto-exit: a won deal ends the contact's active enrollments
+      // whose cadence has the onDealWon exit rule (Sprint 11).
+      try {
+        const { onContactDealWon } = await import("./cadence.service");
+        if (updated.customerId) void onContactDealWon(companyId, updated.customerId);
+      } catch {
+        /* non-fatal */
+      }
     }
 
     // Notify the new owner when ownership transfers to a different user.

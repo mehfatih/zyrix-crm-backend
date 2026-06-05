@@ -22,6 +22,7 @@ import {
   touchInbound,
 } from "../whatsapp/conversations.service";
 import { recordIntegrationEvent } from "../integration-events.service";
+import { onContactReplied } from "../cadence.service";
 
 /** Verify X-Hub-Signature-256 against the raw body (shared scheme). */
 export function verifySignature(rawBody: Buffer, header: string | undefined): boolean {
@@ -142,6 +143,8 @@ export async function processMessagingPayload(payload: any): Promise<void> {
           sentAt: ev.timestamp ? new Date(Number(ev.timestamp)) : null,
         });
         await touchInbound(conversationId);
+        // Cadence auto-exit on reply (Messenger/IG).
+        if (contactId) void onContactReplied(companyId, contactId);
         await recordIntegrationEvent({
           companyId,
           platform: "meta",
