@@ -24,6 +24,30 @@
 - **Frontend:** https://crm.zyrix.co
 - **Frontend Repo:** https://github.com/mehfatih/zyrix-crm
 
+## ✨ Feature Matrix
+
+Trilingual (EN / AR / TR, RTL-safe) CRM for MENA & Turkey. Status as of Sprint 13 (program complete).
+
+| Area | Capabilities | Status |
+|------|--------------|--------|
+| **Contacts & Deals** | Contacts, pipeline/stages, tasks, activities, line items, custom fields, CSV import | ✅ |
+| **Products & Inventory** | Unified catalog (local + synced), stock levels & movements, low-stock automation | ✅ |
+| **CPQ — Quote Builder Pro** | Price books, discount rules + approval governance, bundles, public quote links, AI discount suggestion | ✅ |
+| **E-commerce sync** | Shopify (OAuth) + WooCommerce + 40-platform adapter; customers, orders **and products** → unified catalog | ✅ |
+| **Omnichannel inbox** | WhatsApp (Cloud API), Messenger, Instagram; AI support widget with handoff | ✅ |
+| **Lead capture** | Meta Lead Ads, Google Ads Lead Forms, public Form Flows (wizard/kiosk) with anti-spam | ✅ |
+| **Email intelligence** | Open/click tracking (own pixel + signed links), Resend delivery webhooks, per-contact timeline, AI drafts, best-send-time | ✅ |
+| **Automation Engine** | Visual workflows, **Cadences** (sequences) + **Journeys** (branch canvas), AI-from-natural-language builder, **Custom Actions** (webhook/compute/conditional recipes) | ✅ |
+| **AI suite** | AI CFO, sales/content/meeting agents, Architect/Builder/Report modes, **AI Studio** (company personality injected across all AI + saved scheduled reports) | ✅ |
+| **Data Tools** | AI-assisted dedupe & merge (full reference re-pointing + undo), bulk cleanup with preview/undo | ✅ |
+| **Dashboards & Reports** | Customizable widget grid, configurable KPI/gauge/AI-insight widgets, analytics, scheduled digests | ✅ |
+| **Loyalty & Marketing** | Points/tiers, campaigns, customer health & predictive lead scoring | ✅ |
+| **Finance & Compliance** | ZATCA Phase 2 (Saudi) + e-Fatura (Türkiye) invoicing, multi-currency, tax regimes | ✅ |
+| **Governance & Security** | RBAC + custom roles, audit logs, IP allowlisting, data retention, GDPR/CCPA API, SCIM 2.0, 2FA, session auto-lock | ✅ |
+| **Platform** | Multi-brand, onboarding wizard, per-merchant feature flags, Google Workspace integration | ✅ |
+
+**Exclusives vs Zoho / Salesforce / HubSpot / Bitrix24:** AI workflow builder from natural language · WhatsApp-native journeys · trilingual AI with per-company personality.
+
 ## 🚀 Getting Started
 
 ### Prerequisites
