@@ -753,6 +753,11 @@ model Quote {
   publicToken String?   @unique
   viewedAt    DateTime?
 
+  // CPQ (Sprint 9)
+  priceBookId    String?
+  approvalStatus String  @default("none") // none | pending | approved | rejected
+  approvedBy     String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -790,6 +795,70 @@ model QuoteItem {
 
   @@index([quoteId])
   @@map("quote_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CPQ — PRICE BOOKS, DISCOUNT RULES, BUNDLES, QUOTE EVENTS (Sprint 9)
+// Standalone models (scalar FKs, no relations) — additive, mirror raw SQL.
+// ─────────────────────────────────────────────────────────────────────────
+model PriceBook {
+  id           String   @id @default(uuid())
+  companyId    String
+  name         String
+  currency     String   @default("TRY")
+  isDefault    Boolean  @default(false)
+  segmentRules String? // JSON {tags[], countries[]} optional auto-pick
+  createdAt    DateTime @default(now())
+
+  @@index([companyId])
+  @@map("price_books")
+}
+
+model PriceBookEntry {
+  id          String  @id @default(uuid())
+  priceBookId String
+  productId   String
+  price       Decimal @db.Decimal(14, 2)
+
+  @@unique([priceBookId, productId])
+  @@map("price_book_entries")
+}
+
+model DiscountRule {
+  id               String   @id @default(uuid())
+  companyId        String
+  scope            String   @default("role") // role | user
+  scopeValue       String // role name or userId
+  maxPct           Decimal  @db.Decimal(5, 2)
+  approvalAbovePct Decimal? @db.Decimal(5, 2)
+
+  @@index([companyId])
+  @@map("discount_rules")
+}
+
+model Bundle {
+  id          String  @id @default(uuid())
+  companyId   String
+  name        String
+  items       String // JSON [{productId, qty}]
+  bundlePrice Decimal @db.Decimal(14, 2)
+  status      String  @default("active") // active | archived
+
+  @@index([companyId])
+  @@map("bundles")
+}
+
+model QuoteEvent {
+  id        String   @id @default(uuid())
+  companyId String
+  quoteId   String
+  type      String // sent | viewed | accepted | rejected | approval_requested | approved
+  meta      String?
+  createdAt DateTime @default(now())
+
+  @@index([quoteId, createdAt])
+  @@index([companyId, createdAt])
+  @@map("quote_events")
 }
 
 // ─────────────────────────────────────────────────────────────────────────
