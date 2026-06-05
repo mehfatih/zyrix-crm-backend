@@ -116,6 +116,32 @@ function sanitizeActions(input: unknown): WorkflowAction[] {
   return out;
 }
 
+// Recipient/assignee fields the builder promises default to the workflow
+// creator when left blank. We persist the creator's id at save time so stored
+// configs are self-describing; the executor also resolves blanks to the
+// creator at runtime as a safety net (so already-saved blank configs work too).
+// assign_owner is intentionally omitted — its userId only applies in 'fixed'
+// mode and is resolved at runtime.
+const ASSIGNEE_FIELD_BY_ACTION: Record<string, string> = {
+  send_notification: "userId",
+  create_task: "assigneeId",
+};
+
+function fillBlankAssignees(
+  actions: WorkflowAction[],
+  creatorId: string
+): WorkflowAction[] {
+  if (!creatorId) return actions;
+  return actions.map((a) => {
+    const key = ASSIGNEE_FIELD_BY_ACTION[a.type];
+    if (!key) return a;
+    const cfg = a.config ?? {};
+    const cur = typeof cfg[key] === "string" ? (cfg[key] as string).trim() : "";
+    if (cur) return a;
+    return { ...a, config: { ...cfg, [key]: creatorId } };
+  });
+}
+
 function sanitizeConditions(input: unknown): WorkflowCondition[] {
   if (!Array.isArray(input)) return [];
   const out: WorkflowCondition[] = [];
@@ -191,7 +217,7 @@ export async function createWorkflow(
     throw badRequest("name is required");
   }
   const trigger = sanitizeTrigger(dto.trigger);
-  const actions = sanitizeActions(dto.actions);
+  const actions = fillBlankAssignees(sanitizeActions(dto.actions), userId);
   const conditions = sanitizeConditions(dto.conditions);
   const isEnabled = dto.isEnabled !== false;
 
@@ -227,7 +253,7 @@ export async function updateWorkflow(
     isEnabled?: boolean;
   }
 ): Promise<WorkflowRow> {
-  await getWorkflow(companyId, id); // existence check
+  const existing = await getWorkflow(companyId, id); // existence + creator
 
   const sets: string[] = [];
   const params: (string | boolean | null)[] = [];
@@ -254,7 +280,10 @@ export async function updateWorkflow(
     sets.push(`trigger = $${params.length}::jsonb`);
   }
   if (patch.actions !== undefined) {
-    const acts = sanitizeActions(patch.actions);
+    const acts = fillBlankAssignees(
+      sanitizeActions(patch.actions),
+      existing.createdById
+    );
     params.push(JSON.stringify(acts));
     sets.push(`actions = $${params.length}::jsonb`);
   }

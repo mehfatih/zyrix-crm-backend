@@ -142,10 +142,13 @@ TRANSLATION:`;
 async function runSendNotification(
   companyId: string,
   config: Record<string, unknown>,
-  payload: unknown
+  payload: unknown,
+  fallbackUserId: string
 ): Promise<ActionResult> {
   try {
-    const userId = interpolate(String(config.userId ?? ""), payload).trim();
+    // Blank recipient → the workflow's creator (per the builder hint).
+    const userId =
+      interpolate(String(config.userId ?? ""), payload).trim() || fallbackUserId;
     const title = interpolate(String(config.title ?? ""), payload).trim();
     const message = interpolate(
       String(config.message ?? ""),
@@ -638,7 +641,8 @@ async function nextTerritoryMember(
 async function runAssignOwner(
   companyId: string,
   config: Record<string, unknown>,
-  payload: unknown
+  payload: unknown,
+  fallbackUserId: string
 ): Promise<ActionResult> {
   try {
     const mode = String(config.mode ?? "").trim();
@@ -652,7 +656,8 @@ async function runAssignOwner(
     let detail: Record<string, unknown> = { mode };
 
     if (mode === "fixed") {
-      assignee = String(config.userId ?? "").trim() || null;
+      // Blank → the workflow's creator (per the builder hint).
+      assignee = String(config.userId ?? "").trim() || fallbackUserId || null;
       if (!assignee) return { ok: false, error: "fixed mode requires userId" };
     } else if (mode === "round_robin") {
       const territoryId = String(config.territoryId ?? "").trim();
@@ -814,7 +819,7 @@ export async function runAction(
     case "add_tag":
       return runAddTag(companyId, config, payload);
     case "assign_owner":
-      return runAssignOwner(companyId, config, payload);
+      return runAssignOwner(companyId, config, payload, fallbackUserId);
     case "webhook_out":
       return runWebhookOut(companyId, config, payload);
     case "call_webhook":
@@ -834,7 +839,7 @@ export async function runAction(
     case "ai_translate":
       return runAiTranslate(companyId, config, payload);
     case "send_notification":
-      return runSendNotification(companyId, config, payload);
+      return runSendNotification(companyId, config, payload, fallbackUserId);
     case "update_field":
       return runUpdateField(companyId, config, payload);
     default:

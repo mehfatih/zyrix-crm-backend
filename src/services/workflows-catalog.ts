@@ -580,6 +580,11 @@ export const ACTIONS: ActionSpec[] = [
         key: "userId",
         label: { en: "User (fixed mode)", ar: "المستخدم (وضع ثابت)", tr: "Kullanıcı (sabit mod)" },
         type: "userSelect",
+        helpText: {
+          en: "Leave blank to assign to the workflow creator",
+          ar: "اتركه فارغاً لتعيينه لمنشئ الـ workflow",
+          tr: "İş akışı oluşturucusuna atamak için boş bırakın",
+        },
       },
       {
         key: "territoryId",
@@ -827,7 +832,11 @@ ACTIONS.push(
         key: "userId",
         label: { en: "Recipient", ar: "المستلم", tr: "Alıcı" },
         type: "userSelect",
-        required: true,
+        helpText: {
+          en: "Leave blank to notify the workflow creator",
+          ar: "اتركه فارغاً لإشعار منشئ الـ workflow",
+          tr: "İş akışı oluşturucusunu bilgilendirmek için boş bırakın",
+        },
       },
       {
         key: "title",
