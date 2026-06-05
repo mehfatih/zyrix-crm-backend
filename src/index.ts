@@ -54,6 +54,7 @@ import whatsappIntegrationRoutes from "./routes/integrations/whatsapp.routes";
 import whatsappWebhookReceiver from "./routes/integrations/whatsapp-webhooks.routes";
 import metaLeadsIntegrationRoutes from "./routes/integrations/meta-leads.routes";
 import metaLeadsWebhookReceiver from "./routes/integrations/meta-leads-webhooks.routes";
+import resendWebhookReceiver from "./routes/integrations/resend-webhooks.routes";
 import metaWebhookReceiver from "./routes/integrations/meta-webhooks.routes";
 import googleAdsWebhookReceiver from "./routes/integrations/google-ads-webhooks.routes";
 import googleAdsIntegrationRoutes from "./routes/integrations/google-ads.routes";
@@ -149,6 +150,9 @@ app.use("/api/integrations/meta/webhook", metaWebhookReceiver);
 // own router applies a SCOPED express.json(), so it's mounted before the global
 // express.json() below. Mirrors the Meta lead webhook placement.
 app.use("/api/integrations/google-ads/leads/webhook", googleAdsWebhookReceiver);
+// Resend email webhook (Sprint 10) — raw body for Svix HMAC verify. Before
+// express.json. Consumes delivered/bounced/complained → email_messages status.
+app.use("/api/integrations/resend/webhook", resendWebhookReceiver);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
