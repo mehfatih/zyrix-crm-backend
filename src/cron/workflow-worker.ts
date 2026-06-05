@@ -324,7 +324,7 @@ async function processOne(exec: PendingExecution): Promise<void> {
            "currentStep" = $2,
            "scheduledAt" = $3,
            "startedAt" = NULL
-       WHERE id = $4`,
+       WHERE id = $4 AND status = 'running'`,
       JSON.stringify(chainResult.steps),
       chainResult.nextStep,
       chainResult.resumeAt,
@@ -340,7 +340,7 @@ async function processOne(exec: PendingExecution): Promise<void> {
        SET status = 'completed',
            "stepResults" = $1::jsonb,
            "finishedAt" = NOW()
-       WHERE id = $2`,
+       WHERE id = $2 AND status = 'running'`,
       JSON.stringify(chainResult.steps),
       exec.id
     );
@@ -384,7 +384,7 @@ async function processOne(exec: PendingExecution): Promise<void> {
            "lastError" = $2,
            "nextRetryAt" = $3,
            "startedAt" = NULL
-       WHERE id = $4`,
+       WHERE id = $4 AND status = 'running'`,
       JSON.stringify(chainResult.steps),
       firstError.slice(0, 500),
       nextRetryAt,
@@ -398,7 +398,7 @@ async function processOne(exec: PendingExecution): Promise<void> {
            "stepResults" = $1::jsonb,
            "lastError" = $2,
            "finishedAt" = NOW()
-       WHERE id = $3`,
+       WHERE id = $3 AND status = 'running'`,
       JSON.stringify(chainResult.steps),
       firstError.slice(0, 500),
       exec.id

@@ -12,7 +12,7 @@ import { createHmac } from "crypto";
 import { prisma } from "../config/database";
 import { sendEmail } from "./email.service";
 import { sendTrackedEmail } from "./email-tracking.service";
-import { sendViaMetaCloud } from "./whatsapp.service";
+import { sendViaMetaCloud, sendTemplateByPhone } from "./whatsapp.service";
 import { createTask } from "./task.service";
 import { interpolate } from "./workflows.service";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -267,6 +267,31 @@ async function runSendWhatsApp(
       };
     }
     return { ok: true, output: { messageId: result.messageId, toPhone } };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "Unknown error" };
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// send_whatsapp_template — approved template by phone (cadence WhatsApp steps)
+// ──────────────────────────────────────────────────────────────────────
+
+async function runSendWhatsAppTemplate(
+  companyId: string,
+  config: Record<string, unknown>,
+  payload: unknown
+): Promise<ActionResult> {
+  try {
+    const toPhone = interpolate(String(config.toPhone ?? ""), payload).trim();
+    const templateName = String(config.templateName ?? "").trim();
+    const lang = String(config.templateLang ?? "en").trim() || "en";
+    if (!toPhone) return { ok: false, error: "toPhone is empty after interpolation" };
+    if (!templateName) return { ok: false, error: "templateName is required" };
+    const r = await sendTemplateByPhone(companyId, toPhone, templateName, lang);
+    if (!r.success) {
+      return { ok: false, error: r.error || "WhatsApp template send failed", output: { messageId: r.messageId } };
+    }
+    return { ok: true, output: { messageId: r.messageId, toPhone, templateName } };
   } catch (e: any) {
     return { ok: false, error: e?.message || "Unknown error" };
   }
@@ -817,6 +842,8 @@ export async function runAction(
   switch (type) {
     case "send_whatsapp_message":
       return runSendWhatsApp(companyId, config, payload);
+    case "send_whatsapp_template":
+      return runSendWhatsAppTemplate(companyId, config, payload);
     case "send_email":
       return runSendEmail(companyId, config, payload);
     case "create_task":

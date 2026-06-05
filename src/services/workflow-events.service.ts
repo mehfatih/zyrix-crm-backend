@@ -400,3 +400,18 @@ export async function dispatchEmailBounced(companyId: string, p: EmailEventPaylo
     ...p,
   });
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// CADENCE EVENTS (Sprint 11)
+// ──────────────────────────────────────────────────────────────────────
+export async function dispatchCadenceExited(
+  companyId: string,
+  p: { cadenceId: string; contactId: string; reason: string }
+): Promise<void> {
+  await safeDispatch("cadence.exited", companyId, {
+    event: "cadence.exited",
+    timestamp: new Date().toISOString(),
+    ...p,
+    customerId: p.contactId,
+  });
+}

@@ -374,6 +374,42 @@ export async function sendViaMetaCloud(
   }
 }
 
+// Send an approved WhatsApp TEMPLATE message by phone (no conversation needed)
+// — used by cadence WhatsApp steps, which fire days later (outside any 24h
+// session window) and so must use a template per Meta policy.
+export async function sendTemplateByPhone(
+  companyId: string,
+  phoneNumber: string,
+  templateName: string,
+  languageCode = "en"
+): Promise<{ success: boolean; messageId: string | null; error?: string }> {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!token || !phoneId) {
+    return { success: false, messageId: null, error: "Meta Cloud not configured" };
+  }
+  try {
+    const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: phoneNumber,
+        type: "template",
+        template: { name: templateName, language: { code: languageCode } },
+      }),
+    });
+    const data: any = await resp.json();
+    if (!resp.ok) {
+      return { success: false, messageId: null, error: data?.error?.message || "Meta API error" };
+    }
+    const metaId = data?.messages?.[0]?.id ?? null;
+    return { success: true, messageId: metaId };
+  } catch (e: any) {
+    return { success: false, messageId: null, error: e?.message || "Network error" };
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // META CLOUD WEBHOOK — process incoming from Meta
 // ─────────────────────────────────────────────────────────────────────────

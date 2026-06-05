@@ -454,6 +454,27 @@ export async function enqueueExecution(
   return { executionId: rows[0].id };
 }
 
+// Cancel an in-flight execution (used by cadence auto-exit / unenroll). Only
+// pending/waiting/running rows are affected; the worker never re-claims a
+// 'cancelled' run, and its status write-backs are guarded WHERE status='running'
+// so a cancel mid-step wins.
+export async function cancelExecution(
+  executionId: string,
+  companyId: string,
+  reason = "cancelled"
+): Promise<{ cancelled: boolean }> {
+  const res = (await prisma.$queryRawUnsafe(
+    `UPDATE workflow_executions
+       SET status = 'cancelled', "finishedAt" = NOW(), "lastError" = $3
+     WHERE id = $1 AND "companyId" = $2 AND status IN ('pending','waiting','running')
+     RETURNING id`,
+    executionId,
+    companyId,
+    reason
+  )) as { id: string }[];
+  return { cancelled: res.length > 0 };
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // MANUAL TEST RUN
 // ──────────────────────────────────────────────────────────────────────

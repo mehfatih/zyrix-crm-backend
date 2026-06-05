@@ -433,6 +433,22 @@ export const TRIGGERS: TriggerSpec[] = [
     payloadFields: ["emailId", "customerId"],
   },
   {
+    type: "cadence.exited",
+    label: {
+      en: "Contact exited a cadence",
+      ar: "خرج العميل من سلسلة متابعة",
+      tr: "Kişi bir kadanstan çıktı",
+    },
+    description: {
+      en: "Fires when a contact leaves a cadence (replied, deal won, manual, or completed)",
+      ar: "يعمل عندما يغادر العميل سلسلة متابعة (رد، صفقة مكسوبة، يدوي، أو اكتمال)",
+      tr: "Bir kişi kadanstan ayrıldığında tetiklenir (yanıt, kazanılan anlaşma, manuel veya tamamlanma)",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: ["cadenceId", "contactId", "reason"],
+  },
+  {
     type: "schedule.daily",
     label: { en: "Daily schedule", ar: "جدولة يومية", tr: "Günlük zamanlama" },
     description: {
