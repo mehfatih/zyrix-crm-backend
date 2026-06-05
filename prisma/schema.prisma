@@ -880,6 +880,10 @@ model EmailMessage {
   status      String   @default("sent") // sent | delivered | bounced
   sentAt      DateTime @default(now())
 
+  // Sprint 11 — cadence step attribution (so opens/clicks roll up to a step)
+  cadenceId        String?
+  cadenceStepIndex Int?
+
   @@index([companyId, contactId, sentAt])
   @@index([providerId])
   @@map("email_messages")

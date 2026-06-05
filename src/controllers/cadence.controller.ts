@@ -108,6 +108,12 @@ export async function unenroll(req: Request, res: Response, next: NextFunction) 
   } catch (err) { next(err); }
 }
 
+export async function funnel(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.status(200).json({ success: true, data: await Cad.getCadenceFunnel(auth(req).companyId, req.params.id as string) });
+  } catch (err) { next(err); }
+}
+
 export async function contactEnrollments(req: Request, res: Response, next: NextFunction) {
   try {
     res.status(200).json({ success: true, data: await Cad.enrollmentsForContact(auth(req).companyId, req.params.contactId as string) });

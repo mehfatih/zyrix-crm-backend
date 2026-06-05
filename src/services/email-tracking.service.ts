@@ -16,6 +16,7 @@ import crypto from "crypto";
 import { prisma } from "../config/database";
 import { env } from "../config/env";
 import { sendEmailRaw, type SendEmailOptions } from "./email.service";
+import { bumpStepStat } from "./cadence.service";
 
 const BASE = (env.EMAIL_TRACKING_BASE_URL || "https://api.crm.zyrix.co").replace(/\/$/, "");
 const SIGN_SECRET = env.JWT_ACCESS_SECRET || "zyrix-email-track-fallback";
@@ -74,6 +75,9 @@ export interface TrackedEmailInput {
   html: string;
   text?: string;
   attachments?: SendEmailOptions["attachments"];
+  // Sprint 11 — cadence step attribution (opens/clicks roll up to the step).
+  cadenceId?: string | null;
+  cadenceStepIndex?: number | null;
 }
 
 export async function sendTrackedEmail(
@@ -108,6 +112,8 @@ export async function sendTrackedEmail(
         providerId: sent.id,
         trackToken: token,
         status: "sent", // delivered / bounced arrive via the Resend webhook
+        cadenceId: input.cadenceId ?? null,
+        cadenceStepIndex: input.cadenceStepIndex ?? null,
       },
       select: { id: true },
     });
@@ -135,7 +141,7 @@ export async function recordOpen(token: string, vhash: string, ua: string): Prom
   try {
     const msg = await prisma.emailMessage.findUnique({
       where: { trackToken: token },
-      select: { id: true, companyId: true, contactId: true },
+      select: { id: true, companyId: true, contactId: true, cadenceId: true, cadenceStepIndex: true },
     });
     if (!msg) return none;
 
@@ -152,6 +158,10 @@ export async function recordOpen(token: string, vhash: string, ua: string): Prom
     await prisma.emailEvent.create({
       data: { emailId: msg.id, type: "open", meta: JSON.stringify({ v: vhash, ua: ua.slice(0, 200) }) },
     });
+    // Cadence step stat: count a unique open once (on first open).
+    if (priorOpens === 0 && msg.cadenceId && msg.cadenceStepIndex != null) {
+      void bumpStepStat(msg.cadenceId, msg.cadenceStepIndex, "opened");
+    }
     return {
       found: true,
       recorded: true,
@@ -179,12 +189,17 @@ export async function recordClick(token: string, url: string, vhash: string, ua:
   try {
     const msg = await prisma.emailMessage.findUnique({
       where: { trackToken: token },
-      select: { id: true, companyId: true, contactId: true },
+      select: { id: true, companyId: true, contactId: true, cadenceId: true, cadenceStepIndex: true },
     });
     if (!msg) return none;
+    const priorClicks = await prisma.emailEvent.count({ where: { emailId: msg.id, type: "click" } });
     await prisma.emailEvent.create({
       data: { emailId: msg.id, type: "click", meta: JSON.stringify({ url: url.slice(0, 500), v: vhash, ua: ua.slice(0, 200) }) },
     });
+    // Cadence step stat: count a unique click once (on first click).
+    if (priorClicks === 0 && msg.cadenceId && msg.cadenceStepIndex != null) {
+      void bumpStepStat(msg.cadenceId, msg.cadenceStepIndex, "clicked");
+    }
     return { found: true, emailId: msg.id, companyId: msg.companyId, contactId: msg.contactId };
   } catch (e) {
     console.error("[email-track] recordClick failed (non-fatal):", (e as Error).message);

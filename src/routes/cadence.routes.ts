@@ -16,6 +16,7 @@ router.post("/", controller.create);
 router.get("/contact/:contactId/enrollments", controller.contactEnrollments);
 router.post("/enrollments/:enrollmentId/unenroll", controller.unenroll);
 router.get("/:id", controller.getOne);
+router.get("/:id/funnel", controller.funnel);
 router.patch("/:id", controller.update);
 router.delete("/:id", controller.remove);
 router.post("/:id/activate", controller.activate);

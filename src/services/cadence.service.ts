@@ -225,6 +225,73 @@ export async function deleteCadence(companyId: string, id: string) {
   return { id, deleted: true };
 }
 
+// ── Stats ─────────────────────────────────────────────────────────────────
+// Incremented from engine send actions (sent) + Sprint-10 open/click signals.
+export async function bumpStepStat(
+  cadenceId: string,
+  stepIndex: number,
+  field: "sent" | "opened" | "clicked" | "replied",
+  by = 1
+): Promise<void> {
+  try {
+    await prisma.cadenceStepStat.upsert({
+      where: { cadenceId_stepIndex: { cadenceId, stepIndex } },
+      create: { cadenceId, stepIndex, [field]: by } as any,
+      update: { [field]: { increment: by } } as any,
+    });
+  } catch (e) {
+    console.error("[cadence] bumpStepStat failed (non-fatal):", (e as Error).message);
+  }
+}
+
+// Per-step funnel + enrollment roll-up (replies are cadence-level by exit reason,
+// since a per-step reply attribution isn't reliable — honest over guessed).
+export async function getCadenceFunnel(companyId: string, cadenceId: string) {
+  const cadence = await getCadence(companyId, cadenceId);
+  const stats = await prisma.cadenceStepStat.findMany({
+    where: { cadenceId },
+    orderBy: { stepIndex: "asc" },
+  });
+  const byStep = new Map(stats.map((s) => [s.stepIndex, s]));
+  const steps = cadence.steps.map((step: CadenceStep, i: number) => {
+    const s = byStep.get(i);
+    return {
+      stepIndex: i,
+      channel: step.channel,
+      name: step.name ?? null,
+      sent: s?.sent ?? 0,
+      opened: s?.opened ?? 0,
+      clicked: s?.clicked ?? 0,
+    };
+  });
+  const enrollAgg = await prisma.cadenceEnrollment.groupBy({
+    by: ["status"],
+    where: { companyId, cadenceId },
+    _count: { _all: true },
+  });
+  const exitAgg = await prisma.cadenceEnrollment.groupBy({
+    by: ["exitReason"],
+    where: { companyId, cadenceId, status: "exited" },
+    _count: { _all: true },
+  });
+  const statusCounts: Record<string, number> = {};
+  for (const e of enrollAgg) statusCounts[e.status] = e._count._all;
+  const exitCounts: Record<string, number> = {};
+  for (const e of exitAgg) if (e.exitReason) exitCounts[e.exitReason] = e._count._all;
+  return {
+    cadenceId,
+    steps,
+    enrollment: {
+      total: enrollAgg.reduce((a, e) => a + e._count._all, 0),
+      active: statusCounts.active ?? 0,
+      exited: statusCounts.exited ?? 0,
+      completed: statusCounts.completed ?? 0,
+      repliedExits: exitCounts.replied ?? 0,
+      dealWonExits: exitCounts.deal_won ?? 0,
+    },
+  };
+}
+
 // ── Enrollment ──────────────────────────────────────────────────────────────
 async function resolveContact(companyId: string, contactId: string) {
   return prisma.customer.findFirst({

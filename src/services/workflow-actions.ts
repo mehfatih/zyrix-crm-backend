@@ -13,6 +13,17 @@ import { prisma } from "../config/database";
 import { sendEmail } from "./email.service";
 import { sendTrackedEmail } from "./email-tracking.service";
 import { sendViaMetaCloud, sendTemplateByPhone } from "./whatsapp.service";
+import { bumpStepStat } from "./cadence.service";
+
+// Cadence step metadata the compiler stamps onto each step's action config.
+function cadenceMeta(config: Record<string, unknown>): { cadenceId: string; stepIndex: number } | null {
+  const cadenceId = config._cadenceId;
+  const stepIndex = config._stepIndex;
+  if (typeof cadenceId === "string" && typeof stepIndex === "number") {
+    return { cadenceId, stepIndex };
+  }
+  return null;
+}
 import { createTask } from "./task.service";
 import { interpolate } from "./workflows.service";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -291,6 +302,8 @@ async function runSendWhatsAppTemplate(
     if (!r.success) {
       return { ok: false, error: r.error || "WhatsApp template send failed", output: { messageId: r.messageId } };
     }
+    const cad = cadenceMeta(config);
+    if (cad) void bumpStepStat(cad.cadenceId, cad.stepIndex, "sent");
     return { ok: true, output: { messageId: r.messageId, toPhone, templateName } };
   } catch (e: any) {
     return { ok: false, error: e?.message || "Unknown error" };
@@ -315,16 +328,20 @@ async function runSendEmail(
 
     // Tracked send (Sprint 10) — this is a CRM→contact automation email.
     const p = payload as { customerId?: string; contactId?: string } | null;
+    const cad = cadenceMeta(config);
     const r = await sendTrackedEmail({
       companyId,
       contactId: p?.customerId ?? p?.contactId ?? null,
       to,
       subject,
       html: body,
+      cadenceId: cad?.cadenceId ?? null,
+      cadenceStepIndex: cad?.stepIndex ?? null,
     });
     if (!r.ok) {
       return { ok: false, error: "Email send returned false (check Resend config)" };
     }
+    if (cad) void bumpStepStat(cad.cadenceId, cad.stepIndex, "sent");
     return { ok: true, output: { to, subject } };
   } catch (e: any) {
     return { ok: false, error: e?.message || "Unknown error" };
@@ -376,6 +393,8 @@ async function runCreateTask(
       dealId,
       dueDate,
     });
+    const cad = cadenceMeta(config);
+    if (cad) void bumpStepStat(cad.cadenceId, cad.stepIndex, "sent");
     return { ok: true, output: { taskId: task.id } };
   } catch (e: any) {
     return { ok: false, error: e?.message || "create_task failed" };
