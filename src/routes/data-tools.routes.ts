@@ -18,4 +18,9 @@ router.post("/merge", canManage, controller.merge);
 router.post("/merge/:logId/undo", canManage, controller.undo);
 router.get("/merge-logs", controller.mergeLogs);
 
+router.post("/cleanup/preview", controller.cleanupPreview);
+router.post("/cleanup/apply", canManage, controller.cleanupApply);
+router.post("/cleanup/:logId/undo", canManage, controller.cleanupUndo);
+
 export default router;
+

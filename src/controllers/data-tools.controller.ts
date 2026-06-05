@@ -7,6 +7,10 @@ import {
   mergeContacts,
   undoMerge,
   listMergeLogs,
+  cleanupPreviewSvc,
+  cleanupApplySvc,
+  cleanupUndoSvc,
+  type CleanupRule,
 } from "../services/data-tools.service";
 
 // ============================================================================
@@ -65,5 +69,32 @@ export async function mergeLogs(req: Request, res: Response, next: NextFunction)
   try {
     const { companyId } = auth(req);
     res.json({ success: true, data: await listMergeLogs(companyId) });
+  } catch (e) { next(e); }
+}
+
+const cleanupSchema = z.object({
+  rules: z.array(z.enum(["phone_e164", "trim_whitespace", "name_case", "email_lowercase"])).min(1),
+});
+
+export async function cleanupPreview(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const { rules } = cleanupSchema.parse(req.body);
+    res.json({ success: true, data: await cleanupPreviewSvc(companyId, rules as CleanupRule[]) });
+  } catch (e) { next(e); }
+}
+
+export async function cleanupApply(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId, userId } = auth(req);
+    const { rules } = cleanupSchema.parse(req.body);
+    res.json({ success: true, data: await cleanupApplySvc(companyId, userId, rules as CleanupRule[]) });
+  } catch (e) { next(e); }
+}
+
+export async function cleanupUndo(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    res.json({ success: true, data: await cleanupUndoSvc(companyId, String(req.params.logId)) });
   } catch (e) { next(e); }
 }

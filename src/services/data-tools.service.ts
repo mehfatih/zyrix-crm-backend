@@ -15,6 +15,7 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { prisma } from "../config/database";
 import { env } from "../config/env";
+import { normalizeE164, dialCodeForCountry } from "./google-ads/map";
 
 const genAI = env.GEMINI_API_KEY ? new GoogleGenerativeAI(env.GEMINI_API_KEY) : null;
 
@@ -368,6 +369,150 @@ export async function undoMerge(companyId: string, logId: string): Promise<{ res
   });
 
   return { restored: mergeId };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BULK CLEANUP (Sprint 13 Phase E)
+// ── phone→E.164, trim/collapse whitespace, Latin-only name casing, email
+//    lowercase. Preview shows before/after; apply snapshots changed values into
+//    a merge_logs row (kind='cleanup') for one-click undo. Arabic names are
+//    NEVER touched by the casing rule.
+// ════════════════════════════════════════════════════════════════════════════
+export type CleanupRule = "phone_e164" | "trim_whitespace" | "name_case" | "email_lowercase";
+
+export interface CleanupChange { id: string; field: string; before: string; after: string }
+
+const ARABIC_RE = /[؀-ۿ]/;
+
+function titleCaseLatin(s: string): string {
+  // Only re-case ASCII words; leave any token containing non-ASCII letters as-is
+  // so Turkish/Arabic/diacritic names aren't mangled.
+  return s.split(/(\s+)/).map((tok) => {
+    if (!tok.trim()) return tok;
+    if (!/^[A-Za-z'’-]+$/.test(tok)) return tok;
+    return tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
+  }).join("");
+}
+function collapseWs(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+interface CustomerForCleanup {
+  id: string; fullName: string; email: string | null; phone: string | null;
+  whatsappPhone: string | null; companyName: string | null; city: string | null;
+  address: string | null; notes: string | null; country: string | null;
+}
+
+function computeChanges(rows: CustomerForCleanup[], rules: Set<CleanupRule>): CleanupChange[] {
+  const changes: CleanupChange[] = [];
+  const push = (id: string, field: string, before: string | null, after: string) => {
+    const b = before ?? "";
+    if (after !== b && after.trim() !== "") changes.push({ id, field, before: b, after });
+  };
+  for (const c of rows) {
+    if (rules.has("trim_whitespace")) {
+      for (const f of ["fullName", "companyName", "city", "address", "notes"] as const) {
+        const v = (c as any)[f] as string | null;
+        if (v && collapseWs(v) !== v) push(c.id, f, v, collapseWs(v));
+      }
+    }
+    if (rules.has("name_case") && c.fullName && !ARABIC_RE.test(c.fullName)) {
+      const base = rules.has("trim_whitespace") ? collapseWs(c.fullName) : c.fullName;
+      const cased = titleCaseLatin(base);
+      if (cased !== c.fullName) push(c.id, "fullName", c.fullName, cased);
+    }
+    if (rules.has("email_lowercase") && c.email) {
+      const lc = c.email.trim().toLowerCase();
+      if (lc !== c.email) push(c.id, "email", c.email, lc);
+    }
+    if (rules.has("phone_e164")) {
+      const dc = dialCodeForCountry(c.country);
+      for (const f of ["phone", "whatsappPhone"] as const) {
+        const v = (c as any)[f] as string | null;
+        if (!v) continue;
+        try {
+          const e = normalizeE164(v, dc);
+          if (e && e !== v) push(c.id, f, v, e);
+        } catch { /* skip unparseable */ }
+      }
+    }
+  }
+  return changes;
+}
+
+async function loadForCleanup(companyId: string): Promise<CustomerForCleanup[]> {
+  return (await prisma.customer.findMany({
+    where: { companyId, deletedAt: null },
+    select: {
+      id: true, fullName: true, email: true, phone: true, whatsappPhone: true,
+      companyName: true, city: true, address: true, notes: true, country: true,
+    },
+    take: 5000,
+  })) as CustomerForCleanup[];
+}
+
+export async function cleanupPreviewSvc(
+  companyId: string,
+  rules: CleanupRule[]
+): Promise<{ totalAffected: number; sample: CleanupChange[] }> {
+  const set = new Set(rules);
+  const changes = computeChanges(await loadForCleanup(companyId), set);
+  return { totalAffected: changes.length, sample: changes.slice(0, 50) };
+}
+
+export async function cleanupApplySvc(
+  companyId: string,
+  userId: string,
+  rules: CleanupRule[]
+): Promise<{ logId: string; applied: number }> {
+  const set = new Set(rules);
+  const changes = computeChanges(await loadForCleanup(companyId), set);
+  if (changes.length === 0) {
+    const log = await prisma.mergeLog.create({
+      data: { companyId, kind: "cleanup", snapshot: JSON.stringify({ changes: [] }), userId },
+    });
+    return { logId: log.id, applied: 0 };
+  }
+  // Group changes per customer → one update each.
+  const byId = new Map<string, Record<string, string>>();
+  for (const ch of changes) {
+    const m = byId.get(ch.id) ?? {};
+    m[ch.field] = ch.after;
+    byId.set(ch.id, m);
+  }
+  const logId = await prisma.$transaction(async (tx) => {
+    for (const [id, data] of byId) {
+      await tx.customer.update({ where: { id }, data: data as any });
+    }
+    const log = await tx.mergeLog.create({
+      data: { companyId, kind: "cleanup", snapshot: JSON.stringify({ changes }), userId },
+    });
+    return log.id;
+  });
+  return { logId, applied: changes.length };
+}
+
+export async function cleanupUndoSvc(companyId: string, logId: string): Promise<{ reverted: number }> {
+  const log = await prisma.mergeLog.findFirst({ where: { id: logId, companyId, kind: "cleanup" } });
+  if (!log) throw Object.assign(new Error("Cleanup log not found"), { statusCode: 404 });
+  if (log.undone) throw Object.assign(new Error("Already undone"), { statusCode: 409 });
+  let changes: CleanupChange[] = [];
+  try { changes = JSON.parse(log.snapshot)?.changes ?? []; } catch { /* noop */ }
+  // Restore before-values, grouped per customer.
+  const byId = new Map<string, Record<string, string>>();
+  for (const ch of changes) {
+    const m = byId.get(ch.id) ?? {};
+    m[ch.field] = ch.before;
+    byId.set(ch.id, m);
+  }
+  await prisma.$transaction(async (tx) => {
+    for (const [id, data] of byId) {
+      // Only revert rows that still exist for this company (skip merged-away).
+      await tx.customer.updateMany({ where: { id, companyId }, data: data as any });
+    }
+    await tx.mergeLog.update({ where: { id: logId }, data: { undone: true } });
+  });
+  return { reverted: changes.length };
 }
 
 export async function listMergeLogs(companyId: string, limit = 20): Promise<Array<{
