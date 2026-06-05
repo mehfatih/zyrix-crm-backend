@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import QRCode from "qrcode";
 import * as Flows from "../services/form-flows.service";
+import { submitForm } from "../services/form-submit.service";
 import { env } from "../config/env";
 import type { AuthenticatedRequest } from "../types";
 
@@ -82,6 +83,20 @@ export async function regenerateToken(req: Request, res: Response, next: NextFun
 }
 export async function submissions(req: Request, res: Response, next: NextFunction) {
   try { res.status(200).json({ success: true, data: await Flows.listSubmissions(auth(req).companyId, req.params.id as string) }); } catch (e) { next(e); }
+}
+
+// Internal wizard submit (authenticated staff) — source='internal'.
+export async function internalSubmit(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId, userId } = auth(req);
+    const flow = await Flows.getFlow(companyId, req.params.id as string);
+    const body = req.body ?? {};
+    const result = await submitForm(
+      { companyId, flow: { id: flow.id, name: flow.name, steps: flow.steps, mapping: flow.mapping }, source: "internal", submittedBy: userId },
+      { data: body.data ?? {}, honeypot: body.honeypot, elapsedMs: Number(body.elapsedMs) }
+    );
+    res.status(201).json({ success: true, data: result });
+  } catch (e) { next(e); }
 }
 
 export async function qr(req: Request, res: Response, next: NextFunction) {

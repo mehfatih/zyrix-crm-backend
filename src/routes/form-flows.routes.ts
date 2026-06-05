@@ -16,6 +16,8 @@ router.post("/", canBuild, controller.create);
 router.get("/:id", controller.getOne);
 router.get("/:id/qr", controller.qr);
 router.get("/:id/submissions", controller.submissions);
+// Internal wizard submit — any authenticated staff (Guided entry)
+router.post("/:id/submit", controller.internalSubmit);
 router.patch("/:id", canBuild, controller.update);
 router.delete("/:id", canBuild, controller.remove);
 router.post("/:id/activate", canBuild, controller.activate);
