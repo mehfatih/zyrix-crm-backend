@@ -1397,6 +1397,22 @@ model ExchangeRate {
   @@map("exchange_rates")
 }
 
+// Sprint 15B — global LIVE FX rates (auto-fetched daily, keyless source).
+// History preserved: one row per (base, quote, rateDate); never deleted.
+model FxRate {
+  id        String   @id @default(uuid())
+  base      String   @default("USD") @db.Char(3)
+  quote     String   @db.Char(3)
+  rate      Decimal  @db.Decimal(18, 8)
+  fetchedAt DateTime @default(now())
+  rateDate  DateTime @db.Date
+  source    String   @default("open.er-api.com")
+
+  @@unique([base, quote, rateDate])
+  @@index([base, quote, rateDate])
+  @@map("fx_rates")
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // EMAIL TEMPLATES — reusable templates for campaigns
 // ─────────────────────────────────────────────────────────────────────────
