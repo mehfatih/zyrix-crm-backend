@@ -3,6 +3,10 @@ import { notFound } from "../middleware/errorHandler";
 import { getPlatform, PLATFORMS, listPlatforms, type PlatformDefinition } from "./ecommerce-platforms.registry";
 import { fetchWithLimit } from "../utils/rateLimiter";
 import { recordIntegrationEvent } from "./integration-events.service";
+import {
+  bridgeUpsertWooProduct,
+  archiveMissingWooProducts,
+} from "./woocommerce/product-bridge";
 
 // ============================================================================
 // GENERALIZED E-COMMERCE INTEGRATION SERVICE
@@ -248,6 +252,7 @@ export async function getStoreStatus(companyId: string, id: string) {
       currency: true,
       totalCustomersImported: true,
       totalOrdersImported: true,
+      totalProductsImported: true,
       updatedAt: true,
     },
   });
@@ -288,6 +293,7 @@ async function runSyncJob(
         // 95-customer store) and the success banner would surface that.
         totalCustomersImported: result.imported,
         totalOrdersImported: result.orders,
+        totalProductsImported: result.products ?? 0,
       },
     });
     recordIntegrationEvent({
@@ -295,7 +301,12 @@ async function runSyncJob(
       platform: store.platform,
       eventType: "sync_success",
       durationMs: Date.now() - startedAt,
-      requestContext: { storeId: store.id, imported: result.imported, orders: result.orders },
+      requestContext: {
+        storeId: store.id,
+        imported: result.imported,
+        orders: result.orders,
+        products: result.products ?? 0,
+      },
     });
     return result;
   } catch (e: any) {
@@ -528,6 +539,7 @@ interface SyncCreds {
 interface SyncResult {
   imported: number;
   orders: number;
+  products?: number;
 }
 
 async function syncByPlatform(
@@ -1245,8 +1257,98 @@ async function syncWooCommerce(
     page++;
   }
 
+  // Products are pulled as a THIRD, isolated step — a product-pull failure
+  // must never break the customer/order import that already works. Best-effort.
+  let products = 0;
+  try {
+    products = await syncWooCommerceProducts(domain, auth, companyId, storeCurrency);
+  } catch {
+    products = 0;
+  }
+
   const orders = await syncWooCommerceOrders(domain, auth, companyId, storeCurrency);
-  return { imported, orders };
+  return { imported, orders, products };
+}
+
+// Pull the WooCommerce catalog into the unified `products` table (source=
+// 'woocommerce') via the bridge. Pages at per_page=50 up to maxPages (1000-
+// product cap, matching customers/orders). Collects every externalId seen and,
+// ONLY when the pull completed fully (didn't hit the cap), archives any
+// previously-synced woo product that has since disappeared upstream.
+async function syncWooCommerceProducts(
+  domain: string,
+  auth: string,
+  companyId: string,
+  storeCurrency: string | null
+): Promise<number> {
+  let count = 0;
+  let page = 1;
+  const maxPages = 20;
+  const seen: string[] = [];
+  let hitCap = false;
+
+  while (page <= maxPages) {
+    const resp = await fetchWithLimit(
+      "woocommerce",
+      domain,
+      `https://${domain}/wp-json/wc/v3/products?per_page=50&page=${page}&orderby=id&order=asc`,
+      {
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    if (!resp.ok) break;
+    const rows = (await resp.json()) as any[];
+    if (!Array.isArray(rows) || rows.length === 0) break;
+
+    for (const pr of rows) {
+      const externalId = String(pr.id);
+      const price =
+        pr.price != null && pr.price !== "" ? parseFloat(pr.price) || 0 : 0;
+      const stock =
+        pr.manage_stock && pr.stock_quantity != null
+          ? Number(pr.stock_quantity)
+          : null;
+      // Best-effort per product — one bad row can't abort the whole pull.
+      try {
+        await bridgeUpsertWooProduct(
+          {
+            companyId,
+            externalId,
+            name: pr.name ?? null,
+            sku: pr.sku || null,
+            price,
+            imageUrl: pr.images?.[0]?.src || null,
+            status: pr.status ?? null,
+            stockQuantity: Number.isFinite(stock as number) ? stock : null,
+          },
+          storeCurrency
+        );
+        seen.push(externalId);
+        count++;
+      } catch {
+        // skip this product; continue the pull
+      }
+    }
+
+    if (rows.length < 50) break;
+    if (page === maxPages) hitCap = true;
+    page++;
+  }
+
+  // Reconcile deletions only on a complete pull (guarded so a capped partial
+  // sync can't wrongly archive the products beyond the cap).
+  if (!hitCap) {
+    try {
+      await archiveMissingWooProducts(companyId, seen);
+    } catch {
+      // archive is best-effort; the upserted counts still stand
+    }
+  }
+
+  return count;
 }
 
 async function syncWooCommerceOrders(
