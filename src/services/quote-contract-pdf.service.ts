@@ -12,6 +12,7 @@
 
 import { prisma } from "../config/database";
 import { integrationError } from "../lib/errors/integrationErrors";
+import * as cpqCalc from "./cpq-calc.service";
 
 export interface GeneratedPdf {
   buffer: Buffer;
@@ -95,12 +96,19 @@ export async function generateQuotePdf(
         d.addPage();
         y = d.page.margins.top;
       }
+      // Per-line total via the shared CPQ calc service (single source of truth).
+      const line = cpqCalc.computeLine({
+        quantity: Number(it.quantity),
+        unitPrice: Number(it.unitPrice),
+        discountPct: Number(it.discountPercent),
+        taxPct: Number(it.taxPercent),
+      });
       const cells: Record<string, string> = {
         name: it.name + (it.description ? ` — ${it.description}` : ""),
         qty: String(Number(it.quantity)),
         unit: money(it.unitPrice, quote.currency),
         tax: `${Number(it.taxPercent)}%`,
-        total: money(it.lineTotal, quote.currency),
+        total: money(line.lineTotal, quote.currency),
       };
       const rowH = 18;
       d.fillColor("#f8fafc").rect(startX, y, tableWidth, rowH).fill();
@@ -113,12 +121,22 @@ export async function generateQuotePdf(
       y += rowH;
     }
 
+    // Totals via the shared CPQ calc service — identical to what the UI and the
+    // public page show, and to what is stored on the quote (acceptance #1).
+    const totals = cpqCalc.computeTotals(
+      quote.items.map((it) => ({
+        quantity: Number(it.quantity),
+        unitPrice: Number(it.unitPrice),
+        discountPct: Number(it.discountPercent),
+        taxPct: Number(it.taxPercent),
+      }))
+    );
     d.y = y + 12;
     totalsBlock(d, [
-      ["Subtotal", money(quote.subtotal, quote.currency)],
-      ["Discount", money(quote.discountAmount, quote.currency)],
-      ["Tax", money(quote.taxAmount, quote.currency)],
-      ["Total", money(quote.total, quote.currency)],
+      ["Subtotal", money(totals.subtotal, quote.currency)],
+      ["Discount", money(totals.discountTotal, quote.currency)],
+      ["Tax", money(totals.taxTotal, quote.currency)],
+      ["Total", money(totals.grandTotal, quote.currency)],
     ]);
 
     notesBlock(d, quote.notes, quote.terms);

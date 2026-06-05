@@ -2,6 +2,7 @@ import { prisma } from "../config/database";
 import { notFound } from "../middleware/errorHandler";
 import type { Prisma } from "@prisma/client";
 import { randomBytes } from "crypto";
+import * as cpqCalc from "./cpq-calc.service";
 
 // ============================================================================
 // QUOTE SERVICE
@@ -66,26 +67,24 @@ export interface ListQuotesQuery {
 // ─────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────
+// Adapt a QuoteItemInput to the shared CPQ calc line shape (single source of
+// truth — see cpq-calc.service.ts). Reused by create/update + PDF + public.
+function toCpqLine(item: QuoteItemInput): cpqCalc.CpqLine {
+  return {
+    quantity: item.quantity,
+    unitPrice: item.unitPrice,
+    discountPct: item.discountPercent ?? 0,
+    taxPct: item.taxPercent ?? 0,
+  };
+}
+
 function computeLineTotal(item: QuoteItemInput): {
   lineTotal: number;
   taxForLine: number;
   subtotalForLine: number;
 } {
-  const qty = Number(item.quantity) || 0;
-  const unit = Number(item.unitPrice) || 0;
-  const discount = Number(item.discountPercent) || 0;
-  const tax = Number(item.taxPercent) || 0;
-
-  const gross = qty * unit;
-  const afterDiscount = gross * (1 - discount / 100);
-  const taxForLine = afterDiscount * (tax / 100);
-  const lineTotal = afterDiscount + taxForLine;
-
-  return {
-    lineTotal: Math.round(lineTotal * 100) / 100,
-    taxForLine: Math.round(taxForLine * 100) / 100,
-    subtotalForLine: Math.round(afterDiscount * 100) / 100,
-  };
+  const r = cpqCalc.computeLine(toCpqLine(item));
+  return { lineTotal: r.lineTotal, taxForLine: r.tax, subtotalForLine: r.net };
 }
 
 function computeTotals(items: QuoteItemInput[]): {
@@ -94,30 +93,12 @@ function computeTotals(items: QuoteItemInput[]): {
   taxAmount: number;
   total: number;
 } {
-  let subtotal = 0;
-  let discountAmount = 0;
-  let taxAmount = 0;
-
-  for (const item of items) {
-    const qty = Number(item.quantity) || 0;
-    const unit = Number(item.unitPrice) || 0;
-    const gross = qty * unit;
-    const discount = gross * ((Number(item.discountPercent) || 0) / 100);
-    const afterDiscount = gross - discount;
-    const tax = afterDiscount * ((Number(item.taxPercent) || 0) / 100);
-
-    subtotal += afterDiscount;
-    discountAmount += discount;
-    taxAmount += tax;
-  }
-
-  const total = subtotal + taxAmount;
-
+  const t = cpqCalc.computeTotals(items.map(toCpqLine));
   return {
-    subtotal: Math.round(subtotal * 100) / 100,
-    discountAmount: Math.round(discountAmount * 100) / 100,
-    taxAmount: Math.round(taxAmount * 100) / 100,
-    total: Math.round(total * 100) / 100,
+    subtotal: t.subtotal,
+    discountAmount: t.discountTotal,
+    taxAmount: t.taxTotal,
+    total: t.grandTotal,
   };
 }
 

@@ -1,6 +1,7 @@
 import { prisma } from "../config/database";
 import { badRequest, notFound } from "../middleware/errorHandler";
 import * as stockService from "./stock.service";
+import * as cpqCalc from "./cpq-calc.service";
 
 // ─────────────────────────────────────────────────────────────────────────
 // DEAL LINE ITEMS (Sprint 8) — CPQ prerequisite
@@ -24,21 +25,15 @@ export interface DealItemDto {
   position?: number;
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-// Line total INCLUDING tax: qty × unit → discount → tax.
+// Line total INCLUDING tax: qty × unit → discount → tax. Delegates to the
+// shared CPQ calc service (single source of truth — cpq-calc.service.ts).
 function computeTotal(
   qty: number,
   unitPrice: number,
   discountPct: number,
   taxRate: number | null
 ): number {
-  const gross = qty * unitPrice;
-  const afterDiscount = gross * (1 - (discountPct || 0) / 100);
-  const tax = afterDiscount * ((taxRate || 0) / 100);
-  return round2(afterDiscount + tax);
+  return cpqCalc.computeLine({ quantity: qty, unitPrice, discountPct, taxPct: taxRate }).lineTotal;
 }
 
 async function assertDeal(companyId: string, dealId: string) {
@@ -73,20 +68,20 @@ function totalsFor(
     total: unknown;
   }>
 ) {
-  let subtotal = 0;
-  let tax = 0;
-  let total = 0;
-  for (const it of items) {
-    const qty = Number(it.qty);
-    const unitPrice = Number(it.unitPrice);
-    const discountPct = Number(it.discountPct);
-    const taxRate = it.taxRate == null ? 0 : Number(it.taxRate);
-    const afterDiscount = qty * unitPrice * (1 - discountPct / 100);
-    subtotal += afterDiscount;
-    tax += afterDiscount * (taxRate / 100);
-    total += Number(it.total);
-  }
-  return { subtotal: round2(subtotal), tax: round2(tax), total: round2(total) };
+  const t = cpqCalc.computeTotals(
+    items.map((it) => ({
+      quantity: Number(it.qty),
+      unitPrice: Number(it.unitPrice),
+      discountPct: Number(it.discountPct),
+      taxPct: it.taxRate == null ? 0 : Number(it.taxRate),
+    }))
+  );
+  // `total` footer keeps summing the stored per-line totals (preserves prior
+  // behaviour exactly); subtotal/tax come from the shared calc.
+  const total = cpqCalc.round2(
+    items.reduce((s, it) => s + Number(it.total), 0)
+  );
+  return { subtotal: t.subtotal, tax: t.taxTotal, total };
 }
 
 // ── LIST (+ totals footer) ─────────────────────────────────────────────────
