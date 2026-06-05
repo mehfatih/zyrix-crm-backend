@@ -81,7 +81,7 @@ export async function createProduct(companyId: string, dto: CreateProductDto) {
 // ── LIST (raw SQL: catalog + 'main' stock level join + filters) ────────────
 export async function listProducts(companyId: string, query: ListProductsQuery) {
   const page = query.page && query.page > 0 ? query.page : 1;
-  const limit = query.limit && query.limit > 0 ? Math.min(query.limit, 100) : 20;
+  const limit = query.limit && query.limit > 0 ? Math.min(query.limit, 500) : 20;
   const offset = (page - 1) * limit;
 
   const conds: string[] = [`p."companyId" = $1`];

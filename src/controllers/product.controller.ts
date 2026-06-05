@@ -33,7 +33,7 @@ const updateSchema = z.object({
 
 const listSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+  limit: z.coerce.number().int().positive().max(500).default(20),
   search: z.string().max(200).optional(),
   source: z.string().max(40).optional(),
   status: z.enum(["active", "archived"]).optional(),
