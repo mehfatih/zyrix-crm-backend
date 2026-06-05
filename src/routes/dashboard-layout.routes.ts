@@ -8,5 +8,6 @@ router.use(authenticateToken);
 router.get("/layout", ctrl.get);
 router.put("/layout", ctrl.save);
 router.delete("/layout", ctrl.reset);
+router.post("/ai-insight", ctrl.aiInsight);
 
 export default router;

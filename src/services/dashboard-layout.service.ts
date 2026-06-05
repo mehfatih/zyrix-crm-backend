@@ -91,6 +91,10 @@ const VALID_TYPES = new Set([
   "top_customers",
   "tasks_due_today",
   "unread_messages",
+  // Sprint 12 — configurable / new widgets
+  "kpi_card",
+  "target_gauge",
+  "ai_insight",
 ]);
 
 const VALID_WIDTHS = new Set(["full", "half", "third", "quarter"]);
