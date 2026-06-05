@@ -766,6 +766,9 @@ model Quote {
   approvalStatus String  @default("none") // none | pending | approved | rejected
   approvedBy     String?
 
+  // Sprint 15A — e-signature
+  signatureRequired Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -774,6 +777,7 @@ model Quote {
   deal      Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
   createdBy User      @relation("QuoteCreator", fields: [createdById], references: [id])
   items     QuoteItem[]
+  signatures QuoteSignature[]
 
   @@unique([companyId, quoteNumber])
   @@index([companyId])
@@ -783,6 +787,25 @@ model Quote {
   @@index([createdById])
   @@index([validUntil])
   @@map("quotes")
+}
+
+model QuoteSignature {
+  id             String   @id @default(uuid())
+  quoteId        String
+  companyId      String
+  signerName     String
+  signerEmail    String?
+  signatureImage String   // base64 PNG data URL
+  signedAtUtc    DateTime @default(now())
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+  @@index([companyId])
+  @@map("quote_signatures")
 }
 
 model QuoteItem {
