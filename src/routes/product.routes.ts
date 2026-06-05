@@ -13,4 +13,9 @@ router.patch("/:id", controller.update);
 router.patch("/:id/status", controller.setStatus);
 router.delete("/:id", controller.remove);
 
+// Stock
+router.get("/:id/movements", controller.listMovements);
+router.post("/:id/movements", controller.createMovement);
+router.patch("/:id/stock", controller.setThreshold);
+
 export default router;

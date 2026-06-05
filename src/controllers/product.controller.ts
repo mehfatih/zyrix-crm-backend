@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as productService from "../services/product.service";
+import * as stockService from "../services/stock.service";
 import type { AuthenticatedRequest } from "../types";
 import { badRequest } from "../middleware/errorHandler";
 import { recordAudit, extractRequestMeta, diffObjects } from "../utils/audit";
@@ -40,6 +41,26 @@ const listSchema = z.object({
 });
 
 const statusSchema = z.object({ status: z.enum(["active", "archived"]) });
+
+const movementSchema = z.object({
+  type: z.enum(["in", "out", "adjust"]),
+  qty: z.number().refine((n) => n !== 0, "qty must be non-zero"),
+  location: z.string().max(80).optional(),
+  reason: z.string().max(200).nullable().optional(),
+  refType: z.string().max(40).nullable().optional(),
+  refId: z.string().max(80).nullable().optional(),
+  override: z.boolean().optional(),
+});
+
+const thresholdSchema = z.object({
+  lowStockThreshold: z.number().min(0).nullable(),
+  location: z.string().max(80).optional(),
+});
+
+const movementsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).optional(),
+  location: z.string().max(80).optional(),
+});
 
 function getParamId(req: Request, key = "id"): string {
   const value = req.params[key];
@@ -209,6 +230,80 @@ export async function remove(
       ...extractRequestMeta(req),
     }).catch(() => {});
     res.json({ success: true, data: result, message: "Product deleted" });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ── STOCK ──────────────────────────────────────────────────────────────────
+export async function createMovement(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const id = getParamId(req);
+    const dto = movementSchema.parse(req.body) as any;
+    const result = await stockService.createMovement(
+      authReq.user.companyId,
+      id,
+      authReq.user.userId,
+      dto
+    );
+    recordAudit({
+      userId: authReq.user.userId,
+      companyId: authReq.user.companyId,
+      action: "product.stock_movement",
+      entityType: "product",
+      entityId: id,
+      after: result,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
+    res
+      .status(201)
+      .json({ success: true, data: result, message: "Movement recorded" });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listMovements(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const id = getParamId(req);
+    const query = movementsQuerySchema.parse(req.query);
+    const movements = await stockService.listMovements(
+      authReq.user.companyId,
+      id,
+      query
+    );
+    res.json({ success: true, data: { movements } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function setThreshold(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const id = getParamId(req);
+    const { lowStockThreshold, location } = thresholdSchema.parse(req.body);
+    const level = await stockService.setThreshold(
+      authReq.user.companyId,
+      id,
+      lowStockThreshold,
+      location
+    );
+    res.json({ success: true, data: level, message: "Threshold updated" });
   } catch (error) {
     next(error);
   }
