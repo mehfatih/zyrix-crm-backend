@@ -22,5 +22,6 @@ router.get("/status", ctrl.status);
 router.post("/disconnect", ctrl.disconnect);
 router.get("/health", ctrl.health);
 router.get("/products", ctrl.products);
+router.post("/resync", ctrl.resync);
 
 export default router;

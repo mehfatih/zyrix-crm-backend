@@ -39,6 +39,7 @@ export interface ShopifyConnectionRow {
   lastSyncDurationMs: number | null;
   lastError: string | null;
   ecommerceStoreId: string | null;
+  currency: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,7 +50,7 @@ const SELECT_COLS = `
   "refreshTokenCiphertext", "refreshTokenIv", "refreshTokenTag",
   "tokenExpiresAt", "refreshTokenExpiresAt", "scopes",
   "lastSyncAt", "lastSyncDurationMs", "lastError", "ecommerceStoreId",
-  "createdAt", "updatedAt"
+  "currency", "createdAt", "updatedAt"
 `;
 
 export async function getConnection(

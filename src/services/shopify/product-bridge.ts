@@ -23,33 +23,51 @@ function mapStatus(s: string | null): "active" | "archived" {
 }
 
 /** Upsert a synced product into `products` (source='shopify') + mirror its
- *  on-hand quantity into the 'main' stock level. */
+ *  on-hand quantity into the 'main' stock level. `currency` is the store's
+ *  currency (per-connection) — when known it is stamped on the row (synced
+ *  currency is store-owned / read-only locally); when not, the products table
+ *  default applies on insert and the existing value is left untouched. */
 export async function bridgeUpsertProduct(
-  p: ShopifyProductInput
+  p: ShopifyProductInput,
+  currency?: string | null
 ): Promise<void> {
   const name = (p.title && p.title.trim()) || "(untitled)";
   const status = mapStatus(p.status);
+  const cur =
+    typeof currency === "string" && currency.trim()
+      ? currency.trim().toUpperCase()
+      : null;
 
-  const rows = (await prisma.$queryRawUnsafe(
-    `INSERT INTO products
-       (id, "companyId", source, "externalId", name, sku, price, "imageUrl", status, "createdAt", "updatedAt")
-     VALUES (gen_random_uuid(), $1, 'shopify', $2, $3, $4, $5, $6, $7, now(), now())
-     ON CONFLICT ("companyId", source, "externalId") WHERE "externalId" IS NOT NULL
-     DO UPDATE SET
-       name = EXCLUDED.name,
-       sku = EXCLUDED.sku,
-       price = EXCLUDED.price,
-       "imageUrl" = EXCLUDED."imageUrl",
-       status = EXCLUDED.status,
-       "updatedAt" = now()
-     RETURNING id`,
+  // Currency is included only when known, so a blank never overrides the
+  // NOT NULL DEFAULT 'TRY' on insert nor clobbers a good value on update.
+  const params: unknown[] = [
     p.companyId,
     p.externalId,
     name,
     p.sku,
     p.price ?? 0,
     p.imageUrl,
-    status
+    status,
+  ];
+  if (cur) params.push(cur);
+  const curCol = cur ? ', currency' : '';
+  const curVal = cur ? `, $${params.length}` : '';
+  const curUpd = cur ? ', currency = EXCLUDED.currency' : '';
+
+  const rows = (await prisma.$queryRawUnsafe(
+    `INSERT INTO products
+       (id, "companyId", source, "externalId", name, sku, price, "imageUrl", status${curCol}, "createdAt", "updatedAt")
+     VALUES (gen_random_uuid(), $1, 'shopify', $2, $3, $4, $5, $6, $7${curVal}, now(), now())
+     ON CONFLICT ("companyId", source, "externalId") WHERE "externalId" IS NOT NULL
+     DO UPDATE SET
+       name = EXCLUDED.name,
+       sku = EXCLUDED.sku,
+       price = EXCLUDED.price,
+       "imageUrl" = EXCLUDED."imageUrl",
+       status = EXCLUDED.status${curUpd},
+       "updatedAt" = now()
+     RETURNING id`,
+    ...params
   )) as Array<{ id: string }>;
 
   const productId = rows[0]?.id;

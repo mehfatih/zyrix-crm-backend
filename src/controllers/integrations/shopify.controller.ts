@@ -32,7 +32,7 @@ import {
   getValidAccessToken,
   type ShopifyConnectionRow,
 } from "../../services/shopify/connections.service";
-import { triggerInitialSync } from "../../services/shopify/sync";
+import { triggerInitialSync, runShopifySync } from "../../services/shopify/sync";
 import { integrationError } from "../../lib/errors/integrationErrors";
 import {
   recordIntegrationEvent,
@@ -459,6 +459,43 @@ export async function products(req: Request, res: Response, next: NextFunction) 
     res.status(200).json({
       success: true,
       data: { products: rows, total: totalRow[0]?.n ?? 0 },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// POST /resync — run a sync now for every connected store of this company.
+// Refreshes per-store currency and re-stamps bridged catalog products
+// (also the one-time backfill for products imported before currency support).
+// Awaited so the response reflects the result.
+// ──────────────────────────────────────────────────────────────────────
+export async function resync(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const conns = await listConnections(companyId);
+    const connected = conns.filter((c) => c.status === "connected");
+    if (connected.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: { message: "No connected Shopify store to sync" },
+      });
+      return;
+    }
+    const synced: Array<Record<string, unknown>> = [];
+    for (const conn of connected) {
+      const r = await runShopifySync(conn);
+      synced.push(
+        r
+          ? { shopDomain: conn.shopDomain, ok: true, ...r }
+          : { shopDomain: conn.shopDomain, ok: false }
+      );
+    }
+    res.status(200).json({
+      success: true,
+      data: { synced },
+      message: "Resync complete",
     });
   } catch (err) {
     next(err);

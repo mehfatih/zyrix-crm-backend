@@ -206,7 +206,10 @@ export async function deleteShopifyProduct(
 
 // Upsert one product (raw SQL — matches the connections.service pattern and
 // avoids depending on the generated client). Keyed on (companyId, externalId).
-export async function upsertShopifyProduct(p: ShopifyProductInput): Promise<void> {
+export async function upsertShopifyProduct(
+  p: ShopifyProductInput,
+  currency?: string | null
+): Promise<void> {
   await prisma.$executeRawUnsafe(
     `INSERT INTO shopify_products
        ("id","companyId","connectionId","externalId","title","handle","vendor","productType",
@@ -223,7 +226,7 @@ export async function upsertShopifyProduct(p: ShopifyProductInput): Promise<void
   // Additive bridge into the unified catalog (products.source='shopify').
   // Best-effort — a bridge failure must NOT break the shopify_products sync
   // that existing consumers depend on.
-  await bridgeUpsertProduct(p).catch((e) =>
+  await bridgeUpsertProduct(p, currency).catch((e) =>
     console.error("[shopify] catalog bridge upsert failed:", (e as Error).message)
   );
 }
@@ -233,7 +236,8 @@ async function syncProducts(
   token: string,
   companyId: string,
   connectionId: string,
-  version: string
+  version: string,
+  shopCurrency: string | null
 ): Promise<number> {
   let imported = 0;
   let pageInfo: string | null = null;
@@ -251,7 +255,10 @@ async function syncProducts(
     if (!data.products || data.products.length === 0) break;
 
     for (const pr of data.products) {
-      await upsertShopifyProduct(shopifyProductUpsertInput(pr, companyId, connectionId));
+      await upsertShopifyProduct(
+        shopifyProductUpsertInput(pr, companyId, connectionId),
+        shopCurrency
+      );
       imported++;
     }
 
@@ -284,13 +291,45 @@ export async function runShopifySync(
   try {
     const token = await getValidAccessToken(conn);
     const version = getApiVersion();
+
+    // Per-store currency: fetch the shop's currency once and persist it on the
+    // connection, so bridged catalog products are stamped with the real store
+    // currency instead of the products table's TRY default. Best-effort — a
+    // failure here never blocks the sync (falls back to the stored value).
+    let shopCurrency: string | null = conn.currency ?? null;
+    try {
+      const shopResp = await fetchWithLimit(
+        "shopify",
+        conn.shopDomain,
+        `https://${conn.shopDomain}/admin/api/${version}/shop.json`,
+        { headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" } }
+      );
+      if (shopResp.ok) {
+        const shopData = (await shopResp.json()) as { shop?: { currency?: string } };
+        const cur = shopData.shop?.currency?.trim();
+        if (cur) {
+          shopCurrency = cur.toUpperCase();
+          await prisma.$executeRawUnsafe(
+            `UPDATE shopify_connections SET currency = $1, "updatedAt" = NOW() WHERE id = $2`,
+            shopCurrency,
+            conn.id
+          );
+        }
+      }
+    } catch (e) {
+      console.warn(
+        `[shopify] shop currency fetch failed for ${conn.shopDomain} (non-blocking):`,
+        (e as Error).message
+      );
+    }
+
     const customers = await syncCustomers(conn.shopDomain, token, conn.companyId, version);
     const orders = await syncOrders(conn.shopDomain, token, conn.companyId, version);
     // Products are best-effort: a product-sync failure (e.g. missing scope or
     // table) must never fail the core customer/order sync.
     let products = 0;
     try {
-      products = await syncProducts(conn.shopDomain, token, conn.companyId, conn.id, version);
+      products = await syncProducts(conn.shopDomain, token, conn.companyId, conn.id, version, shopCurrency);
     } catch (e) {
       console.warn(
         `[shopify] product sync failed for ${conn.shopDomain} (non-blocking):`,

@@ -1812,6 +1812,11 @@ model ShopifyConnection {
   // FK to ecommerce_stores that powers the existing sync engine + widgets.
   ecommerceStoreId String?
 
+  // Store currency (ISO code, e.g. SAR/TRY) from Shopify shop.json, refreshed
+  // on each sync. Stamped onto bridged catalog products so they show the real
+  // store currency. Per-connection (a company may have multiple stores).
+  currency String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

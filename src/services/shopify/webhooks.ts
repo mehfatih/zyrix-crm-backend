@@ -145,7 +145,10 @@ export async function processWebhook(
     switch (topic) {
       case "products/create":
       case "products/update":
-        await upsertShopifyProduct(shopifyProductUpsertInput(payload, companyId, conn.id));
+        await upsertShopifyProduct(
+          shopifyProductUpsertInput(payload, companyId, conn.id),
+          conn.currency
+        );
         break;
       case "products/delete":
         await deleteShopifyProduct(companyId, String(payload.id));
