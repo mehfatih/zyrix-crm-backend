@@ -4,7 +4,7 @@ import rateLimit from "express-rate-limit";
 import { getPublicPlans } from "../services/public-plans.service";
 import { getActivePublicAnnouncements } from "../services/admin-announcements.service";
 import { sendEmail } from "../services/email.service";
-import { getQuoteByPublicToken, acceptQuote, rejectQuote } from "../services/quote.service";
+import { getQuoteByPublicToken, acceptQuote, rejectQuote, signQuote } from "../services/quote.service";
 import { prisma } from "../config/database";
 import { env } from "../config/env";
 
@@ -207,6 +207,66 @@ router.post(
         return;
       }
       const data = await rejectQuote(q.companyId, q.id);
+      res.status(200).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// Public quote e-signature (Sprint 15A)
+// ─────────────────────────────────────────────────────────────────────────
+const signLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20, // 20 sign attempts / hour / IP
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const signSchema = z.object({
+  signerName: z.string().min(1).max(200),
+  signerEmail: z.string().email().optional().nullable(),
+  // base64 PNG data URL; cap ~600 KB to bound the row (data URL is ~1.33×).
+  signatureImage: z
+    .string()
+    .min(20)
+    .max(800_000)
+    .refine((s) => s.startsWith("data:image/"), "signatureImage must be a data URL"),
+  consent: z.literal(true),
+});
+
+router.post(
+  "/quotes/:token/sign",
+  signLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const q = await prisma.quote.findUnique({
+        where: { publicToken: req.params.token as string },
+        select: { id: true, companyId: true, status: true },
+      });
+      if (!q) {
+        res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Quote not found" } });
+        return;
+      }
+      if (q.status === "accepted" || q.status === "rejected") {
+        res.status(400).json({ success: false, error: { code: "INVALID_STATUS", message: "Quote already resolved" } });
+        return;
+      }
+      const dto = signSchema.parse(req.body) as {
+        signerName: string;
+        signerEmail?: string | null;
+        signatureImage: string;
+        consent: true;
+      };
+      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null;
+      const data = await signQuote(q.companyId, q.id, {
+        signerName: dto.signerName,
+        signerEmail: dto.signerEmail ?? null,
+        signatureImage: dto.signatureImage,
+        ip,
+        userAgent: (req.headers["user-agent"] as string) || null,
+      });
       res.status(200).json({ success: true, data });
     } catch (err) {
       next(err);

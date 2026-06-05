@@ -64,6 +64,7 @@ const createQuoteSchema = z.object({
   notes: z.string().max(10000).optional().nullable(),
   terms: z.string().max(10000).optional().nullable(),
   priceBookId: z.string().optional().nullable(),
+  signatureRequired: z.boolean().optional(),
   items: z.array(itemSchema).min(1),
 });
 

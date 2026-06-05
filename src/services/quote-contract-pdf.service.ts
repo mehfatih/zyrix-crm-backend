@@ -53,6 +53,7 @@ export async function generateQuotePdf(
       customer: { select: { fullName: true, email: true, phone: true, companyName: true } },
       company: { select: { name: true } },
       items: { orderBy: { position: "asc" } },
+      signatures: { orderBy: { signedAtUtc: "desc" }, take: 1 },
     },
   });
   if (!quote) {
@@ -140,10 +141,50 @@ export async function generateQuotePdf(
     ]);
 
     notesBlock(d, quote.notes, quote.terms);
+
+    // Sprint 15A — e-signature stamp on the final page. Image stamp avoids the
+    // pdfkit Arabic-shaping limitation; labels are EN inside the PDF (the UI is
+    // trilingual). Only present when the quote was e-signed.
+    const sig = quote.signatures?.[0];
+    if (sig) {
+      signatureStamp(d, {
+        signerName: sig.signerName,
+        signatureImage: sig.signatureImage,
+        signedAtUtc: sig.signedAtUtc,
+        ip: sig.ip,
+      });
+    }
   });
 
   const customerName = quote.customer?.companyName || quote.customer?.fullName || "Customer";
   return { buffer, filename: `Quote-${fileSafe(quote.quoteNumber)}-${fileSafe(customerName)}.pdf` };
+}
+
+// Stamp an electronic-signature block (image + signer + UTC + IP). Tolerant of
+// a malformed/oversized data URL — skips the image but keeps the text record.
+function signatureStamp(
+  d: PDFKit.PDFDocument,
+  sig: { signerName: string; signatureImage: string; signedAtUtc: Date; ip: string | null }
+): void {
+  if (d.y > d.page.height - d.page.margins.bottom - 130) d.addPage();
+  const x = d.page.margins.left;
+  let y = d.y + 16;
+  d.moveTo(x, y).lineTo(d.page.width - d.page.margins.right, y).strokeColor("#e2e8f0").stroke();
+  y += 10;
+  d.fontSize(10).fillColor(INK).text("Electronic signature", x, y);
+  y += 16;
+  try {
+    const b64 = sig.signatureImage.includes(",") ? sig.signatureImage.split(",")[1] : sig.signatureImage;
+    const img = Buffer.from(b64, "base64");
+    if (img.length > 0) d.image(img, x, y, { fit: [180, 60] });
+  } catch {
+    /* skip image, keep the text record */
+  }
+  d.fontSize(9).fillColor(MUTED);
+  d.text(`Signed by: ${sig.signerName}`, x + 200, y + 4);
+  d.text(`UTC: ${sig.signedAtUtc.toISOString()}`, x + 200, y + 18);
+  if (sig.ip) d.text(`IP: ${sig.ip}`, x + 200, y + 32);
+  d.y = y + 70;
 }
 
 // ──────────────────────────────────────────────────────────────────────

@@ -87,6 +87,20 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
   {
+    // Sprint 15A — quote e-signature. ALL_ON for now; Sprint 16 retunes the
+    // plan tier + admin per-tenant toggle (already rendered from this catalog).
+    key: "quote_esign",
+    category: "sales",
+    label: { en: "Quote e-signature", ar: "التوقيع الإلكتروني للعروض", tr: "Teklif e-imzası" },
+    description: {
+      en: "Customers sign quotes online; signature stamped on the PDF",
+      ar: "يوقّع العملاء العروض أونلاين؛ التوقيع مختوم على PDF",
+      tr: "Müşteriler teklifleri online imzalar; imza PDF'e basılır",
+    },
+    icon: "FileSignature",
+    defaultByPlan: ALL_ON,
+  },
+  {
     key: "contracts",
     category: "sales",
     label: { en: "Contracts", ar: "العقود", tr: "Sözleşmeler" },

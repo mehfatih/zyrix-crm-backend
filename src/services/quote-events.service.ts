@@ -13,6 +13,7 @@ export type QuoteEventType =
   | "viewed"
   | "accepted"
   | "rejected"
+  | "signed"
   | "approval_requested"
   | "approved"
   | "approval_rejected";

@@ -385,6 +385,32 @@ export const TRIGGERS: TriggerSpec[] = [
     ],
   },
   {
+    type: "quote.signed",
+    label: {
+      en: "Quote signed by client",
+      ar: "تم توقيع العرض من العميل",
+      tr: "Teklif müşteri tarafından imzalandı",
+    },
+    description: {
+      en: "Fires when a customer e-signs the quote on the public page — the signature is stored and stamped on the PDF",
+      ar: "يعمل عندما يوقّع العميل العرض إلكترونيًا على الصفحة العامة — يُخزَّن التوقيع ويُختم على PDF",
+      tr: "Müşteri herkese açık sayfada teklifi e-imzaladığında tetiklenir — imza saklanır ve PDF'e basılır",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: [
+      "quote.id",
+      "quote.quoteNumber",
+      "quote.title",
+      "quote.total",
+      "quote.currency",
+      "signerName",
+      "signedAtUtc",
+      "customerId",
+      "dealId",
+    ],
+  },
+  {
     type: "email.opened",
     label: {
       en: "Email opened",

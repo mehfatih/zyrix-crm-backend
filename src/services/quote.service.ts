@@ -10,7 +10,7 @@ import { createNotification, createBulkNotifications } from "./notifications.ser
 import { sendTrackedEmail } from "./email-tracking.service";
 import { sendViaMetaCloud } from "./whatsapp.service";
 import { generateQuotePdf } from "./quote-contract-pdf.service";
-import { dispatchQuoteViewed, dispatchQuoteAccepted } from "./workflow-events.service";
+import { dispatchQuoteViewed, dispatchQuoteAccepted, dispatchQuoteSigned } from "./workflow-events.service";
 import { env } from "../config/env";
 
 // ============================================================================
@@ -46,6 +46,7 @@ export interface CreateQuoteDto {
   notes?: string | null;
   terms?: string | null;
   priceBookId?: string | null;
+  signatureRequired?: boolean;
   items: QuoteItemInput[];
 }
 
@@ -60,6 +61,7 @@ export interface UpdateQuoteDto {
   notes?: string | null;
   terms?: string | null;
   priceBookId?: string | null;
+  signatureRequired?: boolean;
   items?: QuoteItemInput[];
 }
 
@@ -174,6 +176,7 @@ export async function createQuote(
       notes: dto.notes?.trim() || null,
       terms: dto.terms?.trim() || null,
       priceBookId: dto.priceBookId ?? null,
+      signatureRequired: dto.signatureRequired ?? false,
       publicToken,
       subtotal: totals.subtotal,
       discountAmount: totals.discountAmount,
@@ -362,6 +365,7 @@ export async function updateQuote(
   if (dto.issuedAt !== undefined) data.issuedAt = dto.issuedAt;
   if (dto.validUntil !== undefined) data.validUntil = dto.validUntil;
   if (dto.notes !== undefined) data.notes = dto.notes?.trim() || null;
+  if (dto.signatureRequired !== undefined) data.signatureRequired = dto.signatureRequired;
   if (dto.terms !== undefined) data.terms = dto.terms?.trim() || null;
   if (dto.priceBookId !== undefined) data.priceBookId = dto.priceBookId;
 
@@ -723,6 +727,67 @@ export async function acceptQuote(companyId: string, quoteId: string) {
 export async function rejectQuote(companyId: string, quoteId: string) {
   const result = await updateQuote(companyId, quoteId, { status: "rejected" });
   await recordQuoteEvent(companyId, quoteId, "rejected", {});
+  return result;
+}
+
+export interface SignQuoteInput {
+  signerName: string;
+  signerEmail?: string | null;
+  signatureImage: string; // base64 PNG data URL
+  ip?: string | null;
+  userAgent?: string | null;
+}
+
+// E-sign a quote (Sprint 15A). Signing implies acceptance: stores the signature,
+// sets status=accepted, records a "signed" event, and emits quote.signed ONLY
+// (the more specific event — not quote.accepted — so automations don't double
+// fire). Back-compat: non-required quotes can still use plain acceptQuote.
+export async function signQuote(
+  companyId: string,
+  quoteId: string,
+  input: SignQuoteInput
+) {
+  const existing = await prisma.quote.findFirst({
+    where: { id: quoteId, companyId },
+    select: { id: true, status: true },
+  });
+  if (!existing) throw notFound("Quote");
+  if (existing.status === "accepted" || existing.status === "rejected") {
+    throw badRequest("Quote already resolved");
+  }
+
+  await prisma.quoteSignature.create({
+    data: {
+      quoteId,
+      companyId,
+      signerName: input.signerName.trim().slice(0, 200),
+      signerEmail: input.signerEmail?.trim() || null,
+      signatureImage: input.signatureImage,
+      ip: input.ip ?? null,
+      userAgent: input.userAgent?.slice(0, 400) ?? null,
+    },
+  });
+
+  const result = await updateQuote(companyId, quoteId, { status: "accepted" });
+  const signedAtUtc = new Date().toISOString();
+  await recordQuoteEvent(companyId, quoteId, "signed", {
+    signerName: input.signerName.trim().slice(0, 200),
+    signedAtUtc,
+  });
+  void dispatchQuoteSigned(companyId, quotePayload(result), {
+    signerName: input.signerName.trim().slice(0, 200),
+    signedAtUtc,
+  });
+  if (result.dealId) {
+    try {
+      await prisma.deal.update({
+        where: { id: result.dealId },
+        data: { stage: "proposal_accepted" },
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
   return result;
 }
 

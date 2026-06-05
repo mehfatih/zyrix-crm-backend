@@ -359,6 +359,26 @@ export async function dispatchQuoteAccepted(
   });
 }
 
+/** Fired when a customer e-signs the quote on the public page (Sprint 15A).
+ *  Signing implies acceptance, but we emit the more specific quote.signed
+ *  event ONLY (not quote.accepted) so automations don't double-fire. */
+export async function dispatchQuoteSigned(
+  companyId: string,
+  quote: QuotePayload,
+  signer: { signerName: string; signedAtUtc: string }
+): Promise<void> {
+  await safeDispatch("quote.signed", companyId, {
+    event: "quote.signed",
+    timestamp: new Date().toISOString(),
+    quote,
+    quoteId: quote.id,
+    customerId: quote.customerId,
+    dealId: quote.dealId,
+    signerName: signer.signerName,
+    signedAtUtc: signer.signedAtUtc,
+  });
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // EMAIL EVENTS (Sprint 10)
 // ──────────────────────────────────────────────────────────────────────
