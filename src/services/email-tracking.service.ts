@@ -51,7 +51,9 @@ export function visitorHash(ip: string, ua: string): string {
 function instrumentHtml(html: string, token: string): string {
   const rewritten = html.replace(/href\s*=\s*"(https?:\/\/[^"]+)"/gi, (_m, url: string) => {
     const u = b64url(url);
-    return `href="${BASE}/api/t/c/${token}?u=${u}&s=${sign(token, u)}"`;
+    // Use &amp; (not raw &) so email-client HTML sanitizers (Gmail) don't drop
+    // the signature param — it renders back to & in the live link.
+    return `href="${BASE}/api/t/c/${token}?u=${u}&amp;s=${sign(token, u)}"`;
   });
   const pixel = `<img src="${BASE}/api/t/o/${token}" width="1" height="1" alt="" style="display:none" />`;
   return rewritten.includes("</body>")
