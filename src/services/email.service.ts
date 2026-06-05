@@ -23,10 +23,14 @@ export interface SendEmailOptions {
   attachments?: EmailAttachment[];
 }
 
-export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
+// Lower-level send that surfaces the Resend message id (needed to correlate
+// delivered/bounced webhook events back to the stored email_messages row).
+export async function sendEmailRaw(
+  options: SendEmailOptions
+): Promise<{ ok: boolean; id: string | null }> {
   if (!resend) {
     console.warn("[Email] Resend not configured, skipping email to:", options.to);
-    return false;
+    return { ok: false, id: null };
   }
 
   try {
@@ -43,15 +47,19 @@ export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
 
     if (error) {
       console.error("[Email] Resend error:", error);
-      return false;
+      return { ok: false, id: null };
     }
 
     console.log("[Email] Sent to:", options.to, "ID:", data?.id);
-    return true;
+    return { ok: true, id: data?.id ?? null };
   } catch (error) {
     console.error("[Email] Send failed:", error);
-    return false;
+    return { ok: false, id: null };
   }
+}
+
+export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
+  return (await sendEmailRaw(options)).ok;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@
 import { createHmac } from "crypto";
 import { prisma } from "../config/database";
 import { sendEmail } from "./email.service";
+import { sendTrackedEmail } from "./email-tracking.service";
 import { sendViaMetaCloud } from "./whatsapp.service";
 import { createTask } from "./task.service";
 import { interpolate } from "./workflows.service";
@@ -276,7 +277,7 @@ async function runSendWhatsApp(
 // ──────────────────────────────────────────────────────────────────────
 
 async function runSendEmail(
-  _companyId: string,
+  companyId: string,
   config: Record<string, unknown>,
   payload: unknown
 ): Promise<ActionResult> {
@@ -287,8 +288,16 @@ async function runSendEmail(
     if (!to) return { ok: false, error: "toEmail is empty after interpolation" };
     if (!subject) return { ok: false, error: "subject is empty" };
 
-    const sent = await sendEmail({ to, subject, html: body });
-    if (!sent) {
+    // Tracked send (Sprint 10) — this is a CRM→contact automation email.
+    const p = payload as { customerId?: string; contactId?: string } | null;
+    const r = await sendTrackedEmail({
+      companyId,
+      contactId: p?.customerId ?? p?.contactId ?? null,
+      to,
+      subject,
+      html: body,
+    });
+    if (!r.ok) {
       return { ok: false, error: "Email send returned false (check Resend config)" };
     }
     return { ok: true, output: { to, subject } };

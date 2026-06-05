@@ -15,6 +15,7 @@ import activityRoutes from "./routes/activity.routes";
 import taskRoutes from "./routes/task.routes";
 import quoteRoutes from "./routes/quote.routes";
 import cpqRoutes from "./routes/cpq.routes";
+import trackingRoutes from "./routes/tracking.routes";
 import loyaltyRoutes from "./routes/loyalty.routes";
 import taxRoutes from "./routes/tax.routes";
 import cashflowRoutes from "./routes/cashflow.routes";
@@ -249,6 +250,8 @@ app.use("/api/support", supportRoutes);
 app.use("/api/admin/support-console", supportAdminRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
+// Email open-pixel + click-redirect (public, no auth, never errors to visitor)
+app.use("/api/t", trackingRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/webhooks", webhookAdminRouter);
 app.use("/api/onboarding", onboardingRoutes);

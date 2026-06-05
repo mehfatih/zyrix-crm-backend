@@ -7,7 +7,7 @@ import * as discountSvc from "./cpq-discount.service";
 import { recordQuoteEvent } from "./quote-events.service";
 import { createTask } from "./task.service";
 import { createNotification, createBulkNotifications } from "./notifications.service";
-import { sendEmail } from "./email.service";
+import { sendTrackedEmail } from "./email-tracking.service";
 import { sendViaMetaCloud } from "./whatsapp.service";
 import { generateQuotePdf } from "./quote-contract-pdf.service";
 import { dispatchQuoteViewed, dispatchQuoteAccepted } from "./workflow-events.service";
@@ -639,13 +639,19 @@ export async function sendQuote(
     } catch {
       attachments = undefined; // PDF is best-effort; still send the link
     }
-    delivery.email = await sendEmail({
+    // Tracked send (Sprint 10): open pixel + click tracking + email_messages
+    // log, gated by the company's emailTrackingEnabled toggle.
+    const r = await sendTrackedEmail({
+      companyId,
+      contactId: quote.customerId,
+      userId: quote.createdById,
       to: email,
       subject: `${quote.company?.name ?? "Zyrix"} — Quote ${quote.quoteNumber}`,
       html: quoteEmailHtml(quote, url),
       text: `View your quote ${quote.quoteNumber}: ${url}`,
       attachments,
-    }).catch(() => false);
+    }).catch(() => ({ ok: false }));
+    delivery.email = r.ok;
   }
 
   if (wantWhatsapp && phone) {
