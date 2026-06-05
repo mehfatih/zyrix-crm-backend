@@ -18,4 +18,11 @@ router.put("/profile", canManage, profile.save);
 router.delete("/profile", canManage, profile.remove);
 router.post("/profile/preview", profile.preview);
 
+// Saved AI reports
+router.get("/reports", profile.listReportsH);
+router.post("/reports", canManage, profile.createReportH);
+router.patch("/reports/:id", canManage, profile.updateReportH);
+router.delete("/reports/:id", canManage, profile.deleteReportH);
+router.post("/reports/:id/run", canManage, profile.runReportH);
+
 export default router;

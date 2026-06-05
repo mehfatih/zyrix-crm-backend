@@ -103,6 +103,7 @@ import { startShopifyConnectionSync } from "./cron/shopify-sync";
 import { requestId } from "./middleware/requestId";
 import { startWorkflowWorker } from "./cron/workflow-worker";
 import { startScheduledReportsWorker } from "./cron/scheduled-reports-worker";
+import { startSavedAiReportsWorker } from "./cron/saved-ai-reports-worker";
 
 const app: Express = express();
 
@@ -347,6 +348,7 @@ const server = app.listen(env.PORT, () => {
   startShopifyConnectionSync();
   startWorkflowWorker();
   startScheduledReportsWorker();
+  startSavedAiReportsWorker();
   startRetentionCron();
   startDocumentsReindexCron();
   startSupportFallbackCron();
