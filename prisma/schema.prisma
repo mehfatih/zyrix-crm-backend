@@ -64,6 +64,9 @@ model Company {
   //   'items_sum' = auto-recompute from the deal's deal_items total
   dealValueMode String @default("manual")
 
+  // Sprint 10 — privacy toggle for CRM email open/click tracking (default ON).
+  emailTrackingEnabled Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -859,6 +862,49 @@ model QuoteEvent {
   @@index([quoteId, createdAt])
   @@index([companyId, createdAt])
   @@map("quote_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// EMAIL INTELLIGENCE (Sprint 10) — standalone models (scalar FKs)
+// ─────────────────────────────────────────────────────────────────────────
+model EmailMessage {
+  id          String   @id @default(uuid())
+  companyId   String
+  contactId   String?
+  userId      String? // sender (CRM user)
+  direction   String   @default("out") // out | in
+  subject     String?
+  bodyPreview String?
+  providerId  String? // Resend message id
+  trackToken  String?  @unique
+  status      String   @default("sent") // sent | delivered | bounced
+  sentAt      DateTime @default(now())
+
+  @@index([companyId, contactId, sentAt])
+  @@index([providerId])
+  @@map("email_messages")
+}
+
+model EmailEvent {
+  id        String   @id @default(uuid())
+  emailId   String
+  type      String // open | click | bounce | reply | complaint
+  meta      String? // JSON {url?, ua?, ipHash?}
+  createdAt DateTime @default(now())
+
+  @@index([emailId, type])
+  @@map("email_events")
+}
+
+model EmailAiAnalysis {
+  id        String   @id @default(uuid())
+  emailId   String   @unique
+  sentiment String? // positive | neutral | negative
+  intent    String? // interested | hesitant | objection | not_interested | question
+  summary   String?
+  createdAt DateTime @default(now())
+
+  @@map("email_ai_analyses")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

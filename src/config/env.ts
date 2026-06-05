@@ -43,6 +43,12 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
   APP_URL: z.string().optional(), // frontend base URL for building claim/reset links
+  // Sprint 10: backend public base for email open-pixel / click-tracking URLs
+  // (these run on the API host, not the frontend). Defaults to the prod API.
+  EMAIL_TRACKING_BASE_URL: z.string().optional(),
+  // Sprint 10: Resend webhook signing secret (Svix). Webhook verify is skipped
+  // (503) until set — see docs at STOP-2.
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
 
   GEMINI_API_KEY: z.string().optional(),
 
