@@ -1756,6 +1756,42 @@ model CadenceStepStat {
   @@map("cadence_step_stats")
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// FORM FLOWS (Sprint 12) — no-code wizards + public kiosks
+// ─────────────────────────────────────────────────────────────────────────
+model FormFlow {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  mode        String   @default("internal") // internal | public
+  steps       String // JSON [{title, fields:[{key,type,label_en,label_ar,label_tr,required,options?}]}]
+  mapping     String // JSON field key -> contact/deal field (+ createDeal)
+  publicToken String?  @unique
+  theme       String? // JSON {logoUrl, accent, welcomeText, thankYouText}
+  kioskMode   Boolean  @default(false)
+  status      String   @default("draft") // draft | active | archived
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@map("form_flows")
+}
+
+model FormSubmission {
+  id               String   @id @default(uuid())
+  companyId        String
+  flowId           String
+  data             String // JSON raw answers
+  createdContactId String?
+  createdDealId    String?
+  source           String   @default("public") // public | internal
+  submittedBy      String? // userId for internal wizards
+  createdAt        DateTime @default(now())
+
+  @@index([flowId, createdAt])
+  @@map("form_submissions")
+}
+
 // One row per run. Pending rows are claimed by the worker; on completion
 // the row transitions to 'completed' / 'failed' with the outcome +
 // action-by-action step log captured in stepResults.
