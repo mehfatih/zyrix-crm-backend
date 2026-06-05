@@ -279,15 +279,18 @@ export async function getQuoteByPublicToken(token: string) {
 
   // Mark viewed on first access + log event + fire automation (quote.viewed).
   if (!quote.viewedAt) {
+    const now = new Date();
+    const newStatus = quote.status === "sent" ? "viewed" : quote.status;
     await prisma.quote.update({
       where: { id: quote.id },
-      data: {
-        viewedAt: new Date(),
-        status: quote.status === "sent" ? "viewed" : quote.status,
-      },
+      data: { viewedAt: now, status: newStatus },
     });
     await recordQuoteEvent(quote.companyId, quote.id, "viewed", {});
     void dispatchQuoteViewed(quote.companyId, quotePayload(quote));
+    // Reflect the just-applied changes on the returned object so the public
+    // page shows the right state on first load (not stale 'sent'/null).
+    quote.viewedAt = now;
+    quote.status = newStatus;
   }
 
   return quote;
