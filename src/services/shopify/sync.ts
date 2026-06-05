@@ -22,6 +22,7 @@ import {
   type ShopifyConnectionRow,
 } from "./connections.service";
 import { recordIntegrationEvent } from "../integration-events.service";
+import { bridgeUpsertProduct, bridgeArchiveProduct } from "./product-bridge";
 
 interface SyncResult {
   customers: number;
@@ -196,6 +197,11 @@ export async function deleteShopifyProduct(
     companyId,
     externalId
   );
+  // Additive bridge: archive (never delete) the unified-catalog row so deal
+  // line-item history survives. Best-effort — never breaks the primary delete.
+  await bridgeArchiveProduct(companyId, externalId).catch((e) =>
+    console.error("[shopify] catalog bridge archive failed:", (e as Error).message)
+  );
 }
 
 // Upsert one product (raw SQL — matches the connections.service pattern and
@@ -213,6 +219,12 @@ export async function upsertShopifyProduct(p: ShopifyProductInput): Promise<void
        "inventoryQuantity"=EXCLUDED."inventoryQuantity","imageUrl"=EXCLUDED."imageUrl","updatedAt"=NOW()`,
     p.companyId, p.connectionId, p.externalId, p.title, p.handle, p.vendor, p.productType,
     p.status, p.variantsCount, p.sku, p.price, p.inventoryQuantity, p.imageUrl
+  );
+  // Additive bridge into the unified catalog (products.source='shopify').
+  // Best-effort — a bridge failure must NOT break the shopify_products sync
+  // that existing consumers depend on.
+  await bridgeUpsertProduct(p).catch((e) =>
+    console.error("[shopify] catalog bridge upsert failed:", (e as Error).message)
   );
 }
 
