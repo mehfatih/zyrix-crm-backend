@@ -10,6 +10,7 @@ import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import authRoutes from "./routes/auth.routes";
 import customerRoutes from "./routes/customer.routes";
 import dealRoutes from "./routes/deal.routes";
+import productRoutes from "./routes/product.routes";
 import activityRoutes from "./routes/activity.routes";
 import taskRoutes from "./routes/task.routes";
 import quoteRoutes from "./routes/quote.routes";
@@ -189,6 +190,7 @@ app.get("/api", (_req, res) => {
       auth: "/api/auth",
       customers: "/api/customers",
       deals: "/api/deals",
+      products: "/api/products",
       activities: "/api/activities",
       tasks: "/api/tasks",
       quotes: "/api/quotes",
@@ -216,6 +218,7 @@ app.get("/api", (_req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/deals", dealRoutes);
+app.use("/api/products", productRoutes);
 app.use("/api/activities", activityRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/quotes", quoteRoutes);
