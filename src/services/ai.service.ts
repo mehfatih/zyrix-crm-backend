@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { env } from "../config/env";
+import { getCompanyAIContext } from "./company-ai-profile.service";
 
 // ============================================================================
 // GEMINI AI SERVICE
@@ -114,14 +115,19 @@ function detectLanguage(text: string): "ar" | "en" | "tr" | "mixed" {
 export async function generateReplySuggestion(
   messageText: string,
   customerName?: string,
-  language: "ar" | "en" | "tr" = "en"
+  language: "ar" | "en" | "tr" = "en",
+  companyId?: string
 ): Promise<string> {
   if (!genAI) {
     throw new Error("GEMINI_API_KEY is not configured");
   }
 
+  // AI Studio: this is a voice/output path, so prepend the company profile
+  // (null-safe). Structured-extraction paths in this file deliberately do NOT.
+  const aiCtx = await getCompanyAIContext(companyId);
   const model = genAI.getGenerativeModel({
     model: "gemini-2.5-flash",
+    ...(aiCtx ? { systemInstruction: aiCtx } : {}),
     generationConfig: { temperature: 0.7 },
   });
 

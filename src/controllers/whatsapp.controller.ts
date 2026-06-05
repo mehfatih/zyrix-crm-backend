@@ -126,7 +126,8 @@ export async function aiSuggestReply(
     const reply = await generateReplySuggestion(
       dto.messageText,
       dto.customerName,
-      dto.language
+      dto.language,
+      (req as any).user?.companyId
     );
     res.json({ success: true, data: { reply } });
   } catch (error) {

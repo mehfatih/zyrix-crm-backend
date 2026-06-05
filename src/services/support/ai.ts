@@ -17,6 +17,7 @@
 
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { env } from "../../config/env";
+import { getCompanyAIContext } from "../company-ai-profile.service";
 
 const genAI = env.GEMINI_API_KEY ? new GoogleGenerativeAI(env.GEMINI_API_KEY) : null;
 
@@ -107,7 +108,11 @@ const RESPONSE_SCHEMA = {
  * Throws only if the model call fails — callers treat any throw as "AI
  * unavailable" and fall back to offering a human.
  */
-export async function generateReply(history: SupportTurn[], userMessage: string): Promise<AiReply> {
+export async function generateReply(
+  history: SupportTurn[],
+  userMessage: string,
+  companyId?: string
+): Promise<AiReply> {
   if (!genAI) {
     return {
       reply: "",
@@ -115,13 +120,16 @@ export async function generateReply(history: SupportTurn[], userMessage: string)
       route: null,
     };
   }
+  // AI Studio: prepend the company's AI profile (tone/context/language) so the
+  // support widget adopts the merchant's personality. Null-safe → no-op.
+  const aiCtx = await getCompanyAIContext(companyId);
   const model = genAI.getGenerativeModel({
     // Current stable model with controlled generation (responseSchema) support.
     // gemini-2.0-flash and gemini-2.0-flash-exp were both retired by Google
     // (generateContent returns 404 "no longer available"), so all services
     // moved to gemini-2.5-flash.
     model: "gemini-2.5-flash",
-    systemInstruction: SYSTEM_PROMPT,
+    systemInstruction: aiCtx ? `${aiCtx}\n\n${SYSTEM_PROMPT}` : SYSTEM_PROMPT,
     generationConfig: {
       temperature: 0.4,
       responseMimeType: "application/json",

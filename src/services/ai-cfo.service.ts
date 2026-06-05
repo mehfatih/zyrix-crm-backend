@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "../config/database";
 import { env } from "../config/env";
+import { getCompanyAIContext } from "./company-ai-profile.service";
 
 // ============================================================================
 // AI CFO SERVICE
@@ -412,9 +413,11 @@ Rules:
 
 Today's date: ${snapshot.generatedAt.slice(0, 10)}`;
 
+  // AI Studio: prepend the company's AI profile (null-safe → no-op).
+  const aiCtx = await getCompanyAIContext(companyId);
   const model = genAI.getGenerativeModel({
     model: "gemini-2.5-flash",
-    systemInstruction: systemPrompt,
+    systemInstruction: aiCtx ? `${aiCtx}\n\n${systemPrompt}` : systemPrompt,
     generationConfig: {
       temperature: 0.5,
       maxOutputTokens: 1500,

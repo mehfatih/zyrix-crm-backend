@@ -31,6 +31,7 @@ import {
   executeRecipeConfig,
   type RecipeType,
 } from "./action-recipes.service";
+import { getCompanyAIContext } from "./company-ai-profile.service";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { env } from "../config/env";
 
@@ -50,7 +51,7 @@ async function geminiText(prompt: string): Promise<string> {
 }
 
 async function runAiGenerateEmail(
-  _companyId: string,
+  companyId: string,
   config: Record<string, unknown>,
   payload: unknown
 ): Promise<ActionResult> {
@@ -59,7 +60,10 @@ async function runAiGenerateEmail(
     const tone = String(config.tone ?? "professional");
     const locale = String(config.locale ?? "en");
     const context = JSON.stringify(payload ?? {}, null, 2).slice(0, 4000);
-    const prompt = `You are drafting a ${tone} email in ${locale}. Purpose: ${purpose}
+    // AI Studio: prepend the company's AI profile so automated drafts match the
+    // merchant's voice (null-safe → no-op).
+    const aiCtx = await getCompanyAIContext(companyId);
+    const prompt = `${aiCtx ? aiCtx + "\n\n" : ""}You are drafting a ${tone} email in ${locale}. Purpose: ${purpose}
 Context (from the CRM event that triggered this workflow):
 ${context}
 

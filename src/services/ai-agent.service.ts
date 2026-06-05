@@ -22,6 +22,7 @@ import { prisma } from "../config/database";
 import { env } from "../config/env";
 import { notFound, badRequest } from "../middleware/errorHandler";
 import { SALES_AGENT_TOOLS, executeTool } from "./ai-agent-tools";
+import { getCompanyAIContext } from "./company-ai-profile.service";
 
 const MAX_TOOL_CALLS_PER_TURN = 5;
 const MODEL_NAME = "gemini-2.5-flash";
@@ -193,9 +194,12 @@ export async function sendMessage(
       ? [{ functionDeclarations: SALES_AGENT_TOOLS as any }]
       : undefined;
 
+  // AI Studio: prepend the company's AI profile (null-safe → no-op).
+  const aiCtx = await getCompanyAIContext(companyId);
+  const baseSys = `${systemPrompt}\n\nToday's date: ${new Date().toISOString()}`;
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
-    systemInstruction: `${systemPrompt}\n\nToday's date: ${new Date().toISOString()}`,
+    systemInstruction: aiCtx ? `${aiCtx}\n\n${baseSys}` : baseSys,
     tools,
   });
 
@@ -356,15 +360,17 @@ export async function generateContent(opts: {
   tone?: string;
   language?: "ar" | "en" | "tr";
   context?: Record<string, string>;
+  companyId?: string;
 }): Promise<{ draft: string }> {
   if (!genAI) {
     throw badRequest(
       "GEMINI_API_KEY is not configured — AI agents are disabled"
     );
   }
+  const aiCtx = await getCompanyAIContext(opts.companyId);
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
-    systemInstruction: SYSTEM_PROMPTS.content,
+    systemInstruction: aiCtx ? `${aiCtx}\n\n${SYSTEM_PROMPTS.content}` : SYSTEM_PROMPTS.content,
   });
 
   const contextBlock = opts.context

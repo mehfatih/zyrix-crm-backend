@@ -97,7 +97,8 @@ export async function send(req: Request, res: Response, next: NextFunction) {
       const history = await convo.listMessages(id);
       const result = await ai.generateReply(
         history.map((m) => ({ sender: m.sender, body: m.body })),
-        text
+        text,
+        companyId
       );
       if (result.reply) await convo.appendMessage(id, "ai", result.reply);
       await recordIntegrationEvent({

@@ -138,7 +138,8 @@ export async function generateContentHandler(
 ) {
   try {
     const dto = contentSchema.parse(req.body);
-    const data = await generateContent(dto as any);
+    const companyId = (req as any).user?.companyId as string | undefined;
+    const data = await generateContent({ ...(dto as any), companyId });
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);

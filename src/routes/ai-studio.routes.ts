@@ -1,0 +1,21 @@
+import { Router } from "express";
+import * as profile from "../controllers/ai-studio.controller";
+import { authenticateToken, requireRole } from "../middleware/auth";
+
+// ============================================================================
+// AI STUDIO ROUTES — /api/ai-studio/* (Sprint 13)
+// Profile read = any authenticated user (so AI features can be previewed);
+// mutate = owner/admin/manager. Saved reports are added in Phase C.
+// ============================================================================
+const router = Router();
+router.use(authenticateToken);
+
+const canManage = requireRole("owner", "admin", "manager");
+
+// Company AI profile
+router.get("/profile", profile.get);
+router.put("/profile", canManage, profile.save);
+router.delete("/profile", canManage, profile.remove);
+router.post("/profile/preview", profile.preview);
+
+export default router;
