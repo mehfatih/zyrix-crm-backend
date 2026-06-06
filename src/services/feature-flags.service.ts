@@ -154,6 +154,32 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
   {
+    // Sprint 15F — real Gemini message composer (grounded on contact context).
+    key: "ai_messaging",
+    category: "ai",
+    label: { en: "AI message composer", ar: "محرّر رسائل بالذكاء", tr: "AI mesaj oluşturucu" },
+    description: {
+      en: "Draft emails and WhatsApp messages with AI, grounded on the contact",
+      ar: "صُغ رسائل البريد وواتساب بالذكاء الاصطناعي، مبنية على جهة الاتصال",
+      tr: "Kişiye dayalı olarak AI ile e-posta ve WhatsApp mesajları taslakla",
+    },
+    icon: "Sparkles",
+    defaultByPlan: ALL_ON,
+  },
+  {
+    // Sprint 15F — real AI Agents v1 (lead-qualification scoring + reasoning).
+    key: "ai_agents",
+    category: "ai",
+    label: { en: "AI Agents", ar: "وكلاء الذكاء", tr: "AI Ajanları" },
+    description: {
+      en: "AI agents that qualify and score new leads with reasoning",
+      ar: "وكلاء ذكاء يصنّفون ويقيّمون العملاء المحتملين الجدد مع التعليل",
+      tr: "Yeni adayları gerekçeyle niteleyen ve puanlayan AI ajanları",
+    },
+    icon: "Bot",
+    defaultByPlan: ALL_ON,
+  },
+  {
     key: "contracts",
     category: "sales",
     label: { en: "Contracts", ar: "العقود", tr: "Sözleşmeler" },

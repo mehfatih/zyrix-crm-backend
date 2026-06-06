@@ -11,6 +11,8 @@ import {
   extractMeetingNotes,
   type AgentKind,
 } from "../services/ai-agent.service";
+import { runLeadQualification, qualifyLead } from "../services/ai-agents-run.service";
+import { isFeatureEnabled } from "../services/feature-flags.service";
 
 function auth(req: Request) {
   const r = req as AuthenticatedRequest;
@@ -167,4 +169,29 @@ export async function meetingNotesHandler(
   } catch (err) {
     next(err);
   }
+}
+
+// ── Sprint 15F — real AI Agents v1 (lead qualification) ─────────────────────
+async function ensureAgents(companyId: string, res: Response): Promise<boolean> {
+  if (await isFeatureEnabled(companyId, "ai_agents")) return true;
+  res.status(403).json({ success: false, error: { code: "NOT_ENABLED", message: "AI Agents not enabled" } });
+  return false;
+}
+
+export async function runAgents(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    if (!(await ensureAgents(companyId, res))) return;
+    const data = await runLeadQualification(companyId);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+export async function qualifyOne(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    if (!(await ensureAgents(companyId, res))) return;
+    const data = await qualifyLead(companyId, String(req.params.contactId));
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
 }
