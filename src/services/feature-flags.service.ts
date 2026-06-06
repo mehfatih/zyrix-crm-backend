@@ -141,6 +141,19 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
   {
+    // Sprint 15E — collect payments on quotes via iyzico/HyperPay.
+    key: "payments_collect",
+    category: "integrations",
+    label: { en: "Payment collection", ar: "تحصيل المدفوعات", tr: "Ödeme tahsilatı" },
+    description: {
+      en: "Collect payment on quotes via iyzico (TRY) or HyperPay (SAR/AED)",
+      ar: "حصّل المدفوعات على العروض عبر iyzico (TRY) أو HyperPay (SAR/AED)",
+      tr: "Tekliflerde iyzico (TRY) veya HyperPay (SAR/AED) ile ödeme tahsil edin",
+    },
+    icon: "CreditCard",
+    defaultByPlan: ALL_ON,
+  },
+  {
     key: "contracts",
     category: "sales",
     label: { en: "Contracts", ar: "العقود", tr: "Sözleşmeler" },

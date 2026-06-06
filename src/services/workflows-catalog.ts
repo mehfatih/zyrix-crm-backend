@@ -459,6 +459,22 @@ export const TRIGGERS: TriggerSpec[] = [
     payloadFields: ["emailId", "customerId"],
   },
   {
+    type: "payment.succeeded",
+    label: {
+      en: "Payment received",
+      ar: "تم استلام الدفعة",
+      tr: "Ödeme alındı",
+    },
+    description: {
+      en: "Fires when a customer pays a quote via iyzico or HyperPay",
+      ar: "يعمل عندما يدفع العميل عرض سعر عبر iyzico أو HyperPay",
+      tr: "Bir müşteri iyzico veya HyperPay ile bir teklifi ödediğinde tetiklenir",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: ["amount", "currency", "provider", "quoteId"],
+  },
+  {
     type: "email.replied",
     label: {
       en: "Email replied",

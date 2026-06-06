@@ -109,6 +109,8 @@ import { startSavedAiReportsWorker } from "./cron/saved-ai-reports-worker";
 import { startFxRatesWorker } from "./cron/fx-rates-worker";
 import { startEmailInboxPoller } from "./cron/email-inbox-poller";
 import emailInboxRoutes from "./routes/integrations/email-inbox.routes";
+import paymentsCollectRoutes from "./routes/payments-collect.routes";
+import paymentsPublicRoutes from "./routes/integrations/payments-public.routes";
 
 const app: Express = express();
 
@@ -297,6 +299,8 @@ app.use("/api/integrations/meta/leads", metaLeadsIntegrationRoutes);
 app.use("/api/integrations/google-ads", googleAdsIntegrationRoutes);
 app.use("/api/integrations/google", googleIntegrationRoutes);
 app.use("/api/integrations/email-inbox", emailInboxRoutes);
+app.use("/api/payment-collect", paymentsCollectRoutes);
+app.use("/api/public/pay", paymentsPublicRoutes);
 app.use("/api/import", importRoutes);
 app.use("/api/brand", brandRoutes);
 app.use("/api/comments", commentsRoutes);

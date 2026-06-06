@@ -437,6 +437,21 @@ export async function dispatchEmailReplied(
   });
 }
 
+// Sprint 15E — fired when a customer pays a collect link (iyzico/HyperPay).
+export async function dispatchPaymentSucceeded(
+  companyId: string,
+  p: { amount: number; currency: string; provider: string; quoteId: string | null }
+): Promise<void> {
+  await safeDispatch("payment.succeeded", companyId, {
+    event: "payment.succeeded",
+    timestamp: new Date().toISOString(),
+    amount: p.amount,
+    currency: p.currency,
+    provider: p.provider,
+    quoteId: p.quoteId,
+  });
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // CADENCE EVENTS (Sprint 11)
 // ──────────────────────────────────────────────────────────────────────

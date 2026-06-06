@@ -5,6 +5,8 @@ import { getPublicPlans } from "../services/public-plans.service";
 import { getActivePublicAnnouncements } from "../services/admin-announcements.service";
 import { sendEmail } from "../services/email.service";
 import { getQuoteByPublicToken, acceptQuote, rejectQuote, signQuote } from "../services/quote.service";
+import { createQuoteCollectRequest, quotePayability } from "../services/payments-collect.service";
+import { isFeatureEnabled } from "../services/feature-flags.service";
 import { prisma } from "../config/database";
 import { env } from "../config/env";
 
@@ -147,7 +149,16 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await getQuoteByPublicToken(req.params.token as string);
-      res.status(200).json({ success: true, data });
+      let payable = false;
+      let payProvider: string | null = null;
+      try {
+        if (await isFeatureEnabled(data.companyId, "payments_collect")) {
+          const p = await quotePayability(data.companyId, data.id, data.currency);
+          payable = p.payable;
+          payProvider = p.provider;
+        }
+      } catch { /* best-effort */ }
+      res.status(200).json({ success: true, data: { ...data, payable, payProvider } });
     } catch (err) {
       next(err);
     }
@@ -268,6 +279,34 @@ router.post(
         userAgent: (req.headers["user-agent"] as string) || null,
       });
       res.status(200).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// Public quote "Pay now" (Sprint 15E) — generates/returns a checkout link when
+// a matching-currency payment connection exists and the quote is resolved.
+// ─────────────────────────────────────────────────────────────────────────
+router.post(
+  "/quotes/:token/pay",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const q = await prisma.quote.findUnique({
+        where: { publicToken: req.params.token as string },
+        select: { id: true, companyId: true, status: true, currency: true },
+      });
+      if (!q) {
+        res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Quote not found" } });
+        return;
+      }
+      if (!(await isFeatureEnabled(q.companyId, "payments_collect"))) {
+        res.status(403).json({ success: false, error: { code: "NOT_ENABLED", message: "Payments not enabled" } });
+        return;
+      }
+      const data = await createQuoteCollectRequest(q.companyId, q.id);
+      res.json({ success: true, data });
     } catch (err) {
       next(err);
     }
