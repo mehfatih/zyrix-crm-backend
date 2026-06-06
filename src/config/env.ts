@@ -32,6 +32,11 @@ const envSchema = z.object({
   GOOGLE_INTEGRATION_REDIRECT_URI: z
     .string()
     .optional(), // e.g. https://api.crm.zyrix.co/api/integrations/google/callback
+  // Sprint 15D — Gmail INBOX OAuth (separate gmail.readonly flow + callback,
+  // reuses GOOGLE_INTEGRATION_CLIENT_ID/SECRET). Register this URI in GCP.
+  EMAIL_INBOX_GOOGLE_REDIRECT_URI: z
+    .string()
+    .default("https://api.crm.zyrix.co/api/integrations/email-inbox/google/callback"),
 
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().optional(),

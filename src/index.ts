@@ -107,6 +107,8 @@ import { startWorkflowWorker } from "./cron/workflow-worker";
 import { startScheduledReportsWorker } from "./cron/scheduled-reports-worker";
 import { startSavedAiReportsWorker } from "./cron/saved-ai-reports-worker";
 import { startFxRatesWorker } from "./cron/fx-rates-worker";
+import { startEmailInboxPoller } from "./cron/email-inbox-poller";
+import emailInboxRoutes from "./routes/integrations/email-inbox.routes";
 
 const app: Express = express();
 
@@ -294,6 +296,7 @@ app.use("/api/integrations/whatsapp", whatsappIntegrationRoutes);
 app.use("/api/integrations/meta/leads", metaLeadsIntegrationRoutes);
 app.use("/api/integrations/google-ads", googleAdsIntegrationRoutes);
 app.use("/api/integrations/google", googleIntegrationRoutes);
+app.use("/api/integrations/email-inbox", emailInboxRoutes);
 app.use("/api/import", importRoutes);
 app.use("/api/brand", brandRoutes);
 app.use("/api/comments", commentsRoutes);
@@ -356,6 +359,7 @@ const server = app.listen(env.PORT, () => {
   startScheduledReportsWorker();
   startSavedAiReportsWorker();
   startFxRatesWorker();
+  startEmailInboxPoller();
   startRetentionCron();
   startDocumentsReindexCron();
   startSupportFallbackCron();

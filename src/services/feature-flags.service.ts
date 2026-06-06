@@ -128,6 +128,19 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
   {
+    // Sprint 15D — connect Gmail/IMAP inbox; mail lands in the contact timeline.
+    key: "email_inbox",
+    category: "integrations",
+    label: { en: "Email inbox connect", ar: "ربط صندوق البريد", tr: "E-posta gelen kutusu bağlantısı" },
+    description: {
+      en: "Connect Gmail or an IMAP inbox to track conversations in the CRM",
+      ar: "اربط Gmail أو صندوق IMAP لتتبع المحادثات في الـ CRM",
+      tr: "Konuşmaları CRM'de izlemek için Gmail veya IMAP gelen kutusu bağlayın",
+    },
+    icon: "Mail",
+    defaultByPlan: ALL_ON,
+  },
+  {
     key: "contracts",
     category: "sales",
     label: { en: "Contracts", ar: "العقود", tr: "Sözleşmeler" },
