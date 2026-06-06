@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/auth";
 import { gateFeature } from "../middleware/feature-gate";
+import { enforceLimit } from "../middleware/entitlement-gate";
+import { countActiveWorkflows } from "../middleware/entitlement-counters";
 import * as ctrl from "../controllers/workflows.controller";
 
 const router = Router();
@@ -20,7 +22,7 @@ router.get("/executions/:id", ctrl.executionDetail);
 
 // Workflow CRUD
 router.get("/", ctrl.list);
-router.post("/", ctrl.create);
+router.post("/", enforceLimit("limit_active_workflows", countActiveWorkflows), ctrl.create);
 router.get("/:id", ctrl.detail);
 router.patch("/:id", ctrl.update);
 router.delete("/:id", ctrl.remove);

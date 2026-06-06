@@ -12,34 +12,14 @@
 //   router.get('/', quotes.list);
 // ============================================================================
 
-import type { Request, Response, NextFunction, RequestHandler } from "express";
-import type { AuthenticatedRequest } from "../types";
-import { isFeatureEnabled } from "../services/feature-flags.service";
+import type { RequestHandler } from "express";
+import { requireFeature } from "./entitlement-gate";
 
+// Sprint 16B: gateFeature now delegates to the entitlement gate so every
+// existing gate is flag-controlled (ENTITLEMENTS_ENFORCE). With the flag OFF
+// (default/prod today) it is a pass-through; with it ON it returns the same
+// 403 FEATURE_DISABLED shape (now enriched with `requiredPlan`). Kept as a
+// named export so the ~25 existing `gateFeature("x")` call sites are unchanged.
 export function gateFeature(key: string): RequestHandler {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const authReq = req as AuthenticatedRequest;
-      const companyId = authReq.user?.companyId;
-      if (!companyId) {
-        // Auth middleware should run first — if we got here without a
-        // companyId, let the downstream handler fail normally.
-        return next();
-      }
-      const enabled = await isFeatureEnabled(companyId, key);
-      if (!enabled) {
-        return res.status(403).json({
-          success: false,
-          error: {
-            code: "FEATURE_DISABLED",
-            message: `The '${key}' feature is not enabled for this account.`,
-            feature: key,
-          },
-        });
-      }
-      next();
-    } catch (err) {
-      next(err);
-    }
-  };
+  return requireFeature(key);
 }

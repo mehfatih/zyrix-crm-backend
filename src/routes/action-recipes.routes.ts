@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as controller from "../controllers/action-recipes.controller";
 import { authenticateToken, requireRole } from "../middleware/auth";
+import { requireFeature } from "../middleware/entitlement-gate";
 
 // ============================================================================
 // CUSTOM ACTIONS ROUTES — /api/action-recipes/* (Sprint 13)
@@ -8,6 +9,7 @@ import { authenticateToken, requireRole } from "../middleware/auth";
 // ============================================================================
 const router = Router();
 router.use(authenticateToken);
+router.use(requireFeature("custom_actions")); // Sprint 16B (flag-gated)
 
 const canBuild = requireRole("owner", "admin", "manager");
 

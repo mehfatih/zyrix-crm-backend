@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as profile from "../controllers/ai-studio.controller";
 import { authenticateToken, requireRole } from "../middleware/auth";
+import { requireFeature } from "../middleware/entitlement-gate";
 
 // ============================================================================
 // AI STUDIO ROUTES — /api/ai-studio/* (Sprint 13)
@@ -9,6 +10,7 @@ import { authenticateToken, requireRole } from "../middleware/auth";
 // ============================================================================
 const router = Router();
 router.use(authenticateToken);
+router.use(requireFeature("ai_studio")); // Sprint 16B (flag-gated)
 
 const canManage = requireRole("owner", "admin", "manager");
 

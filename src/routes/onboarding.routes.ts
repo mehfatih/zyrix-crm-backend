@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/auth";
+import { enforceLimit } from "../middleware/entitlement-gate";
+import { countUsers } from "../middleware/entitlement-counters";
 import * as controller from "../controllers/onboarding.controller";
 
 const router = Router();
@@ -7,7 +9,7 @@ router.use(authenticateToken);
 
 router.get("/status", controller.status);
 router.post("/complete", controller.complete);
-router.post("/invite-colleague", controller.invite);
+router.post("/invite-colleague", enforceLimit("limit_users", countUsers), controller.invite);
 router.patch("/progress", controller.patchProgress);
 
 export default router;

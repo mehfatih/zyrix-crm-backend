@@ -1,8 +1,17 @@
 import { Router } from "express";
 import * as controller from "../controllers/advanced.controller";
 import { authenticateToken } from "../middleware/auth";
+import { requireFeature, enforceLimit } from "../middleware/entitlement-gate";
+import { countStores } from "../middleware/entitlement-counters";
 
 const router = Router();
+// Sprint 16B: store-connect is gated by the `ecommerce_sync` feature + the
+// `limit_ecommerce_stores` count (both flag-gated). Applied per-route below so
+// the rest of /api/advanced is unaffected.
+const gateStoreConnect = [
+  requireFeature("ecommerce_sync"),
+  enforceLimit("limit_ecommerce_stores", countStores),
+];
 
 // ──────────────────────────────────────────────────────────────────────
 // PUBLIC — no auth required (for marketing page)
@@ -54,7 +63,7 @@ router.get("/timeline/customer/:customerId", controller.getCustomerTimeline);
 // SHOPIFY INTEGRATION
 // ──────────────────────────────────────────────────────────────────────
 router.get("/shopify/stores", controller.shopifyListStores);
-router.post("/shopify/connect", controller.shopifyConnect);
+router.post("/shopify/connect", ...gateStoreConnect, controller.shopifyConnect);
 router.delete("/shopify/stores/:id", controller.shopifyDisconnect);
 router.post("/shopify/stores/:id/sync", controller.shopifySync);
 
@@ -62,7 +71,7 @@ router.post("/shopify/stores/:id/sync", controller.shopifySync);
 // E-COMMERCE GENERAL (multi-platform: Shopify, Salla, Zid, YouCan, Ticimax, etc.)
 // ──────────────────────────────────────────────────────────────────────
 router.get("/ecommerce/stores", controller.ecommerceListStores);
-router.post("/ecommerce/connect", controller.ecommerceConnect);
+router.post("/ecommerce/connect", ...gateStoreConnect, controller.ecommerceConnect);
 router.delete("/ecommerce/stores/:id", controller.ecommerceDisconnect);
 router.post("/ecommerce/stores/:id/sync", controller.ecommerceSync);
 router.get("/ecommerce/stores/:id/status", controller.ecommerceSyncStatus);

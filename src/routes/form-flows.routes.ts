@@ -1,6 +1,8 @@
 import { Router } from "express";
 import * as controller from "../controllers/form-flows.controller";
 import { authenticateToken, requireRole } from "../middleware/auth";
+import { requireFeature, enforceLimit } from "../middleware/entitlement-gate";
+import { countForms } from "../middleware/entitlement-counters";
 
 // ============================================================================
 // FORM FLOWS ROUTES — /api/form-flows/* (Sprint 12, authenticated)
@@ -8,11 +10,13 @@ import { authenticateToken, requireRole } from "../middleware/auth";
 // ============================================================================
 const router = Router();
 router.use(authenticateToken);
+// Sprint 16B: gate the whole module by the `forms` entitlement (flag-gated).
+router.use(requireFeature("forms"));
 
 const canBuild = requireRole("owner", "admin", "manager");
 
 router.get("/", controller.list);
-router.post("/", canBuild, controller.create);
+router.post("/", canBuild, enforceLimit("limit_forms", countForms), controller.create);
 router.get("/:id", controller.getOne);
 router.get("/:id/qr", controller.qr);
 router.get("/:id/submissions", controller.submissions);

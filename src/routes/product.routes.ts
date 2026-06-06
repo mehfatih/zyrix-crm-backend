@@ -1,13 +1,15 @@
 import { Router } from "express";
 import * as controller from "../controllers/product.controller";
 import { authenticateToken } from "../middleware/auth";
+import { enforceLimit } from "../middleware/entitlement-gate";
+import { countProducts } from "../middleware/entitlement-counters";
 
 const router = Router();
 
 router.use(authenticateToken);
 
 router.get("/", controller.list);
-router.post("/", controller.create);
+router.post("/", enforceLimit("limit_products", countProducts), controller.create);
 router.get("/:id", controller.getOne);
 router.patch("/:id", controller.update);
 router.patch("/:id/status", controller.setStatus);

@@ -2,6 +2,8 @@ import { Router } from "express";
 import * as controller from "../controllers/cadence.controller";
 import { authenticateToken } from "../middleware/auth";
 import { gateFeature } from "../middleware/feature-gate";
+import { enforceLimit } from "../middleware/entitlement-gate";
+import { countActiveCadences } from "../middleware/entitlement-counters";
 
 // ============================================================================
 // CADENCE ROUTES — /api/cadences/* (Sprint 11). Gated by marketing_automation.
@@ -22,7 +24,7 @@ router.get("/:id", controller.getOne);
 router.get("/:id/funnel", controller.funnel);
 router.patch("/:id", controller.update);
 router.delete("/:id", controller.remove);
-router.post("/:id/activate", controller.activate);
+router.post("/:id/activate", enforceLimit("limit_cadences", countActiveCadences), controller.activate);
 router.post("/:id/pause", controller.pause);
 router.post("/:id/enroll", controller.enroll);
 
