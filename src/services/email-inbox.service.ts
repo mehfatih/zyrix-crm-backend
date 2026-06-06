@@ -137,7 +137,7 @@ export async function disconnect(companyId: string, id: string): Promise<void> {
 }
 
 // ── Polling ──────────────────────────────────────────────────────────────────
-interface ParsedMsg {
+export interface ParsedMsg {
   messageId: string;
   from: string;
   to: string[];
@@ -146,7 +146,7 @@ interface ParsedMsg {
   date: Date;
 }
 
-async function matchAndStore(
+export async function matchAndStore(
   conn: { id: string; companyId: string; userId: string; emailAddress: string },
   msg: ParsedMsg
 ): Promise<void> {
