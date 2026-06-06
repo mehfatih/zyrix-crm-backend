@@ -168,6 +168,7 @@ export async function slaPolicies(req: Request, res: Response, next: NextFunctio
 const settingsSchema = z.object({
   enabled: z.boolean().optional(),
   autoCreate: z.boolean().optional(),
+  autoAssign: z.boolean().optional(),
   defaultSlaPolicyId: z.string().uuid().nullable().optional(),
 });
 

@@ -555,6 +555,18 @@ export const TRIGGERS: TriggerSpec[] = [
     payloadFields: ["ticket.id", "ticket.number", "ticket.subject", "ticket.channel", "ticket.priority", "customerId"],
   },
   {
+    type: "ticket.assigned",
+    label: { en: "Ticket assigned", ar: "إسناد التذكرة", tr: "Talep atandı" },
+    description: {
+      en: "Fires when a ticket is assigned to an agent (auto, take-it, or manual)",
+      ar: "يعمل عند إسناد التذكرة لوكيل (تلقائي أو يدوي أو \"خذها\")",
+      tr: "Bir talep bir temsilciye atandığında tetiklenir (otomatik, üstlen veya manuel)",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: ["ticket.id", "ticket.number", "ticket.subject", "ticket.priority", "assigneeId", "customerId"],
+  },
+  {
     type: "ticket.sla_breached",
     label: { en: "Ticket SLA breached", ar: "تجاوز اتفاقية الخدمة للتذكرة", tr: "Talep SLA ihlali" },
     description: {

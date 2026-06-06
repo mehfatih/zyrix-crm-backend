@@ -2428,6 +2428,7 @@ model ServiceDeskSettings {
   companyId          String   @id
   enabled            Boolean  @default(false)
   autoCreate         Boolean  @default(true)
+  autoAssign         Boolean  @default(false)
   defaultSlaPolicyId String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

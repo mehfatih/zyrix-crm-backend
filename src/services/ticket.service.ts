@@ -17,6 +17,7 @@ import { isEnabled } from "./entitlements.service";
 import {
   dispatchTicketCreated,
   dispatchTicketResolved,
+  dispatchTicketAssigned,
 } from "./workflow-events.service";
 import { applySlaOnCreate, recomputeTicket, seedPresets } from "./sla.service";
 
@@ -75,25 +76,27 @@ export interface ServiceDeskSettings {
   companyId: string;
   enabled: boolean;
   autoCreate: boolean;
+  autoAssign: boolean;
   defaultSlaPolicyId: string | null;
 }
 
 export async function getSettings(companyId: string): Promise<ServiceDeskSettings> {
   const rows = (await prisma.$queryRawUnsafe(
-    `SELECT "companyId","enabled","autoCreate","defaultSlaPolicyId"
+    `SELECT "companyId","enabled","autoCreate","autoAssign","defaultSlaPolicyId"
        FROM service_desk_settings WHERE "companyId" = $1 LIMIT 1`,
     companyId
   )) as ServiceDeskSettings[];
-  return rows[0] ?? { companyId, enabled: false, autoCreate: true, defaultSlaPolicyId: null };
+  return rows[0] ?? { companyId, enabled: false, autoCreate: true, autoAssign: false, defaultSlaPolicyId: null };
 }
 
 export async function updateSettings(
   companyId: string,
-  patch: { enabled?: boolean; autoCreate?: boolean; defaultSlaPolicyId?: string | null }
+  patch: { enabled?: boolean; autoCreate?: boolean; autoAssign?: boolean; defaultSlaPolicyId?: string | null }
 ): Promise<ServiceDeskSettings> {
   const current = await getSettings(companyId);
   const enabled = patch.enabled ?? current.enabled;
   const autoCreate = patch.autoCreate ?? current.autoCreate;
+  const autoAssign = patch.autoAssign ?? current.autoAssign;
   let defaultSlaPolicyId =
     patch.defaultSlaPolicyId !== undefined ? patch.defaultSlaPolicyId : current.defaultSlaPolicyId;
 
@@ -104,19 +107,77 @@ export async function updateSettings(
   }
 
   await prisma.$executeRawUnsafe(
-    `INSERT INTO service_desk_settings ("companyId","enabled","autoCreate","defaultSlaPolicyId","createdAt","updatedAt")
-     VALUES ($1,$2,$3,$4,NOW(),NOW())
+    `INSERT INTO service_desk_settings ("companyId","enabled","autoCreate","autoAssign","defaultSlaPolicyId","createdAt","updatedAt")
+     VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
      ON CONFLICT ("companyId")
      DO UPDATE SET "enabled" = EXCLUDED."enabled",
                    "autoCreate" = EXCLUDED."autoCreate",
+                   "autoAssign" = EXCLUDED."autoAssign",
                    "defaultSlaPolicyId" = EXCLUDED."defaultSlaPolicyId",
                    "updatedAt" = NOW()`,
     companyId,
     enabled,
     autoCreate,
+    autoAssign,
     defaultSlaPolicyId
   );
-  return { companyId, enabled, autoCreate, defaultSlaPolicyId };
+  return { companyId, enabled, autoCreate, autoAssign, defaultSlaPolicyId };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Routing (Sprint 18C) — pure company-wide round-robin over active users.
+// Reuses the Sprint-6 automation_rr_pointers table with scope='service_desk'.
+// ──────────────────────────────────────────────────────────────────────
+
+const RR_SCOPE = "service_desk";
+
+async function pickRoundRobinAgent(companyId: string): Promise<string | null> {
+  const users = (await prisma.$queryRawUnsafe(
+    `SELECT id FROM users WHERE "companyId" = $1 AND status = 'active' ORDER BY "createdAt" ASC, id ASC`,
+    companyId
+  )) as Array<{ id: string }>;
+  if (users.length === 0) return null;
+  const rows = (await prisma.$queryRawUnsafe(
+    `INSERT INTO automation_rr_pointers ("companyId", scope, idx, "updatedAt")
+     VALUES ($1, $2, 0, NOW())
+     ON CONFLICT ("companyId", scope)
+       DO UPDATE SET idx = automation_rr_pointers.idx + 1, "updatedAt" = NOW()
+     RETURNING idx`,
+    companyId,
+    RR_SCOPE
+  )) as Array<{ idx: number }>;
+  const slot = Number(rows[0]?.idx ?? 0) % users.length;
+  return users[slot].id;
+}
+
+/**
+ * Auto-assign a freshly-created inbound ticket via round-robin, if routing is
+ * on for the company. Never throws. Returns the assigned userId or null.
+ */
+async function autoAssignTicket(ticket: TicketRow): Promise<string | null> {
+  try {
+    if (ticket.assigneeId) return ticket.assigneeId;
+    const settings = await getSettings(ticket.companyId);
+    if (!settings.autoAssign) return null;
+    if (!(await isEnabled(ticket.companyId, "service_routing"))) return null;
+    const agentId = await pickRoundRobinAgent(ticket.companyId);
+    if (!agentId) return null;
+    await prisma.$executeRawUnsafe(
+      `UPDATE tickets SET "assigneeId" = $1, "updatedAt" = NOW() WHERE "id" = $2`,
+      agentId,
+      ticket.id
+    );
+    await logEvent(ticket.companyId, ticket.id, "assigned", {
+      actorUserId: null,
+      toValue: agentId,
+      metadata: { via: "round_robin" },
+    });
+    void dispatchTicketAssigned(ticket.companyId, toPayload({ ...ticket, assigneeId: agentId }), agentId);
+    return agentId;
+  } catch (e) {
+    console.error("[tickets] autoAssignTicket failed:", (e as Error).message);
+    return null;
+  }
 }
 
 /** Entitled AND merchant-enabled. Both required ⇒ fully inert until opt-in. */
@@ -303,7 +364,7 @@ export async function ensureTicketForInbound(
       return reopenable.id;
     }
 
-    // 3) New ticket.
+    // 3) New ticket. Auto-assign via round-robin if routing is on.
     const created = await createTicket({
       companyId: ctx.companyId,
       customerId: ctx.customerId ?? null,
@@ -314,6 +375,7 @@ export async function ensureTicketForInbound(
       lastCustomerMsgAt: at,
       actorUserId: null,
     });
+    await autoAssignTicket(created);
     return created.id;
   } catch (e) {
     console.error("[tickets] ensureTicketForInbound failed:", (e as Error).message);
@@ -575,6 +637,7 @@ export async function updateTicket(
       fromValue: current.assigneeId,
       toValue: dto.assigneeId ?? null,
     });
+    if (dto.assigneeId) void dispatchTicketAssigned(companyId, toPayload(updated), dto.assigneeId);
   }
 
   if (becameResolved) void dispatchTicketResolved(companyId, toPayload(updated));

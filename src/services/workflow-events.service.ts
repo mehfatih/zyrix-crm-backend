@@ -533,6 +533,22 @@ export async function dispatchTicketResolved(
   });
 }
 
+/** Fired when a ticket is assigned to an agent (auto, take-it, or manual). */
+export async function dispatchTicketAssigned(
+  companyId: string,
+  ticket: TicketPayload,
+  assigneeId: string
+): Promise<void> {
+  await safeDispatch("ticket.assigned", companyId, {
+    event: "ticket.assigned",
+    timestamp: new Date().toISOString(),
+    ticket,
+    ticketId: ticket.id,
+    customerId: ticket.customerId,
+    assigneeId,
+  });
+}
+
 /** Fired when a ticket misses its first-response or resolution SLA. */
 export async function dispatchTicketSlaBreached(
   companyId: string,
