@@ -399,6 +399,18 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     icon: "Users",
     defaultByPlan: BUSINESS_UP,
   },
+  {
+    key: "knowledge_base",
+    category: "ops",
+    label: { en: "Knowledge base", ar: "قاعدة المعرفة", tr: "Bilgi tabanı" },
+    description: {
+      en: "Trilingual help articles for the customer portal + AI grounding",
+      ar: "مقالات مساعدة ثلاثية اللغة لبوابة العملاء + تأسيس إجابات الذكاء الاصطناعي",
+      tr: "Müşteri portalı için üç dilli yardım makaleleri + yapay zekâ temellendirme",
+    },
+    icon: "BookOpen",
+    defaultByPlan: STARTER_UP,
+  },
 
   // ─── SECURITY & COMPLIANCE (premium tiers) ───
   {
