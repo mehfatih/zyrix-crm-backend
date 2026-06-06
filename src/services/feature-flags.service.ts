@@ -918,7 +918,9 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     icon: "Users",
     type: "limit",
     defaultByPlan: ALL_ON,
-    limitByPlan: { free: 3, starter: 10, business: 50, enterprise: null },
+    // Sprint 16R — per-user pricing restructure. User ceilings retuned:
+    // Free 2 (hard cap), Starter 20, Business 100, Enterprise unlimited.
+    limitByPlan: { free: 2, starter: 20, business: 100, enterprise: null },
   },
   {
     key: "limit_contacts",
