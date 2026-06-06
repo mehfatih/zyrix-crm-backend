@@ -532,3 +532,19 @@ export async function dispatchTicketResolved(
     customerId: ticket.customerId,
   });
 }
+
+/** Fired when a ticket misses its first-response or resolution SLA. */
+export async function dispatchTicketSlaBreached(
+  companyId: string,
+  ticket: TicketPayload,
+  breachKind: "first_response" | "resolution"
+): Promise<void> {
+  await safeDispatch("ticket.sla_breached", companyId, {
+    event: "ticket.sla_breached",
+    timestamp: new Date().toISOString(),
+    ticket,
+    ticketId: ticket.id,
+    customerId: ticket.customerId,
+    breachKind,
+  });
+}

@@ -2363,6 +2363,12 @@ model Ticket {
   resolvedAt        DateTime?
   closedAt          DateTime?
   lastCustomerMsgAt DateTime?
+  // SLA (Sprint 18B) — 24/7 timers
+  slaPolicyId        String?
+  firstResponseDueAt DateTime?
+  resolveDueAt       DateTime?
+  slaBreachedAt      DateTime?
+  slaState           String? // ok|near_breach|breached
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -2370,8 +2376,27 @@ model Ticket {
   @@index([companyId, status])
   @@index([companyId, assigneeId])
   @@index([companyId, customerId, channel])
+  @@index([companyId, slaState])
   @@index([conversationId])
   @@map("tickets")
+}
+
+// SLA policy (Sprint 18B). 3 presets seeded per company on enable; the chosen
+// one is referenced by service_desk_settings.defaultSlaPolicyId. businessHours
+// null = 24/7 (v1).
+model SlaPolicy {
+  id                String   @id @default(uuid())
+  companyId         String
+  name              String
+  firstResponseMins Int
+  resolveMins       Int
+  businessHours     Json?
+  escalateToUserId  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("sla_policies")
 }
 
 model TicketEvent {
@@ -2400,11 +2425,12 @@ model TicketCounter {
 // One-click enable for the service desk. INERT until enabled=true — no
 // auto-create and no merchant UX even for entitled tenants until toggled.
 model ServiceDeskSettings {
-  companyId  String   @id
-  enabled    Boolean  @default(false)
-  autoCreate Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  companyId          String   @id
+  enabled            Boolean  @default(false)
+  autoCreate         Boolean  @default(true)
+  defaultSlaPolicyId String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@map("service_desk_settings")
 }

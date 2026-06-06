@@ -555,6 +555,18 @@ export const TRIGGERS: TriggerSpec[] = [
     payloadFields: ["ticket.id", "ticket.number", "ticket.subject", "ticket.channel", "ticket.priority", "customerId"],
   },
   {
+    type: "ticket.sla_breached",
+    label: { en: "Ticket SLA breached", ar: "تجاوز اتفاقية الخدمة للتذكرة", tr: "Talep SLA ihlali" },
+    description: {
+      en: "Fires when a ticket misses its first-response or resolution SLA",
+      ar: "يعمل عند تجاوز التذكرة لزمن الرد الأول أو الحل",
+      tr: "Bir talep ilk yanıt veya çözüm SLA süresini aştığında tetiklenir",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: ["ticket.id", "ticket.number", "ticket.subject", "ticket.priority", "breachKind", "customerId"],
+  },
+  {
     type: "schedule.daily",
     label: { en: "Daily schedule", ar: "جدولة يومية", tr: "Günlük zamanlama" },
     description: {
