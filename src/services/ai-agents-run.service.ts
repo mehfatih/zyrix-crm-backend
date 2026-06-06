@@ -110,6 +110,39 @@ export async function qualifyLead(companyId: string, contactId: string): Promise
   };
 }
 
+// Cheap read of recent STORED qualifications (no Gemini) — for the widget on
+// mount. The actual scoring run is the explicit runLeadQualification below.
+export async function listQualifications(companyId: string, limit = 20): Promise<AgentOutput[]> {
+  const rows = await prisma.customer.findMany({
+    where: { companyId, deletedAt: null, leadScoreUpdatedAt: { not: null } },
+    orderBy: { leadScoreUpdatedAt: "desc" },
+    take: 60,
+    select: { id: true, fullName: true, leadScore: true, aiExtracted: true, leadScoreUpdatedAt: true },
+  });
+  const out: AgentOutput[] = [];
+  for (const c of rows) {
+    const q = (c.aiExtracted as { qualification?: { score: number; classification: string; reasoning: string; at: string } } | null)?.qualification;
+    if (!q) continue;
+    out.push({
+      id: `lq-${c.id}`,
+      agentRole: "lead-qualification",
+      permissionLevel: 1,
+      insight: `${c.fullName}: ${String(q.classification).toUpperCase()} lead (${q.score}/100)`,
+      reason: q.reasoning,
+      confidence: q.score,
+      signals: [],
+      recommendedAction: q.score >= 70 ? "Reach out today" : q.score >= 40 ? "Nurture this week" : "Monitor",
+      cta: { label: "Open contact", action: `/customers/${c.id}` },
+      entityType: "contact",
+      entityId: c.id,
+      createdAt: q.at || (c.leadScoreUpdatedAt?.toISOString() ?? new Date().toISOString()),
+      status: "pending",
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 // Run the agent over recent new leads (cap N). Per-lead isolation.
 export async function runLeadQualification(companyId: string, limit = 8): Promise<AgentOutput[]> {
   const leads = await prisma.customer.findMany({

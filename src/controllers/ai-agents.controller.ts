@@ -11,7 +11,7 @@ import {
   extractMeetingNotes,
   type AgentKind,
 } from "../services/ai-agent.service";
-import { runLeadQualification, qualifyLead } from "../services/ai-agents-run.service";
+import { runLeadQualification, qualifyLead, listQualifications } from "../services/ai-agents-run.service";
 import { isFeatureEnabled } from "../services/feature-flags.service";
 
 function auth(req: Request) {
@@ -178,6 +178,16 @@ async function ensureAgents(companyId: string, res: Response): Promise<boolean> 
   return false;
 }
 
+// Cheap: stored qualifications (widget on mount, no Gemini).
+export async function listAgentRuns(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    if (!(await ensureAgents(companyId, res))) return;
+    res.json({ success: true, data: await listQualifications(companyId) });
+  } catch (err) { next(err); }
+}
+
+// Explicit run: scores recent new leads with Gemini.
 export async function runAgents(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);

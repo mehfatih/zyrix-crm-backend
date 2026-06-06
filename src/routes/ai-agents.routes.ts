@@ -42,6 +42,7 @@ router.post("/content", ctrl.generateContentHandler);
 router.post("/meeting-notes", ctrl.meetingNotesHandler);
 
 // Sprint 15F — real lead-qualification agent
+router.get("/runs", ctrl.listAgentRuns);
 router.post("/run", ctrl.runAgents);
 router.post("/qualify/:contactId", ctrl.qualifyOne);
 
