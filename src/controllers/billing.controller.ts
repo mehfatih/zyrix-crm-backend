@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "../types";
 import * as BillingSvc from "../services/billing.service";
+import * as PlanReqSvc from "../services/plan-requests.service";
 import { recordAudit, extractRequestMeta } from "../utils/audit";
 
 function auth(req: Request) {
@@ -103,6 +104,51 @@ export async function resume(
       entityId: id,
       ...extractRequestMeta(req),
     });
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Sprint 16D — in-app plan change requests (tenant side)
+// ──────────────────────────────────────────────────────────────────────
+
+const planRequestSchema = z.object({
+  requestedPlan: z.enum(["free", "starter", "business", "enterprise"]),
+  note: z.string().max(1000).optional(),
+});
+
+export async function planRequest(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { userId, companyId } = auth(req);
+    const dto = planRequestSchema.parse(req.body);
+    const data = await PlanReqSvc.createOrUpdateRequest(
+      companyId,
+      userId,
+      dto.requestedPlan,
+      dto.note
+    );
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function currentPlanRequest(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const data = await PlanReqSvc.getCurrentRequest(companyId);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function cancelPlanRequest(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const data = await PlanReqSvc.cancelRequest(companyId);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);

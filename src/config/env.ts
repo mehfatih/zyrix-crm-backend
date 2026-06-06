@@ -71,6 +71,10 @@ const envSchema = z.object({
   // gateFeature() middleware is unaffected by this flag.
   ENTITLEMENTS_ENFORCE: z.string().optional(),
 
+  // Sprint 16D: where plan-change-request notifications go (platform admin).
+  // Falls back to support@zyrix.co when unset.
+  ADMIN_NOTIFY_EMAIL: z.string().optional(),
+
   GEMINI_API_KEY: z.string().optional(),
 
   // E-commerce OAuth providers. All optional — the corresponding

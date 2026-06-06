@@ -79,6 +79,12 @@ router.post("/companies/:id/resume", AdminCtrl.resumeCompany);
 router.delete("/companies/:id", AdminCtrl.deleteCompany);
 router.post("/companies/:id/impersonate", AdminCtrl.impersonateCompany);
 
+// Sprint 16D — plan change requests (admin queue)
+router.get("/plan-requests", AdminCtrl.listPlanRequests);
+router.get("/plan-requests/pending-count", AdminCtrl.planRequestsPendingCount);
+router.post("/plan-requests/:id/approve", AdminCtrl.approvePlanRequest);
+router.post("/plan-requests/:id/reject", AdminCtrl.rejectPlanRequest);
+
 // Per-company feature flags — platform owner controls which features
 // each merchant has enabled.
 router.get("/companies/:id/features", FeatureCtrl.adminGetCompanyFlags);

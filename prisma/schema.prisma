@@ -590,6 +590,29 @@ model CompanyFeatureOverride {
   @@map("company_feature_overrides")
 }
 
+// Sprint 16D — in-app plan upgrade/downgrade requests. A tenant picks a plan in
+// Settings → Billing; this records the request and notifies the platform admin,
+// who confirms payment (manual v1) and approves → company.plan is set and every
+// feature under the plan goes live instantly (pure resolution). No billing
+// automation here; self-serve payment is a documented follow-up (Sprint 15E rails).
+model PlanChangeRequest {
+  id                String    @id @default(uuid())
+  companyId         String
+  currentPlan       String
+  requestedPlan     String
+  status            String    @default("pending") // pending | approved | rejected | cancelled
+  note              String?
+  requestedByUserId String?
+  decidedByAdminId  String?
+  decidedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([companyId, status])
+  @@map("plan_change_requests")
+}
+
 // Sprint 16C — audit trail for every god-mode change made from the platform
 // admin entitlement matrix (override set, bulk reset/force-on, plan change).
 // Rendered under the matrix. Dedicated table (not the tenant audit_logs) since

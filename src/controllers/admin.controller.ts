@@ -9,6 +9,7 @@ import * as PlansSvc from "../services/admin-plans.service";
 import * as AnnouncementsSvc from "../services/admin-announcements.service";
 import * as SupportSvc from "../services/admin-support.service";
 import * as SettingsSvc from "../services/admin-settings.service";
+import * as PlanReqSvc from "../services/plan-requests.service";
 import { runScheduledSync } from "../cron/sync";
 import type { AuthenticatedRequest } from "../types";
 
@@ -283,6 +284,52 @@ export async function resumeCompany(req: Request, res: Response, next: NextFunct
     const actor = (req as AuthenticatedRequest).user.userId;
     const updated = await CompaniesSvc.resumeCompany((req.params.id as any), actor);
     res.status(200).json({ success: true, data: updated });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Sprint 16D — plan change requests (admin queue)
+// ──────────────────────────────────────────────────────────────────────
+
+export async function listPlanRequests(req: Request, res: Response, next: NextFunction) {
+  try {
+    const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    const data = await PlanReqSvc.listRequests(status);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function planRequestsPendingCount(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const count = await PlanReqSvc.pendingCount();
+    res.status(200).json({ success: true, data: { count } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function approvePlanRequest(req: Request, res: Response, next: NextFunction) {
+  try {
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const data = await PlanReqSvc.approveRequest(req.params.id as string, actor);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const rejectSchema = z.object({ reason: z.string().max(1000).optional() });
+
+export async function rejectPlanRequest(req: Request, res: Response, next: NextFunction) {
+  try {
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const { reason } = rejectSchema.parse(req.body ?? {});
+    const data = await PlanReqSvc.rejectRequest(req.params.id as string, actor, reason);
+    res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);
   }
