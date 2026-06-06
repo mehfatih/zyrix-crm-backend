@@ -19,7 +19,7 @@ function auth(req: Request) {
 
 function settingsUrl(status: string): string {
   const base = (env.APP_URL || "https://crm.zyrix.co").replace(/\/$/, "");
-  return `${base}/en/settings/integrations?inbox=${status}`;
+  return `${base}/en/settings/email-inbox?inbox=${status}`;
 }
 
 export async function gmailConnect(req: Request, res: Response, next: NextFunction) {
