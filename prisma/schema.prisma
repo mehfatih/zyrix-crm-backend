@@ -1441,6 +1441,45 @@ model EmailInboxConnection {
   @@map("email_inbox_connections")
 }
 
+// Sprint 15E — per-company payment collection (iyzico/HyperPay). Distinct from
+// the platform subscription-billing Payment model. Keys tokenCipher-sealed.
+model PaymentConnection {
+  id         String   @id @default(uuid())
+  companyId  String
+  provider   String   // iyzico | hyperpay
+  sealedKeys String
+  currency   String   @db.Char(3)
+  sandbox    Boolean  @default(true)
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([companyId, provider])
+  @@map("payment_connections")
+}
+
+model PaymentRequest {
+  id          String    @id @default(uuid())
+  companyId   String
+  provider    String
+  quoteId     String?
+  invoiceId   String?
+  amount      Decimal   @db.Decimal(12, 2)
+  currency    String    @db.Char(3)
+  externalId  String?
+  checkoutUrl String?
+  status      String    @default("pending") // pending | paid | failed | expired
+  events      Json      @default("[]")
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([companyId, createdAt])
+  @@index([externalId])
+  @@index([quoteId])
+  @@map("payment_requests")
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // EMAIL TEMPLATES — reusable templates for campaigns
 // ─────────────────────────────────────────────────────────────────────────
