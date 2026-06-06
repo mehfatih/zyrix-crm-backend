@@ -2,6 +2,7 @@ import { prisma } from "../config/database";
 import { notFound } from "../middleware/errorHandler";
 import { randomBytes } from "crypto";
 import { sendEmail } from "./email.service";
+import { ensureTicketForInbound, logEvent } from "./ticket.service";
 
 // ============================================================================
 // CUSTOMER PORTAL SERVICE
@@ -189,6 +190,29 @@ export async function logout(token: string) {
     /* no-op */
   }
   return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SUPPORT — customer raises a request from the portal → service desk ticket
+// (inert unless the merchant has the service desk enabled)
+// ─────────────────────────────────────────────────────────────────────────
+export async function createPortalRequest(
+  customer: { id: string; companyId: string },
+  subject: string,
+  body: string
+): Promise<{ created: boolean; ticketId: string | null }> {
+  const ticketId = await ensureTicketForInbound({
+    companyId: customer.companyId,
+    channel: "portal",
+    customerId: customer.id,
+    subject,
+  });
+  if (!ticketId) return { created: false, ticketId: null };
+  // Record the customer's message text on the ticket timeline.
+  await logEvent(customer.companyId, ticketId, "reply_in", {
+    metadata: { channel: "portal", body: body.slice(0, 5000) },
+  });
+  return { created: true, ticketId };
 }
 
 // ─────────────────────────────────────────────────────────────────────────

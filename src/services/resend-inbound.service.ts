@@ -10,6 +10,7 @@
 
 import { prisma } from "../config/database";
 import { env } from "../config/env";
+import { ensureTicketForInbound } from "./ticket.service";
 
 export interface InboundReplyResult {
   matched: boolean;
@@ -136,6 +137,16 @@ export async function processInboundReply(payload: any): Promise<InboundReplyRes
   }
   await prisma.emailEvent.create({
     data: { emailId: original.id, type: "reply", meta: JSON.stringify({ inboundEmailId: inbound.id }) },
+  });
+
+  // Service desk: an inbound email reply outside an open ticket → ticket
+  // (inert unless the desk is enabled for the company).
+  void ensureTicketForInbound({
+    companyId: original.companyId,
+    channel: "email",
+    customerId: original.contactId,
+    emailMessageId: inbound.id,
+    subject: subject ?? null,
   });
 
   return {

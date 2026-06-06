@@ -115,6 +115,26 @@ router.get(
   }
 );
 
+// POST /api/portal/requests — customer raises a support request → ticket
+const portalRequestSchema = z.object({
+  subject: z.string().min(1).max(200),
+  body: z.string().min(1).max(5000),
+});
+router.post(
+  "/requests",
+  requireSession,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const customer = (req as any).portalCustomer as { id: string; companyId: string };
+      const dto = portalRequestSchema.parse(req.body);
+      const result = await PortalSvc.createPortalRequest(customer, dto.subject, dto.body);
+      res.status(result.created ? 201 : 200).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // POST /api/portal/logout
 router.post(
   "/logout",

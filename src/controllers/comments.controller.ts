@@ -53,7 +53,7 @@ export async function list(req: Request, res: Response, next: NextFunction) {
 // ──────────────────────────────────────────────────────────────────────
 
 const createSchema = z.object({
-  entityType: z.enum(["customer", "deal", "activity"]),
+  entityType: z.enum(["customer", "deal", "activity", "ticket"]),
   entityId: z.string().uuid(),
   body: z.string().min(1).max(10000),
   parentId: z.string().uuid().optional(),

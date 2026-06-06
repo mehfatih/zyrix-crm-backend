@@ -22,6 +22,7 @@ import { integrationError } from "../lib/errors/integrationErrors";
 import { isFeatureEnabled } from "./feature-flags.service";
 import { dispatchEmailReplied } from "./workflow-events.service";
 import { onContactReplied } from "./cadence.service";
+import { ensureTicketForInbound } from "./ticket.service";
 import { recordIntegrationEvent } from "./integration-events.service";
 
 const GMAIL_SCOPES = [
@@ -181,6 +182,15 @@ export async function matchAndStore(
       emailId: created.id, customerId: customer.id, replyPreview: body.slice(0, 280), repliedAt: msg.date.toISOString(),
     });
     void onContactReplied(conn.companyId, customer.id);
+    // Service desk: inbound email → ticket (inert unless the desk is enabled).
+    void ensureTicketForInbound({
+      companyId: conn.companyId,
+      channel: "email",
+      customerId: customer.id,
+      emailMessageId: created.id,
+      subject: msg.subject?.slice(0, 200) || null,
+      occurredAt: msg.date,
+    });
   }
 }
 

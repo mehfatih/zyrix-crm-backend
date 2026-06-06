@@ -15,9 +15,9 @@ import { prisma } from "../config/database";
 import { badRequest, notFound } from "../middleware/errorHandler";
 import { createNotification } from "./notifications.service";
 
-export type EntityType = "customer" | "deal" | "activity";
+export type EntityType = "customer" | "deal" | "activity" | "ticket";
 
-const VALID_ENTITY_TYPES: EntityType[] = ["customer", "deal", "activity"];
+const VALID_ENTITY_TYPES: EntityType[] = ["customer", "deal", "activity", "ticket"];
 
 export interface CommentRow {
   id: string;
@@ -114,6 +114,16 @@ async function resolveEntityTitle(
     });
     return a ? `${a.type}: ${a.title}` : "activity";
   }
+  if (entityType === "ticket") {
+    const rows = (await prisma.$queryRawUnsafe(
+      `SELECT "number","subject" FROM tickets WHERE "id" = $1 AND "companyId" = $2 LIMIT 1`,
+      entityId,
+      companyId
+    )) as Array<{ number: number; subject: string | null }>;
+    const t = rows[0];
+    if (!t) return "ticket";
+    return t.subject ? `#${t.number} ${t.subject}` : `ticket #${t.number}`;
+  }
   return entityType;
 }
 
@@ -127,7 +137,9 @@ function entityLink(
       ? `/customers/${entityId}`
       : entityType === "deal"
         ? `/deals/${entityId}`
-        : `/activities/${entityId}`;
+        : entityType === "ticket"
+          ? `/tickets/${entityId}`
+          : `/activities/${entityId}`;
   return `${base}?comment=${commentId}`;
 }
 

@@ -19,6 +19,7 @@ import {
 } from "./conversations.service";
 import { recordIntegrationEvent } from "../integration-events.service";
 import { onContactReplied } from "../cadence.service";
+import { ensureTicketForInbound } from "../ticket.service";
 
 /** Verify the X-Hub-Signature-256 header against the raw body. */
 export function verifySignature(rawBody: Buffer, header: string | undefined): boolean {
@@ -120,6 +121,14 @@ export async function processWebhookPayload(payload: any): Promise<void> {
             sentAt: msg.timestamp ? new Date(Number(msg.timestamp) * 1000) : null,
           });
           await touchInbound(conversationId);
+          // Service desk: auto-create/reopen a ticket (inert unless enabled).
+          void ensureTicketForInbound({
+            companyId,
+            channel: "whatsapp",
+            customerId: contactId,
+            conversationId,
+            subject: body,
+          });
           // Cadence auto-exit: a reply ends active enrollments (onReply rule).
           if (contactId) void onContactReplied(companyId, contactId);
           await recordIntegrationEvent({
