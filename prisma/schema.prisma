@@ -100,6 +100,7 @@ model Company {
   supportTickets SupportTicket[]
   auditLogs      AuditLog[]
   roles          Role[]
+  featureOverrides CompanyFeatureOverride[]
 
   @@index([status])
   @@index([plan])
@@ -540,6 +541,53 @@ model PlanOverride {
   @@index([companyId])
   @@index([featureSlug])
   @@map("plan_overrides")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ENTITLEMENTS (Sprint 16) — single source of truth for plan→feature access.
+// `plan_features` is the per-plan default matrix (booleans + numeric limits),
+// seeded from FEATURE_CATALOG.defaultByPlan + the limit matrix in
+// feature-flags.service.ts. `company_feature_overrides` is the per-tenant
+// 3-state override (inherit | force_on | force_off) plus an optional numeric
+// limit override. entitlements.service.resolve() reads override → plan_features
+// → catalog default. These SUPERSEDE the legacy `plan_overrides` runtime path
+// (kept only for back-compat reads) and the Company.enabledFeatures JSON map
+// (still honored as force_on/force_off during the transition).
+// ─────────────────────────────────────────────────────────────────────────
+model PlanFeature {
+  id         String   @id @default(uuid())
+  plan       String // free | starter | business | enterprise
+  featureKey String
+  enabled    Boolean  @default(false)
+  // Numeric cap for limit-type features (users, contacts, storage, etc.).
+  // null = unlimited (enterprise) OR not a limit feature (boolean).
+  limitValue Int?
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@unique([plan, featureKey])
+  @@index([plan])
+  @@map("plan_features")
+}
+
+model CompanyFeatureOverride {
+  id         String @id @default(uuid())
+  companyId  String
+  featureKey String
+  // inherit (use plan default) | force_on | force_off
+  mode       String @default("inherit")
+  // Optional numeric limit override for limit-type features. null = inherit
+  // the plan's limit. Applies regardless of `mode` for limit features.
+  limitOverride Int?
+  updatedBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, featureKey])
+  @@index([companyId])
+  @@map("company_feature_overrides")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

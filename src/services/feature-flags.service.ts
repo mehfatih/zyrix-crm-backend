@@ -28,9 +28,16 @@ export type FeatureCategory =
   | "security"
   | "integrations"
   | "platform"
-  | "ux";
+  | "ux"
+  | "limits";
 
 export type PlanSlug = "free" | "starter" | "business" | "enterprise";
+
+// Sprint 16 — features are either booleans (have / don't have) or numeric
+// LIMITS (users, contacts, storage, ...). For a limit feature, `defaultByPlan`
+// still answers "does this plan have the capability at all" (limit !== 0) and
+// `limitByPlan` carries the numeric cap (null = unlimited).
+export type FeatureType = "boolean" | "limit";
 
 export interface FeatureDefinition {
   key: string;
@@ -39,6 +46,10 @@ export interface FeatureDefinition {
   description: { en: string; ar: string; tr: string };
   icon: string; // lucide-react icon name
   defaultByPlan: Record<PlanSlug, boolean>;
+  // Defaults to "boolean" when omitted.
+  type?: FeatureType;
+  // Required for type === "limit". null = unlimited for that plan.
+  limitByPlan?: Record<PlanSlug, number | null>;
 }
 
 // Shorthand constants to keep the catalog readable.
@@ -693,7 +704,342 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     icon: "Smartphone",
     defaultByPlan: ALL_ON,
   },
+
+  // ════════════════════════════════════════════════════════════════════
+  // Sprint 16 — additions: marketing-comparison rows promoted to canonical
+  // entitlement keys (so /pricing display + enforcement share one truth),
+  // plus numeric LIMIT features. defaultByPlan tuned to match the marketing
+  // pricing matrix (lib/billing/plan-catalog.ts). See PLAN_RETUNE below for
+  // the existing keys whose tier changed in this sprint.
+  // ════════════════════════════════════════════════════════════════════
+
+  // ─── SALES / CPQ ───
+  {
+    key: "price_books",
+    category: "sales",
+    label: { en: "Price books & bundles", ar: "قوائم الأسعار والباقات", tr: "Fiyat listeleri ve paketler" },
+    description: {
+      en: "Segment price books and product bundles for CPQ",
+      ar: "قوائم أسعار حسب الشريحة وباقات المنتجات للتسعير",
+      tr: "CPQ için segment fiyat listeleri ve ürün paketleri",
+    },
+    icon: "BookOpen",
+    defaultByPlan: STARTER_UP,
+  },
+  {
+    key: "discount_approvals",
+    category: "sales",
+    label: { en: "Discount approvals + AI suggestions", ar: "موافقات الخصم + اقتراحات الذكاء", tr: "İndirim onayları + AI önerileri" },
+    description: {
+      en: "Discount governance with approval routing and AI price hints",
+      ar: "حوكمة الخصومات مع مسار الموافقات واقتراحات سعر بالذكاء",
+      tr: "Onay yönlendirme ve AI fiyat ipuçlarıyla indirim yönetimi",
+    },
+    icon: "BadgePercent",
+    defaultByPlan: BUSINESS_UP,
+  },
+
+  // ─── GROWTH ───
+  {
+    key: "email_tracking",
+    category: "growth",
+    label: { en: "Email open/click tracking", ar: "تتبع فتح/ضغط الإيميل", tr: "E-posta açılma/tıklama takibi" },
+    description: {
+      en: "Track opens, clicks and best-send-time on CRM emails",
+      ar: "تتبع الفتح والنقر وأفضل وقت إرسال لرسائل الـ CRM",
+      tr: "CRM e-postalarında açılma, tıklama ve en iyi gönderim saatini izle",
+    },
+    icon: "MailOpen",
+    defaultByPlan: STARTER_UP,
+  },
+  {
+    key: "forms",
+    category: "growth",
+    label: { en: "Forms & kiosks", ar: "النماذج والأكشاك", tr: "Formlar ve kiosklar" },
+    description: {
+      en: "Public form flows, guided entry and kiosk capture",
+      ar: "نماذج عامة وإدخال موجّه والتقاط عبر الكشك",
+      tr: "Herkese açık form akışları, yönlendirilmiş giriş ve kiosk yakalama",
+    },
+    icon: "ClipboardList",
+    defaultByPlan: STARTER_UP,
+  },
+
+  // ─── AI ───
+  {
+    key: "custom_actions",
+    category: "ai",
+    label: { en: "Custom Actions (recipes)", ar: "إجراءات مخصصة (وصفات)", tr: "Özel Eylemler (tarifler)" },
+    description: {
+      en: "No-code action recipes: webhooks, computed fields, conditional updates",
+      ar: "وصفات إجراءات بدون كود: webhooks وحقول محسوبة وتحديثات شرطية",
+      tr: "Kodsuz eylem tarifleri: webhook'lar, hesaplanan alanlar, koşullu güncellemeler",
+    },
+    icon: "Zap",
+    defaultByPlan: BUSINESS_UP,
+  },
+  {
+    key: "ai_studio",
+    category: "ai",
+    label: { en: "AI Studio — company voice", ar: "استوديو الذكاء — صوت الشركة", tr: "AI Stüdyo — şirket sesi" },
+    description: {
+      en: "Tune the company AI personality injected into generative replies",
+      ar: "اضبط شخصية الذكاء للشركة المحقونة في الردود التوليدية",
+      tr: "Üretken yanıtlara enjekte edilen şirket AI kişiliğini ayarla",
+    },
+    icon: "Palette",
+    defaultByPlan: BUSINESS_UP,
+  },
+  {
+    key: "scheduled_ai_reports",
+    category: "ai",
+    label: { en: "Scheduled AI reports", ar: "تقارير ذكاء مجدولة", tr: "Zamanlanmış AI raporları" },
+    description: {
+      en: "Free-text AI reports emailed on a daily/weekly schedule",
+      ar: "تقارير ذكاء نصية تُرسل بالبريد يوميًا/أسبوعيًا",
+      tr: "Günlük/haftalık zamanlamayla e-postalanan serbest metin AI raporları",
+    },
+    icon: "CalendarClock",
+    defaultByPlan: BUSINESS_UP,
+  },
+
+  // ─── INTEGRATIONS ───
+  {
+    key: "google_ads",
+    category: "integrations",
+    label: { en: "Google Ads lead forms", ar: "نماذج عملاء Google Ads", tr: "Google Ads lead formları" },
+    description: {
+      en: "Capture Google Ads lead-form submissions into the CRM",
+      ar: "التقاط نماذج عملاء Google Ads داخل الـ CRM",
+      tr: "Google Ads lead formu gönderimlerini CRM'e yakala",
+    },
+    icon: "Megaphone",
+    defaultByPlan: BUSINESS_UP,
+  },
+  {
+    key: "ecommerce_sync",
+    category: "integrations",
+    label: { en: "E-commerce sync", ar: "مزامنة المتاجر", tr: "E-ticaret senkronizasyonu" },
+    description: {
+      en: "Sync Shopify / WooCommerce customers, orders and products",
+      ar: "مزامنة عملاء وطلبات ومنتجات Shopify / WooCommerce",
+      tr: "Shopify / WooCommerce müşteri, sipariş ve ürünlerini senkronize et",
+    },
+    icon: "ShoppingCart",
+    defaultByPlan: STARTER_UP,
+  },
+
+  // ─── ADVANCED / ADMIN ───
+  {
+    key: "custom_branding",
+    category: "advanced",
+    label: { en: "Custom branding", ar: "هوية مخصصة", tr: "Özel marka" },
+    description: {
+      en: "Custom logo and brand colors across the workspace",
+      ar: "شعار وألوان علامة مخصصة عبر مساحة العمل",
+      tr: "Çalışma alanı genelinde özel logo ve marka renkleri",
+    },
+    icon: "Paintbrush",
+    defaultByPlan: BUSINESS_UP,
+  },
+
+  // ─── ENTERPRISE (contractual / display — surfaced in the matrix) ───
+  {
+    key: "sso",
+    category: "security",
+    label: { en: "SSO (SAML, Okta, Azure AD)", ar: "دخول موحّد (SAML, Okta, Azure AD)", tr: "SSO (SAML, Okta, Azure AD)" },
+    description: {
+      en: "Single sign-on via SAML / Okta / Azure AD",
+      ar: "تسجيل دخول موحّد عبر SAML / Okta / Azure AD",
+      tr: "SAML / Okta / Azure AD ile tek oturum açma",
+    },
+    icon: "KeyRound",
+    defaultByPlan: ENTERPRISE_ONLY,
+  },
+  {
+    key: "custom_domain",
+    category: "platform",
+    label: { en: "Custom domain", ar: "نطاق مخصص", tr: "Özel alan adı" },
+    description: {
+      en: "Serve the CRM on the customer's own domain",
+      ar: "تشغيل الـ CRM على نطاق العميل الخاص",
+      tr: "CRM'i müşterinin kendi alan adında sun",
+    },
+    icon: "Globe",
+    defaultByPlan: ENTERPRISE_ONLY,
+  },
+  {
+    key: "white_label",
+    category: "platform",
+    label: { en: "White-label for resellers", ar: "علامة بيضاء للموزعين", tr: "Bayi için beyaz etiket" },
+    description: {
+      en: "Remove Zyrix branding for reseller deployments",
+      ar: "إزالة علامة Zyrix لعمليات الموزعين",
+      tr: "Bayi dağıtımları için Zyrix markasını kaldır",
+    },
+    icon: "Tag",
+    defaultByPlan: ENTERPRISE_ONLY,
+  },
+  {
+    key: "data_residency",
+    category: "platform",
+    label: { en: "Custom data residency", ar: "موقع بيانات مخصص", tr: "Özel veri lokasyonu" },
+    description: {
+      en: "Choose data region (KSA, UAE, EU)",
+      ar: "اختيار منطقة البيانات (السعودية، الإمارات، الاتحاد الأوروبي)",
+      tr: "Veri bölgesini seç (S.Arabistan, BAE, AB)",
+    },
+    icon: "Database",
+    defaultByPlan: ENTERPRISE_ONLY,
+  },
+  {
+    key: "sla",
+    category: "platform",
+    label: { en: "99.9% uptime SLA", ar: "ضمان جاهزية 99.9%", tr: "%99.9 çalışma süresi SLA" },
+    description: {
+      en: "Contractual 99.9% uptime guarantee",
+      ar: "ضمان تعاقدي بنسبة جاهزية 99.9%",
+      tr: "Sözleşmeye dayalı %99.9 çalışma süresi garantisi",
+    },
+    icon: "ShieldCheck",
+    defaultByPlan: ENTERPRISE_ONLY,
+  },
+
+  // ════════════════════════════════════════════════════════════════════
+  // LIMIT features — numeric caps. defaultByPlan answers "has the capability
+  // at all" (limit !== 0); limitByPlan carries the cap (null = unlimited).
+  // Values mirror lib/billing/plan-catalog.ts exactly.
+  // ════════════════════════════════════════════════════════════════════
+  {
+    key: "limit_users",
+    category: "limits",
+    label: { en: "Team members", ar: "أعضاء الفريق", tr: "Ekip üyeleri" },
+    description: { en: "Maximum active users", ar: "أقصى عدد للمستخدمين النشطين", tr: "Maksimum aktif kullanıcı" },
+    icon: "Users",
+    type: "limit",
+    defaultByPlan: ALL_ON,
+    limitByPlan: { free: 3, starter: 10, business: 50, enterprise: null },
+  },
+  {
+    key: "limit_contacts",
+    category: "limits",
+    label: { en: "Contacts", ar: "جهات الاتصال", tr: "Kişiler" },
+    description: { en: "Maximum contacts", ar: "أقصى عدد لجهات الاتصال", tr: "Maksimum kişi" },
+    icon: "Contact",
+    type: "limit",
+    defaultByPlan: ALL_ON,
+    limitByPlan: { free: 100, starter: 1000, business: 10000, enterprise: null },
+  },
+  {
+    key: "limit_storage_gb",
+    category: "limits",
+    label: { en: "File storage (GB)", ar: "تخزين الملفات (جيجابايت)", tr: "Dosya depolama (GB)" },
+    description: { en: "Maximum file storage in gigabytes", ar: "أقصى تخزين للملفات بالجيجابايت", tr: "Gigabayt cinsinden maksimum dosya depolama" },
+    icon: "HardDrive",
+    type: "limit",
+    defaultByPlan: ALL_ON,
+    limitByPlan: { free: 1, starter: 10, business: 100, enterprise: null },
+  },
+  {
+    key: "limit_whatsapp_msgs_mo",
+    category: "limits",
+    label: { en: "WhatsApp messages / month", ar: "رسائل واتساب / شهر", tr: "WhatsApp mesajı / ay" },
+    description: { en: "Monthly WhatsApp message allowance", ar: "حصة رسائل واتساب الشهرية", tr: "Aylık WhatsApp mesaj kotası" },
+    icon: "MessageCircle",
+    type: "limit",
+    defaultByPlan: ALL_ON,
+    limitByPlan: { free: 100, starter: 2000, business: 20000, enterprise: null },
+  },
+  {
+    key: "limit_products",
+    category: "limits",
+    label: { en: "Products", ar: "المنتجات", tr: "Ürünler" },
+    description: { en: "Maximum catalog products", ar: "أقصى عدد لمنتجات الكتالوج", tr: "Maksimum katalog ürünü" },
+    icon: "Package",
+    type: "limit",
+    defaultByPlan: ALL_ON,
+    limitByPlan: { free: 25, starter: 500, business: null, enterprise: null },
+  },
+  {
+    key: "limit_ecommerce_stores",
+    category: "limits",
+    label: { en: "Connected stores", ar: "المتاجر المرتبطة", tr: "Bağlı mağazalar" },
+    description: { en: "Maximum connected e-commerce stores", ar: "أقصى عدد للمتاجر الإلكترونية المرتبطة", tr: "Maksimum bağlı e-ticaret mağazası" },
+    icon: "Store",
+    type: "limit",
+    defaultByPlan: STARTER_UP,
+    limitByPlan: { free: 0, starter: 1, business: 3, enterprise: null },
+  },
+  {
+    key: "limit_forms",
+    category: "limits",
+    label: { en: "Forms", ar: "النماذج", tr: "Formlar" },
+    description: { en: "Maximum active form flows", ar: "أقصى عدد لتدفقات النماذج النشطة", tr: "Maksimum aktif form akışı" },
+    icon: "ClipboardList",
+    type: "limit",
+    defaultByPlan: STARTER_UP,
+    limitByPlan: { free: 0, starter: 3, business: null, enterprise: null },
+  },
+  {
+    key: "limit_active_workflows",
+    category: "limits",
+    label: { en: "Active workflows", ar: "سير العمل النشط", tr: "Aktif iş akışları" },
+    description: { en: "Maximum simultaneously-enabled workflows", ar: "أقصى عدد لسير العمل المفعّل في آن واحد", tr: "Aynı anda etkin maksimum iş akışı" },
+    icon: "Workflow",
+    type: "limit",
+    defaultByPlan: STARTER_UP,
+    limitByPlan: { free: 0, starter: 5, business: null, enterprise: null },
+  },
+  {
+    key: "limit_cadences",
+    category: "limits",
+    label: { en: "Cadences", ar: "التتابعات", tr: "Kadanslar" },
+    description: { en: "Maximum active cadences", ar: "أقصى عدد للتتابعات النشطة", tr: "Maksimum aktif kadans" },
+    icon: "Repeat",
+    type: "limit",
+    defaultByPlan: STARTER_UP,
+    limitByPlan: { free: 0, starter: 1, business: null, enterprise: null },
+  },
 ];
+
+// ──────────────────────────────────────────────────────────────────────
+// Sprint 16 — defaultByPlan RETUNE for pre-existing keys.
+// Until this sprint every catalog key shipped ALL_ON (nothing gated by plan)
+// so the live tenants kept everything regardless of plan. This map moves the
+// premium keys onto their marketing-pricing tiers in ONE auditable place.
+//
+// ⚠️ LIVE-CUSTOMER SAFETY: the existing gateFeature() middleware already reads
+// these defaults, so this retune is itself an enforcement change. It MUST ship
+// in the same commit as — and AFTER — the grandfathering pass that writes
+// force_on overrides for every feature the 3 live tenants actually use. See
+// scripts/s16a-grandfather.ts and entitlements.service.ts.
+// ──────────────────────────────────────────────────────────────────────
+const PLAN_RETUNE: Record<string, Record<PlanSlug, boolean>> = {
+  // Sales — starter and up
+  quotes: STARTER_UP,
+  quote_esign: STARTER_UP,
+  payments_collect: STARTER_UP,
+  contracts: STARTER_UP,
+  // Growth / comms — starter and up
+  email_replies: STARTER_UP,
+  email_inbox: STARTER_UP,
+  marketing_automation: STARTER_UP,
+  // Automation engine — starter gets a capped count (limit_active_workflows)
+  ai_workflows: STARTER_UP,
+  // AI — business and up
+  ai_messaging: BUSINESS_UP,
+  ai_agents: BUSINESS_UP,
+  ai_cfo: BUSINESS_UP,
+  // Advanced — business and up
+  multi_brand: BUSINESS_UP,
+  analytics_reports: BUSINESS_UP,
+  commission: BUSINESS_UP,
+};
+
+for (const def of FEATURE_CATALOG) {
+  const tuned = PLAN_RETUNE[def.key];
+  if (tuned) def.defaultByPlan = tuned;
+}
 
 export type FeatureKey = (typeof FEATURE_CATALOG)[number]["key"];
 
@@ -704,6 +1050,41 @@ const CATALOG_BY_KEY: Map<string, FeatureDefinition> = new Map(
 
 function isPlanSlug(value: string): value is PlanSlug {
   return value === "free" || value === "starter" || value === "business" || value === "enterprise";
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Catalog accessors (Sprint 16) — the entitlements resolver + the
+// plan_features seed read the canonical defaults/limits through these so
+// there is exactly one definition of each value.
+// ──────────────────────────────────────────────────────────────────────
+
+export const ALL_PLANS: PlanSlug[] = ["free", "starter", "business", "enterprise"];
+
+export const LIMIT_KEYS: string[] = FEATURE_CATALOG.filter(
+  (f) => f.type === "limit"
+).map((f) => f.key);
+
+export function isLimitFeature(key: string): boolean {
+  return CATALOG_BY_KEY.get(key)?.type === "limit";
+}
+
+export function getCatalogEntry(key: string): FeatureDefinition | undefined {
+  return CATALOG_BY_KEY.get(key);
+}
+
+/** Plan-default enabled state from the catalog (before any override). */
+export function getCatalogDefault(key: string, plan: PlanSlug): boolean {
+  return CATALOG_BY_KEY.get(key)?.defaultByPlan[plan] === true;
+}
+
+/**
+ * Plan-default numeric limit from the catalog. Returns null for unlimited
+ * AND for non-limit (boolean) features.
+ */
+export function getCatalogLimit(key: string, plan: PlanSlug): number | null {
+  const def = CATALOG_BY_KEY.get(key);
+  if (!def || def.type !== "limit" || !def.limitByPlan) return null;
+  return def.limitByPlan[plan];
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -739,33 +1120,24 @@ async function getCompanyPlanSlug(companyId: string): Promise<PlanSlug> {
  *   2. Per-plan default from the catalog entry's `defaultByPlan`
  *   3. `true` (unknown key, never in catalog — don't block)
  */
+// NOTE (Sprint 16): resolution now lives in entitlements.service (the single
+// source of truth — override > legacy JSON > plan_features > catalog). These
+// two functions delegate to it so gateFeature() and every existing caller pick
+// up per-tenant overrides + the plan retune consistently. The import is lazy to
+// avoid a module load-time cycle (entitlements imports this file's catalog).
 export async function isFeatureEnabled(
   companyId: string,
   key: string
 ): Promise<boolean> {
-  const [overrides, plan] = await Promise.all([
-    getEnabledFeatures(companyId),
-    getCompanyPlanSlug(companyId),
-  ]);
-  if (key in overrides) return overrides[key] === true;
-  const def = CATALOG_BY_KEY.get(key);
-  if (!def) return true; // unknown key — never block
-  return def.defaultByPlan[plan] === true;
+  const { isEnabled } = await import("./entitlements.service");
+  return isEnabled(companyId, key);
 }
 
 export async function getFullFeatureMap(
   companyId: string
 ): Promise<Record<string, boolean>> {
-  const [overrides, plan] = await Promise.all([
-    getEnabledFeatures(companyId),
-    getCompanyPlanSlug(companyId),
-  ]);
-  const full: Record<string, boolean> = {};
-  for (const def of FEATURE_CATALOG) {
-    full[def.key] =
-      def.key in overrides ? overrides[def.key] === true : def.defaultByPlan[plan];
-  }
-  return full;
+  const { booleanMap } = await import("./entitlements.service");
+  return booleanMap(companyId);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -787,6 +1159,8 @@ export async function setFeatureFlag(
     JSON.stringify(next),
     companyId
   );
+  const { invalidateCompany } = await import("./entitlements.service");
+  invalidateCompany(companyId);
   return getFullFeatureMap(companyId);
 }
 
@@ -807,5 +1181,7 @@ export async function setBulkFeatures(
     JSON.stringify(next),
     companyId
   );
+  const { invalidateCompany } = await import("./entitlements.service");
+  invalidateCompany(companyId);
   return getFullFeatureMap(companyId);
 }

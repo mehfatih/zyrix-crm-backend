@@ -64,6 +64,13 @@ const envSchema = z.object({
   // this is flipped. "true" enables.
   SMART_FOLLOWUP_ON_ENGINE: z.string().optional(),
 
+  // Sprint 16: master switch for entitlement ENFORCEMENT (requireFeature +
+  // enforceLimit blocking in Phase B). Resolution is ALWAYS computed; this flag
+  // only decides whether the new layer BLOCKS. Default OFF — Mehmet flips it to
+  // "true" only after reviewing the grandfathering report. The pre-existing
+  // gateFeature() middleware is unaffected by this flag.
+  ENTITLEMENTS_ENFORCE: z.string().optional(),
+
   GEMINI_API_KEY: z.string().optional(),
 
   // E-commerce OAuth providers. All optional — the corresponding
