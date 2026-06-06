@@ -912,8 +912,14 @@ model EmailMessage {
   cadenceId        String?
   cadenceStepIndex Int?
 
+  // Sprint 15C — inbound replies
+  repliedAt        DateTime? // set on the ORIGINAL outbound when a reply arrives
+  replyToMessageId String?   // on an inbound row → the original outbound id
+  body             String?   // full stripped text (inbound replies)
+
   @@index([companyId, contactId, sentAt])
   @@index([providerId])
+  @@index([replyToMessageId])
   @@map("email_messages")
 }
 
