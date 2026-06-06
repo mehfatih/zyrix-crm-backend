@@ -18,6 +18,7 @@ import {
   dispatchTicketCreated,
   dispatchTicketResolved,
 } from "./workflow-events.service";
+import { applySlaOnCreate, recomputeTicket, seedPresets } from "./sla.service";
 
 const REOPEN_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -50,6 +51,11 @@ export interface TicketRow {
   resolvedAt: Date | null;
   closedAt: Date | null;
   lastCustomerMsgAt: Date | null;
+  slaPolicyId: string | null;
+  firstResponseDueAt: Date | null;
+  resolveDueAt: Date | null;
+  slaBreachedAt: Date | null;
+  slaState: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,7 +63,8 @@ export interface TicketRow {
 const COLS = `
   "id","companyId","number","customerId","channel","subject","status","priority",
   "assigneeId","conversationId","emailMessageId","firstResponseAt","resolvedAt",
-  "closedAt","lastCustomerMsgAt","createdAt","updatedAt"
+  "closedAt","lastCustomerMsgAt","slaPolicyId","firstResponseDueAt","resolveDueAt",
+  "slaBreachedAt","slaState","createdAt","updatedAt"
 `;
 
 // ──────────────────────────────────────────────────────────────────────
@@ -68,35 +75,48 @@ export interface ServiceDeskSettings {
   companyId: string;
   enabled: boolean;
   autoCreate: boolean;
+  defaultSlaPolicyId: string | null;
 }
 
 export async function getSettings(companyId: string): Promise<ServiceDeskSettings> {
   const rows = (await prisma.$queryRawUnsafe(
-    `SELECT "companyId","enabled","autoCreate" FROM service_desk_settings WHERE "companyId" = $1 LIMIT 1`,
+    `SELECT "companyId","enabled","autoCreate","defaultSlaPolicyId"
+       FROM service_desk_settings WHERE "companyId" = $1 LIMIT 1`,
     companyId
   )) as ServiceDeskSettings[];
-  return rows[0] ?? { companyId, enabled: false, autoCreate: true };
+  return rows[0] ?? { companyId, enabled: false, autoCreate: true, defaultSlaPolicyId: null };
 }
 
 export async function updateSettings(
   companyId: string,
-  patch: { enabled?: boolean; autoCreate?: boolean }
+  patch: { enabled?: boolean; autoCreate?: boolean; defaultSlaPolicyId?: string | null }
 ): Promise<ServiceDeskSettings> {
   const current = await getSettings(companyId);
   const enabled = patch.enabled ?? current.enabled;
   const autoCreate = patch.autoCreate ?? current.autoCreate;
+  let defaultSlaPolicyId =
+    patch.defaultSlaPolicyId !== undefined ? patch.defaultSlaPolicyId : current.defaultSlaPolicyId;
+
+  // One-click setup: turning the desk on seeds the 3 SLA presets + picks the
+  // recommended default if the merchant hasn't chosen one yet.
+  if (enabled && !defaultSlaPolicyId) {
+    defaultSlaPolicyId = await seedPresets(companyId);
+  }
+
   await prisma.$executeRawUnsafe(
-    `INSERT INTO service_desk_settings ("companyId","enabled","autoCreate","createdAt","updatedAt")
-     VALUES ($1,$2,$3,NOW(),NOW())
+    `INSERT INTO service_desk_settings ("companyId","enabled","autoCreate","defaultSlaPolicyId","createdAt","updatedAt")
+     VALUES ($1,$2,$3,$4,NOW(),NOW())
      ON CONFLICT ("companyId")
      DO UPDATE SET "enabled" = EXCLUDED."enabled",
                    "autoCreate" = EXCLUDED."autoCreate",
+                   "defaultSlaPolicyId" = EXCLUDED."defaultSlaPolicyId",
                    "updatedAt" = NOW()`,
     companyId,
     enabled,
-    autoCreate
+    autoCreate,
+    defaultSlaPolicyId
   );
-  return { companyId, enabled, autoCreate };
+  return { companyId, enabled, autoCreate, defaultSlaPolicyId };
 }
 
 /** Entitled AND merchant-enabled. Both required ⇒ fully inert until opt-in. */
@@ -211,6 +231,8 @@ export async function createTicket(params: CreateTicketParams): Promise<TicketRo
     metadata: { channel, number },
   });
   void dispatchTicketCreated(params.companyId, toPayload(ticket));
+  // SLA: stamp first-response/resolution due times from the company's policy.
+  await applySlaOnCreate(params.companyId, ticket.id, ticket.createdAt);
   return ticket;
 }
 
@@ -389,6 +411,9 @@ export async function listTickets(
     args.push(filters.channel);
     i++;
   }
+  if (filters.breachingSoon) {
+    where.push(`t."slaState" IN ('near_breach','breached')`);
+  }
 
   const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
   args.push(limit);
@@ -397,6 +422,7 @@ export async function listTickets(
     `SELECT t."id", t."companyId", t."number", t."customerId", t."channel", t."subject",
             t."status", t."priority", t."assigneeId", t."conversationId", t."emailMessageId",
             t."firstResponseAt", t."resolvedAt", t."closedAt", t."lastCustomerMsgAt",
+            t."slaPolicyId", t."firstResponseDueAt", t."resolveDueAt", t."slaBreachedAt", t."slaState",
             t."createdAt", t."updatedAt",
             cu."fullName" AS "customerName",
             u."fullName" AS "assigneeName"
@@ -421,6 +447,7 @@ export async function getTicket(
     `SELECT t."id", t."companyId", t."number", t."customerId", t."channel", t."subject",
             t."status", t."priority", t."assigneeId", t."conversationId", t."emailMessageId",
             t."firstResponseAt", t."resolvedAt", t."closedAt", t."lastCustomerMsgAt",
+            t."slaPolicyId", t."firstResponseDueAt", t."resolveDueAt", t."slaBreachedAt", t."slaState",
             t."createdAt", t."updatedAt",
             cu."fullName" AS "customerName",
             u."fullName" AS "assigneeName"
@@ -450,19 +477,25 @@ export async function listTicketEvents(companyId: string, ticketId: string) {
 export async function getCounts(
   companyId: string,
   userId: string
-): Promise<{ open: number; unassigned: number; mine: number }> {
+): Promise<{ open: number; unassigned: number; mine: number; breachingSoon: number }> {
   const rows = (await prisma.$queryRawUnsafe(
     `SELECT
        COUNT(*) FILTER (WHERE "status" = ANY($2::text[])) AS "open",
        COUNT(*) FILTER (WHERE "status" = ANY($2::text[]) AND "assigneeId" IS NULL) AS "unassigned",
-       COUNT(*) FILTER (WHERE "status" = ANY($2::text[]) AND "assigneeId" = $3) AS "mine"
+       COUNT(*) FILTER (WHERE "status" = ANY($2::text[]) AND "assigneeId" = $3) AS "mine",
+       COUNT(*) FILTER (WHERE "status" = ANY($2::text[]) AND "slaState" IN ('near_breach','breached')) AS "breachingSoon"
      FROM tickets WHERE "companyId" = $1`,
     companyId,
     [...OPEN_STATUSES],
     userId
-  )) as Array<{ open: bigint; unassigned: bigint; mine: bigint }>;
+  )) as Array<{ open: bigint; unassigned: bigint; mine: bigint; breachingSoon: bigint }>;
   const r = rows[0];
-  return { open: Number(r.open), unassigned: Number(r.unassigned), mine: Number(r.mine) };
+  return {
+    open: Number(r.open),
+    unassigned: Number(r.unassigned),
+    mine: Number(r.mine),
+    breachingSoon: Number(r.breachingSoon),
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -567,6 +600,8 @@ export async function recordOutboundReply(
     ticketId
   );
   await logEvent(companyId, ticketId, "reply_out", { actorUserId });
+  // First response may satisfy the first-response SLA → refresh the badge.
+  void recomputeTicket(companyId, ticketId);
 }
 
 async function getRaw(companyId: string, id: string): Promise<TicketRow | null> {

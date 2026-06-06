@@ -16,6 +16,7 @@ router.use(requireFeature("service_desk"));
 // Static paths before /:id
 router.get("/settings", controller.getSettings);
 router.put("/settings", controller.updateSettings);
+router.get("/sla/policies", controller.slaPolicies);
 router.get("/counts", controller.counts);
 
 router.get("/", controller.list);

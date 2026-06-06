@@ -8,6 +8,7 @@ import { sendText, sendTemplate } from "../services/whatsapp/send";
 import { sendMessage as sendMetaMessage } from "../services/meta-messaging/send";
 import { composeAndSend } from "../services/email-query.service";
 import { listContactEmails } from "../services/email-query.service";
+import { listPolicies } from "../services/sla.service";
 
 // ============================================================================
 // SERVICE DESK — TICKETS CONTROLLER (/api/tickets, session auth)
@@ -156,9 +157,18 @@ export async function getSettings(req: Request, res: Response, next: NextFunctio
   } catch (err) { next(err); }
 }
 
+export async function slaPolicies(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const data = await listPolicies(companyId);
+    res.status(200).json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
 const settingsSchema = z.object({
   enabled: z.boolean().optional(),
   autoCreate: z.boolean().optional(),
+  defaultSlaPolicyId: z.string().uuid().nullable().optional(),
 });
 
 export async function updateSettings(req: Request, res: Response, next: NextFunction) {
