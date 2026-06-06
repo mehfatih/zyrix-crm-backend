@@ -7,6 +7,14 @@ import {
   setFeatureFlag,
   setBulkFeatures,
 } from "../services/feature-flags.service";
+import {
+  getAdminMatrix,
+  setOverride,
+  resetAllOverrides,
+  forceOnAll,
+  listAudit,
+  type OverrideMode,
+} from "../services/entitlements.service";
 import { recordAudit, extractRequestMeta } from "../utils/audit";
 
 function auth(req: Request) {
@@ -112,6 +120,73 @@ export async function adminSetBulk(
       metadata: { count: Object.keys(dto.flags).length },
       ...extractRequestMeta(req),
     });
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Sprint 16C — god-mode entitlement matrix (super-admin)
+// Mounted on /api/admin/companies/:id/entitlements*
+// ──────────────────────────────────────────────────────────────────────
+
+export async function adminGetMatrix(req: Request, res: Response, next: NextFunction) {
+  try {
+    const data = await getAdminMatrix(req.params.id as string);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const overrideSchema = z.object({
+  mode: z.enum(["inherit", "force_on", "force_off"]),
+  limitOverride: z.number().int().min(0).nullable().optional(),
+});
+
+export async function adminSetOverride(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { userId } = auth(req);
+    const companyId = req.params.id as string;
+    const key = req.params.key as string;
+    const dto = overrideSchema.parse(req.body);
+    const data = await setOverride(
+      companyId,
+      key,
+      dto.mode as OverrideMode,
+      dto.limitOverride ?? null,
+      userId
+    );
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminResetEntitlements(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { userId } = auth(req);
+    const data = await resetAllOverrides(req.params.id as string, userId);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminForceOnAll(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { userId } = auth(req);
+    const data = await forceOnAll(req.params.id as string, userId);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminEntitlementAudit(req: Request, res: Response, next: NextFunction) {
+  try {
+    const data = await listAudit(req.params.id as string, 50);
     res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);

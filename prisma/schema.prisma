@@ -590,6 +590,24 @@ model CompanyFeatureOverride {
   @@map("company_feature_overrides")
 }
 
+// Sprint 16C — audit trail for every god-mode change made from the platform
+// admin entitlement matrix (override set, bulk reset/force-on, plan change).
+// Rendered under the matrix. Dedicated table (not the tenant audit_logs) since
+// the actor is a platform super-admin, not a tenant user.
+model EntitlementAudit {
+  id         String   @id @default(uuid())
+  companyId  String
+  actorId    String? // platform super-admin user id
+  action     String // set_override | reset_all | force_on_all | plan_change
+  featureKey String? // null for bulk / plan actions
+  oldValue   Json? // { mode, limitOverride } | { plan } | { enabled, limit }
+  newValue   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@map("entitlement_audit")
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // SUBSCRIPTIONS
 // ─────────────────────────────────────────────────────────────────────────

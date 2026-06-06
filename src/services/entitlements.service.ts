@@ -273,3 +273,170 @@ export async function booleanMap(
   for (const k of Object.keys(features)) out[k] = features[k].enabled;
   return out;
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Platform-admin god-mode matrix (Sprint 16C)
+// ──────────────────────────────────────────────────────────────────────
+
+export type OverrideMode = "inherit" | "force_on" | "force_off";
+
+export interface MatrixRow {
+  key: string;
+  category: string;
+  type: "boolean" | "limit";
+  label: { en: string; ar: string; tr: string };
+  planDefault: { enabled: boolean; limit: number | null };
+  override: { mode: OverrideMode; limitOverride: number | null };
+  effective: { enabled: boolean; limit: number | null };
+}
+
+export interface AdminMatrix {
+  plan: PlanSlug;
+  rows: MatrixRow[];
+}
+
+/** Full per-tenant matrix for the admin Features tab. */
+export async function getAdminMatrix(companyId: string): Promise<AdminMatrix> {
+  const state = await loadCompanyState(companyId);
+  const planRows = await loadPlanRows(state.plan);
+  const rows: MatrixRow[] = FEATURE_CATALOG.map((def) => {
+    const planRow = planRows.get(def.key);
+    const planEnabled = planRow ? planRow.enabled : def.defaultByPlan[state.plan] === true;
+    const planLimit = planRow
+      ? planRow.limitValue
+      : def.type === "limit" && def.limitByPlan
+        ? def.limitByPlan[state.plan]
+        : null;
+    const ov = state.overrides.get(def.key);
+    const mode = (ov?.mode as OverrideMode) ?? "inherit";
+    return {
+      key: def.key,
+      category: def.category,
+      type: def.type === "limit" ? "limit" : "boolean",
+      label: def.label,
+      planDefault: { enabled: planEnabled, limit: planLimit },
+      override: { mode: ["inherit", "force_on", "force_off"].includes(mode) ? mode : "inherit", limitOverride: ov?.limitOverride ?? null },
+      effective: resolveFromState(def.key, state, planRows),
+    };
+  });
+  return { plan: state.plan, rows };
+}
+
+function isKnownKey(key: string): boolean {
+  return FEATURE_CATALOG.some((f) => f.key === key);
+}
+
+async function writeAudit(
+  companyId: string,
+  actorId: string | undefined,
+  action: string,
+  featureKey: string | null,
+  oldValue: unknown,
+  newValue: unknown
+) {
+  await prisma.entitlementAudit.create({
+    data: {
+      companyId,
+      actorId: actorId ?? null,
+      action,
+      featureKey,
+      oldValue: (oldValue ?? null) as any,
+      newValue: (newValue ?? null) as any,
+    },
+  });
+}
+
+/**
+ * Set (or clear) a per-tenant override. mode 'inherit' with no limitOverride
+ * deletes the row; otherwise upserts. Audited + cache-invalidated.
+ */
+export async function setOverride(
+  companyId: string,
+  key: string,
+  mode: OverrideMode,
+  limitOverride: number | null,
+  actorId?: string
+): Promise<MatrixRow> {
+  if (!isKnownKey(key)) throw new Error(`Unknown feature: ${key}`);
+  if (!["inherit", "force_on", "force_off"].includes(mode)) {
+    throw new Error(`Invalid mode: ${mode}`);
+  }
+  const existing = await prisma.companyFeatureOverride.findUnique({
+    where: { companyId_featureKey: { companyId, featureKey: key } },
+  });
+  const oldValue = existing
+    ? { mode: existing.mode, limitOverride: existing.limitOverride }
+    : { mode: "inherit", limitOverride: null };
+
+  if (mode === "inherit" && (limitOverride === null || limitOverride === undefined)) {
+    if (existing) {
+      await prisma.companyFeatureOverride.delete({
+        where: { companyId_featureKey: { companyId, featureKey: key } },
+      });
+    }
+  } else {
+    await prisma.companyFeatureOverride.upsert({
+      where: { companyId_featureKey: { companyId, featureKey: key } },
+      create: { companyId, featureKey: key, mode, limitOverride, updatedBy: actorId ?? null },
+      update: { mode, limitOverride, updatedBy: actorId ?? null },
+    });
+  }
+  await writeAudit(companyId, actorId, "set_override", key, oldValue, { mode, limitOverride });
+  invalidateCompany(companyId);
+  const matrix = await getAdminMatrix(companyId);
+  return matrix.rows.find((r) => r.key === key)!;
+}
+
+/** Delete every override for the tenant (reset to plan). Audited + invalidated. */
+export async function resetAllOverrides(companyId: string, actorId?: string): Promise<AdminMatrix> {
+  const before = await prisma.companyFeatureOverride.findMany({ where: { companyId } });
+  await prisma.companyFeatureOverride.deleteMany({ where: { companyId } });
+  await writeAudit(companyId, actorId, "reset_all", null, { count: before.length }, { count: 0 });
+  invalidateCompany(companyId);
+  return getAdminMatrix(companyId);
+}
+
+/** Force ON every catalog feature for the tenant. Audited + invalidated. */
+export async function forceOnAll(companyId: string, actorId?: string): Promise<AdminMatrix> {
+  for (const def of FEATURE_CATALOG) {
+    await prisma.companyFeatureOverride.upsert({
+      where: { companyId_featureKey: { companyId, featureKey: def.key } },
+      create: { companyId, featureKey: def.key, mode: "force_on", updatedBy: actorId ?? null },
+      update: { mode: "force_on", updatedBy: actorId ?? null },
+    });
+  }
+  await writeAudit(companyId, actorId, "force_on_all", null, null, { count: FEATURE_CATALOG.length });
+  invalidateCompany(companyId);
+  return getAdminMatrix(companyId);
+}
+
+export interface AuditEntry {
+  id: string;
+  actorId: string | null;
+  action: string;
+  featureKey: string | null;
+  oldValue: unknown;
+  newValue: unknown;
+  createdAt: Date;
+}
+
+export async function listAudit(companyId: string, limit = 50): Promise<AuditEntry[]> {
+  const rows = await prisma.entitlementAudit.findMany({
+    where: { companyId },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(limit, 1), 200),
+  });
+  return rows as unknown as AuditEntry[];
+}
+
+/** Record a plan change in the entitlement audit + invalidate cache. Called by
+ *  the admin updateCompany path when the plan field changes. */
+export async function recordPlanChange(
+  companyId: string,
+  oldPlan: string,
+  newPlan: string,
+  actorId?: string
+): Promise<void> {
+  await writeAudit(companyId, actorId, "plan_change", null, { plan: oldPlan }, { plan: newPlan });
+  invalidateCompany(companyId);
+}

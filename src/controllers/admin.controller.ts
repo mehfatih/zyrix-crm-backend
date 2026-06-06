@@ -249,7 +249,18 @@ export async function updateCompany(req: Request, res: Response, next: NextFunct
   try {
     const dto = updateCompanySchema.parse(req.body);
     const actor = (req as AuthenticatedRequest).user.userId;
-    const updated = await CompaniesSvc.updateCompany((req.params.id as any), actor, dto);
+    const companyId = req.params.id as string;
+    // Sprint 16C: a plan change must invalidate the entitlements cache
+    // (effective immediately) + land in the entitlement audit trail.
+    const before = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { plan: true },
+    });
+    const updated = await CompaniesSvc.updateCompany((companyId as any), actor, dto);
+    if (dto.plan && before && dto.plan !== before.plan) {
+      const { recordPlanChange } = await import("../services/entitlements.service");
+      await recordPlanChange(companyId, before.plan, dto.plan, actor);
+    }
     res.status(200).json({ success: true, data: updated });
   } catch (err) {
     next(err);

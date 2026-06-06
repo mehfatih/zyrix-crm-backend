@@ -84,6 +84,13 @@ router.post("/companies/:id/impersonate", AdminCtrl.impersonateCompany);
 router.get("/companies/:id/features", FeatureCtrl.adminGetCompanyFlags);
 router.post("/companies/:id/features", FeatureCtrl.adminSetBulk);
 router.post("/companies/:id/features/toggle", FeatureCtrl.adminSetFlag);
+
+// Sprint 16C — god-mode entitlement matrix (3-state overrides + limits + audit)
+router.get("/companies/:id/entitlements", FeatureCtrl.adminGetMatrix);
+router.get("/companies/:id/entitlements/audit", FeatureCtrl.adminEntitlementAudit);
+router.post("/companies/:id/entitlements/reset-all", FeatureCtrl.adminResetEntitlements);
+router.post("/companies/:id/entitlements/force-on-all", FeatureCtrl.adminForceOnAll);
+router.put("/companies/:id/entitlements/:key", FeatureCtrl.adminSetOverride);
 router.post(
   "/companies/:id/impersonate-token",
   AdminCtrl.impersonateCompanyToken
