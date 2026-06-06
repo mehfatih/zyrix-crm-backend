@@ -141,6 +141,24 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
   {
+    // Omnichannel inbox — unified WhatsApp/Messenger/Instagram inbox. ALL_ON to
+    // preserve current behavior. NOTE: this is an ENTITLEMENT toggle only; actual
+    // go-live also requires the platform WhatsApp Cloud API envs (META_APP_SECRET
+    // + WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID). Off → /inbox hidden +
+    // its routes 403; on-but-unprovisioned → the inbox shows a "contact support"
+    // upsell instead of a dead Connect button.
+    key: "whatsapp",
+    category: "integrations",
+    label: { en: "WhatsApp / Omnichannel inbox", ar: "واتساب / الصندوق الموحّد", tr: "WhatsApp / Çoklu kanal gelen kutusu" },
+    description: {
+      en: "Unified WhatsApp, Messenger & Instagram inbox (requires platform WhatsApp provisioning)",
+      ar: "صندوق موحّد لواتساب وماسنجر وإنستغرام (يتطلب تجهيز واتساب على المنصة)",
+      tr: "Birleşik WhatsApp, Messenger ve Instagram gelen kutusu (platform WhatsApp kurulumu gerektirir)",
+    },
+    icon: "MessageCircle",
+    defaultByPlan: ALL_ON,
+  },
+  {
     // Sprint 15E — collect payments on quotes via iyzico/HyperPay.
     key: "payments_collect",
     category: "integrations",

@@ -8,6 +8,7 @@ import {
   getWabaId,
 } from "../../services/whatsapp/config";
 import * as numbers from "../../services/whatsapp/numbers.service";
+import { isFeatureEnabled } from "../../services/feature-flags.service";
 import * as conv from "../../services/whatsapp/conversations.service";
 import { sendText, sendTemplate, listTemplates } from "../../services/whatsapp/send";
 import { sendMessage as sendMetaMessage } from "../../services/meta-messaging/send";
@@ -64,10 +65,16 @@ export async function connect(req: Request, res: Response, next: NextFunction) {
 export async function status(req: Request, res: Response, next: NextFunction) {
   try {
     const { companyId } = auth(req);
-    const number = await numbers.getNumberForCompany(companyId);
+    const [number, entitled] = await Promise.all([
+      numbers.getNumberForCompany(companyId),
+      isFeatureEnabled(companyId, "whatsapp"),
+    ]);
     res.status(200).json({
       success: true,
       data: {
+        // entitled = admin feature toggle; configured = platform envs present.
+        // The inbox screen branches on both to avoid dead-end CTAs.
+        entitled,
         configured: isWhatsAppConfigured(),
         connected: Boolean(number && number.status === "connected"),
         number,
