@@ -51,6 +51,8 @@ export async function getDashboardStats(
     taskOverdue,
     taskCompleted7d,
     activityLast7d,
+    ticketOpen,
+    ticketBreaching,
   ] = await Promise.all([
     prisma.customer.count({ where: customerFilter }),
     prisma.customer.count({
@@ -112,6 +114,15 @@ export async function getDashboardStats(
         ? { companyId, userId, createdAt: { gte: sevenDaysAgo } }
         : { companyId, createdAt: { gte: sevenDaysAgo } },
     }),
+    // Service desk (company-wide — support queue is shared). 0 when desk off.
+    prisma.ticket.count({ where: { companyId, status: { in: ["new", "open", "pending"] } } }),
+    prisma.ticket.count({
+      where: {
+        companyId,
+        status: { in: ["new", "open", "pending"] },
+        slaState: { in: ["near_breach", "breached"] },
+      },
+    }),
   ]);
 
   // Weighted pipeline + stage breakdown
@@ -151,6 +162,10 @@ export async function getDashboardStats(
     },
     activities: {
       last7d: activityLast7d,
+    },
+    tickets: {
+      open: ticketOpen,
+      breachingSoon: ticketBreaching,
     },
   };
 
