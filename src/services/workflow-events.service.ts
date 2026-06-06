@@ -490,3 +490,45 @@ export async function dispatchFormSubmitted(
     (cfg) => !cfg.formId || cfg.formId === form.id
   );
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// SERVICE DESK EVENTS (Sprint 18)
+// ──────────────────────────────────────────────────────────────────────
+
+interface TicketPayload {
+  id: string;
+  number: number;
+  subject: string | null;
+  channel: string;
+  status: string;
+  priority: string;
+  customerId: string | null;
+}
+
+/** Fired when a support ticket is created (auto from a channel or manual). */
+export async function dispatchTicketCreated(
+  companyId: string,
+  ticket: TicketPayload
+): Promise<void> {
+  await safeDispatch("ticket.created", companyId, {
+    event: "ticket.created",
+    timestamp: new Date().toISOString(),
+    ticket,
+    ticketId: ticket.id,
+    customerId: ticket.customerId,
+  });
+}
+
+/** Fired when a ticket is marked resolved. */
+export async function dispatchTicketResolved(
+  companyId: string,
+  ticket: TicketPayload
+): Promise<void> {
+  await safeDispatch("ticket.resolved", companyId, {
+    event: "ticket.resolved",
+    timestamp: new Date().toISOString(),
+    ticket,
+    ticketId: ticket.id,
+    customerId: ticket.customerId,
+  });
+}

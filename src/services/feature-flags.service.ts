@@ -361,6 +361,45 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
 
+  // ─── SERVICE DESK (Sprint 18) ───
+  // Distinct from the platform `sla` uptime-guarantee key (enterprise-only).
+  {
+    key: "service_desk",
+    category: "ops",
+    label: { en: "Service desk", ar: "مكتب خدمة العملاء", tr: "Servis masası" },
+    description: {
+      en: "Turn inbound conversations & emails into tracked support tickets",
+      ar: "تحويل المحادثات والرسائل الواردة إلى تذاكر دعم متابَعة",
+      tr: "Gelen konuşma ve e-postaları takip edilen destek taleplerine dönüştür",
+    },
+    icon: "Headset",
+    defaultByPlan: STARTER_UP,
+  },
+  {
+    key: "service_sla",
+    category: "ops",
+    label: { en: "Service SLA", ar: "اتفاقية مستوى الخدمة", tr: "Servis SLA" },
+    description: {
+      en: "First-response & resolution timers with breach escalation",
+      ar: "مؤقتات الرد الأول والحل مع تصعيد عند الإخلال",
+      tr: "İlk yanıt ve çözüm süreleri, ihlal halinde yükseltme",
+    },
+    icon: "Timer",
+    defaultByPlan: BUSINESS_UP,
+  },
+  {
+    key: "service_routing",
+    category: "ops",
+    label: { en: "Ticket routing", ar: "توجيه التذاكر", tr: "Talep yönlendirme" },
+    description: {
+      en: "Auto-assign tickets to agents (round-robin)",
+      ar: "إسناد التذاكر تلقائيًا للوكلاء (بالتناوب)",
+      tr: "Talepleri temsilcilere otomatik ata (sırayla)",
+    },
+    icon: "Users",
+    defaultByPlan: BUSINESS_UP,
+  },
+
   // ─── SECURITY & COMPLIANCE (premium tiers) ───
   {
     key: "rbac",

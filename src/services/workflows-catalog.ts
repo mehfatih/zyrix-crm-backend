@@ -529,6 +529,31 @@ export const TRIGGERS: TriggerSpec[] = [
     configFields: [],
     payloadFields: ["cadenceId", "contactId", "reason"],
   },
+  // ── Service Desk (Sprint 18) ──
+  {
+    type: "ticket.created",
+    label: { en: "Support ticket created", ar: "إنشاء تذكرة دعم", tr: "Destek talebi oluşturuldu" },
+    description: {
+      en: "Fires when a support ticket is created (auto from a channel or manually)",
+      ar: "يعمل عند إنشاء تذكرة دعم (تلقائيًا من قناة أو يدويًا)",
+      tr: "Bir destek talebi oluşturulduğunda tetiklenir (kanaldan otomatik veya manuel)",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: ["ticket.id", "ticket.number", "ticket.subject", "ticket.channel", "ticket.priority", "ticket.status", "customerId"],
+  },
+  {
+    type: "ticket.resolved",
+    label: { en: "Support ticket resolved", ar: "حل تذكرة الدعم", tr: "Destek talebi çözüldü" },
+    description: {
+      en: "Fires when a ticket is marked resolved",
+      ar: "يعمل عند وضع علامة محلول على التذكرة",
+      tr: "Bir talep çözüldü olarak işaretlendiğinde tetiklenir",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: ["ticket.id", "ticket.number", "ticket.subject", "ticket.channel", "ticket.priority", "customerId"],
+  },
   {
     type: "schedule.daily",
     label: { en: "Daily schedule", ar: "جدولة يومية", tr: "Günlük zamanlama" },

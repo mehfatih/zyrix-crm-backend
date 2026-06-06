@@ -2340,6 +2340,76 @@ model WhatsappNumber {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// SERVICE DESK (Sprint 18) — customer support tickets. Raw-SQL accessed
+// (ticket.service.ts), relation-free like conversations/messages. Distinct
+// from the platform `support_tickets` table (merchant→Zyrix support).
+// `number` is a per-company sequence backed by `ticket_counters`.
+// Internal notes reuse `comments` (entityType='ticket'); this audit log is
+// status/assign/reply events only.
+// ─────────────────────────────────────────────────────────────────────────
+model Ticket {
+  id                String    @id @default(uuid())
+  companyId         String
+  number            Int
+  customerId        String?
+  channel           String    @default("manual") // whatsapp|messenger|instagram|email|portal|manual
+  subject           String?
+  status            String    @default("new") // new|open|pending|resolved|closed
+  priority          String    @default("normal") // low|normal|high|urgent
+  assigneeId        String?
+  conversationId    String?
+  emailMessageId    String?
+  firstResponseAt   DateTime?
+  resolvedAt        DateTime?
+  closedAt          DateTime?
+  lastCustomerMsgAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([companyId, number])
+  @@index([companyId, status])
+  @@index([companyId, assigneeId])
+  @@index([companyId, customerId, channel])
+  @@index([conversationId])
+  @@map("tickets")
+}
+
+model TicketEvent {
+  id          String   @id @default(uuid())
+  ticketId    String
+  companyId   String
+  type        String // created|status_changed|assigned|reply_in|reply_out|reopened|sla_near|sla_breached|resolved|closed
+  actorUserId String?
+  fromValue   String?
+  toValue     String?
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([companyId, type, createdAt])
+  @@map("ticket_events")
+}
+
+model TicketCounter {
+  companyId  String @id
+  lastNumber Int    @default(0)
+
+  @@map("ticket_counters")
+}
+
+// One-click enable for the service desk. INERT until enabled=true — no
+// auto-create and no merchant UX even for entitled tenants until toggled.
+model ServiceDeskSettings {
+  companyId  String   @id
+  enabled    Boolean  @default(false)
+  autoCreate Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("service_desk_settings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // INTEGRATION EVENTS — centralized health/audit log for integrations.
 // ─────────────────────────────────────────────────────────────────────────
 // One row per meaningful lifecycle event (oauth_*, token_refresh*, sync_*,
