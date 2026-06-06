@@ -1419,6 +1419,28 @@ model FxRate {
   @@map("fx_rates")
 }
 
+// Sprint 15D — per-user connected email inbox (Gmail OAuth or IMAP). Creds are
+// tokenCipher-sealed. Polled every 5 min; matched mail lands in the contact
+// Email tab. Read-only v1 (no send-from-inbox).
+model EmailInboxConnection {
+  id           String    @id @default(uuid())
+  companyId    String
+  userId       String
+  provider     String    // gmail | imap
+  emailAddress String
+  sealedCreds  String
+  status       String    @default("active") // active | error | disconnected
+  lastError    String?
+  lastSyncAt   DateTime?
+  cursor       String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
+
+  @@unique([companyId, userId, provider, emailAddress])
+  @@index([companyId])
+  @@map("email_inbox_connections")
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // EMAIL TEMPLATES — reusable templates for campaigns
 // ─────────────────────────────────────────────────────────────────────────
