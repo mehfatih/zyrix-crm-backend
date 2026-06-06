@@ -17,9 +17,10 @@ import { recordIntegrationEvent } from "./integration-events.service";
 // Secret: "whsec_<base64>" — sign base64-decoded key over `${id}.${ts}.${body}`.
 export function verifyResendSignature(
   rawBody: Buffer,
-  headers: Record<string, string | undefined>
+  headers: Record<string, string | undefined>,
+  // Sprint 15C — overridable so the inbound receiver can use its own secret.
+  secret: string | undefined = env.RESEND_WEBHOOK_SECRET
 ): boolean {
-  const secret = env.RESEND_WEBHOOK_SECRET;
   if (!secret) return false;
   const id = headers["svix-id"];
   const ts = headers["svix-timestamp"];

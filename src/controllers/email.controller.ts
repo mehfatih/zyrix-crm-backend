@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as Q from "../services/email-query.service";
-import { generateEmailDraft, type DraftGoal } from "../services/email-ai.service";
+import { generateEmailDraft, generateReplyDraft, type DraftGoal } from "../services/email-ai.service";
 import type { AuthenticatedRequest } from "../types";
 
 // ============================================================================
@@ -62,6 +62,15 @@ export async function aiDraft(req: Request, res: Response, next: NextFunction) {
     const { companyId } = auth(req);
     const dto = draftSchema.parse(req.body);
     const data = await generateEmailDraft(companyId, dto.contactId, dto.goal as DraftGoal);
+    res.status(200).json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+// Sprint 15C — on-demand AI suggested reply to a customer's inbound email.
+export async function replyAi(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const data = await generateReplyDraft(companyId, req.params.id as string);
     res.status(200).json({ success: true, data });
   } catch (err) { next(err); }
 }

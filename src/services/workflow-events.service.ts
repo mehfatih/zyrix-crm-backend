@@ -421,6 +421,22 @@ export async function dispatchEmailBounced(companyId: string, p: EmailEventPaylo
   });
 }
 
+// Sprint 15C — fired when a customer replies to a tracked email (inbound webhook).
+export async function dispatchEmailReplied(
+  companyId: string,
+  p: { emailId: string; customerId: string | null; replyPreview: string; repliedAt: string }
+): Promise<void> {
+  await safeDispatch("email.replied", companyId, {
+    event: "email.replied",
+    timestamp: new Date().toISOString(),
+    emailId: p.emailId,
+    customerId: p.customerId,
+    replyPreview: p.replyPreview,
+    repliedAt: p.repliedAt,
+    replied: true,
+  });
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // CADENCE EVENTS (Sprint 11)
 // ──────────────────────────────────────────────────────────────────────

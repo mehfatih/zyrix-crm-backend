@@ -91,12 +91,16 @@ export async function sendTrackedEmail(
   const token = tracking ? crypto.randomBytes(18).toString("hex") : null;
   const html = token ? instrumentHtml(input.html, token) : input.html;
 
+  // Sprint 15C — when tracked, route replies through r+<token>@REPLY_DOMAIN so
+  // the inbound webhook can match the reply back to this message/contact.
+  const replyTo = token ? `r+${token}@${env.REPLY_DOMAIN}` : undefined;
   const sent = await sendEmailRaw({
     to: input.to,
     subject: input.subject,
     html,
     text: input.text,
     attachments: input.attachments,
+    replyTo,
   });
 
   let emailId: string | null = null;

@@ -63,6 +63,7 @@ import whatsappWebhookReceiver from "./routes/integrations/whatsapp-webhooks.rou
 import metaLeadsIntegrationRoutes from "./routes/integrations/meta-leads.routes";
 import metaLeadsWebhookReceiver from "./routes/integrations/meta-leads-webhooks.routes";
 import resendWebhookReceiver from "./routes/integrations/resend-webhooks.routes";
+import resendInboundReceiver from "./routes/integrations/resend-inbound.routes";
 import metaWebhookReceiver from "./routes/integrations/meta-webhooks.routes";
 import googleAdsWebhookReceiver from "./routes/integrations/google-ads-webhooks.routes";
 import googleAdsIntegrationRoutes from "./routes/integrations/google-ads.routes";
@@ -163,6 +164,8 @@ app.use("/api/integrations/google-ads/leads/webhook", googleAdsWebhookReceiver);
 // Resend email webhook (Sprint 10) — raw body for Svix HMAC verify. Before
 // express.json. Consumes delivered/bounced/complained → email_messages status.
 app.use("/api/integrations/resend/webhook", resendWebhookReceiver);
+// Resend INBOUND replies (Sprint 15C) — raw body for Svix HMAC, INBOUND secret.
+app.use("/api/integrations/resend/inbound", resendInboundReceiver);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));

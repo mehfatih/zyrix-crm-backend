@@ -115,6 +115,19 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
   {
+    // Sprint 15C — inbound email replies (email.replied + AI suggested reply).
+    key: "email_replies",
+    category: "growth",
+    label: { en: "Email reply detection", ar: "كشف ردود الإيميل", tr: "E-posta yanıt algılama" },
+    description: {
+      en: "Detect customer email replies and suggest an AI response",
+      ar: "اكشف ردود العملاء على الإيميل واقترح ردًا بالذكاء الاصطناعي",
+      tr: "Müşteri e-posta yanıtlarını algıla ve AI yanıtı öner",
+    },
+    icon: "Mail",
+    defaultByPlan: ALL_ON,
+  },
+  {
     key: "contracts",
     category: "sales",
     label: { en: "Contracts", ar: "العقود", tr: "Sözleşmeler" },

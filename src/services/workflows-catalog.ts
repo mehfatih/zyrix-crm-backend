@@ -459,6 +459,22 @@ export const TRIGGERS: TriggerSpec[] = [
     payloadFields: ["emailId", "customerId"],
   },
   {
+    type: "email.replied",
+    label: {
+      en: "Email replied",
+      ar: "تم الرد على البريد",
+      tr: "E-postaya yanıt verildi",
+    },
+    description: {
+      en: "Fires when a customer replies to a tracked CRM email (via the Resend inbound webhook)",
+      ar: "يعمل عندما يرد العميل على بريد CRM متتبَّع (عبر ويب هوك Resend الوارد)",
+      tr: "Bir müşteri izlenen bir CRM e-postasına yanıt verdiğinde tetiklenir (Resend gelen webhook'u)",
+    },
+    category: "crm",
+    configFields: [],
+    payloadFields: ["emailId", "customerId", "replyPreview", "repliedAt"],
+  },
+  {
     type: "form.submitted",
     label: {
       en: "Form submitted",

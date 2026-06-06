@@ -21,6 +21,7 @@ export interface SendEmailOptions {
   html: string;
   text?: string;
   attachments?: EmailAttachment[];
+  replyTo?: string; // Sprint 15C — Reply-To (e.g. r+<token>@reply.zyrix.co)
 }
 
 // Lower-level send that surfaces the Resend message id (needed to correlate
@@ -40,6 +41,7 @@ export async function sendEmailRaw(
       subject: options.subject,
       html: options.html,
       text: options.text,
+      ...(options.replyTo ? { replyTo: options.replyTo } : {}),
       ...(options.attachments?.length
         ? { attachments: options.attachments }
         : {}),

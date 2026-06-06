@@ -96,3 +96,68 @@ Output JSON {subject, body} in ${LANG_LABEL[lang]}.`;
     return null;
   }
 }
+
+// Sprint 15C — suggest a reply to a customer's inbound email. `emailId` is the
+// inbound reply row (direction='in'); we ground on its text + the original
+// subject + the contact's language. On-demand only — never auto-sent.
+export async function generateReplyDraft(
+  companyId: string,
+  emailId: string
+): Promise<DraftResult | null> {
+  const msg = await prisma.emailMessage.findFirst({
+    where: { id: emailId, companyId },
+    select: { id: true, direction: true, body: true, bodyPreview: true, subject: true, contactId: true, replyToMessageId: true },
+  });
+  if (!msg) throw notFound("Email");
+
+  // Resolve the customer's reply text + the original subject.
+  let replyText = msg.body || msg.bodyPreview || "";
+  let originalSubject = msg.subject || "";
+  if (msg.replyToMessageId) {
+    const orig = await prisma.emailMessage.findUnique({
+      where: { id: msg.replyToMessageId },
+      select: { subject: true },
+    });
+    if (orig?.subject) originalSubject = orig.subject;
+  }
+  if (!replyText.trim()) return null;
+
+  const contact = msg.contactId
+    ? await prisma.customer.findFirst({ where: { id: msg.contactId, companyId }, select: { fullName: true, companyName: true, country: true } })
+    : null;
+  const lang = inferLang(contact?.country ?? null);
+  if (!genAI) return null;
+
+  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { name: true } });
+
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    systemInstruction:
+      `You draft a concise, helpful B2B reply to a customer's email, on behalf of a CRM user. ` +
+      `Write ENTIRELY in ${LANG_LABEL[lang]}. Address their points directly, stay warm and specific, ` +
+      `under 140 words, plain text (line breaks, no markdown). End with the sender company name only.`,
+    generationConfig: { temperature: 0.6, responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA as never },
+  });
+
+  const prompt = `The customer ${contact?.fullName ?? ""}${contact?.companyName ? ` (${contact.companyName})` : ""} replied to our email "${originalSubject}".
+Their reply:
+"""
+${replyText.slice(0, 4000)}
+"""
+Sender company: ${company?.name ?? "our company"}.
+Write a suggested reply. Output JSON {subject, body} in ${LANG_LABEL[lang]}.`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const parsed = JSON.parse(result.response.text()) as Partial<DraftResult>;
+    if (!parsed.body) return null;
+    return {
+      subject: typeof parsed.subject === "string" ? parsed.subject : `RE: ${originalSubject}`,
+      body: parsed.body,
+      language: lang,
+    };
+  } catch (err) {
+    console.error("[email-ai] reply draft failed:", (err as Error).message);
+    return null;
+  }
+}
