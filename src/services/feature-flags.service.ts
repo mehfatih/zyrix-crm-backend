@@ -198,6 +198,21 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
   {
+    // Sprint 22 — let customers pay open quotes from inside the portal. Reuses the
+    // Sprint-15E payments-collect rails (payments_collect must also be on for the
+    // underlying connection/checkout to exist); this key gates the portal surface.
+    key: "portal_payments",
+    category: "integrations",
+    label: { en: "Portal payments", ar: "مدفوعات البوابة", tr: "Portal ödemeleri" },
+    description: {
+      en: "Let customers pay open quotes from the customer portal (Pay now)",
+      ar: "اسمح للعملاء بدفع عروض الأسعار المفتوحة من بوابة العملاء (ادفع الآن)",
+      tr: "Müşterilerin açık teklifleri müşteri portalından ödemesine izin ver (Şimdi öde)",
+    },
+    icon: "CreditCard",
+    defaultByPlan: STARTER_UP,
+  },
+  {
     // Sprint 15F — real Gemini message composer (grounded on contact context).
     key: "ai_messaging",
     category: "ai",

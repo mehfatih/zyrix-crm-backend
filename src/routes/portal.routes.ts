@@ -136,6 +136,25 @@ router.post(
   }
 );
 
+// ── PORTAL PAYMENTS (Sprint 22) ─────────────────────────────────────────────
+// POST /api/portal/quotes/:id/pay — create a checkout link for the customer's
+// own quote (reuses Sprint-15E payments-collect rails). Rate-limited.
+const payLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+router.post(
+  "/quotes/:id/pay",
+  requireSession,
+  payLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const customer = (req as any).portalCustomer as { id: string; companyId: string };
+      const data = await PortalSvc.payPortalQuote(customer, String(req.params.id));
+      res.status(200).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ── HELP CENTER (Knowledge Base, published articles) ────────────────────────
 // GET /api/portal/help — categories + published articles (browse/search)
 router.get(

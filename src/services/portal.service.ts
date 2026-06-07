@@ -1,9 +1,15 @@
 import { prisma } from "../config/database";
-import { notFound } from "../middleware/errorHandler";
+import { badRequest, notFound } from "../middleware/errorHandler";
 import { randomBytes } from "crypto";
 import { sendEmail } from "./email.service";
 import { ensureTicketForInbound, logEvent } from "./ticket.service";
 import { countPublished } from "./kb.service";
+import { isFeatureEnabled } from "./feature-flags.service";
+import { createQuoteCollectRequest } from "./payments-collect.service";
+
+// Quote statuses that are eligible for a portal "Pay now" (already sent to the
+// customer + not closed/dead). Mirrors the public quote pay surface.
+const PAYABLE_QUOTE_STATUSES = ["sent", "viewed", "accepted"];
 
 // ============================================================================
 // CUSTOMER PORTAL SERVICE
@@ -273,15 +279,129 @@ export async function getCustomerDashboard(customerId: string) {
 
   if (!customer) throw notFound("Customer");
 
-  const helpArticles = await countPublished(customer.company.id);
+  const companyId = customer.company.id;
+  const helpArticles = await countPublished(companyId);
+  const quotesWithPay = await enrichQuotesWithPayments(companyId, quotes);
 
   return {
     customer,
-    quotes,
+    quotes: quotesWithPay,
     contracts,
     loyaltyBalance: loyalty._sum.points ?? 0,
     helpAvailable: helpArticles > 0,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PORTAL PAYMENTS (Sprint 22) — surface Pay-now eligibility + receipts on the
+// customer's quotes, and create a checkout request scoped to the portal session.
+// Reuses the Sprint-15E payments-collect rails (createQuoteCollectRequest) — no
+// new payment path; the platform subscription-billing path is untouched.
+// ─────────────────────────────────────────────────────────────────────────
+
+type DashboardQuote = {
+  id: string;
+  status: string;
+  total: unknown;
+  currency: string;
+};
+
+type QuotePayment = {
+  provider: string;
+  amount: number;
+  currency: string;
+  paidAt: string | null;
+} | null;
+
+async function portalPaymentsActive(companyId: string): Promise<boolean> {
+  // Both must be on: portal_payments gates the portal surface, payments_collect
+  // owns the underlying connection/checkout rails.
+  return (
+    (await isFeatureEnabled(companyId, "portal_payments")) &&
+    (await isFeatureEnabled(companyId, "payments_collect"))
+  );
+}
+
+async function enrichQuotesWithPayments<T extends DashboardQuote>(
+  companyId: string,
+  quotes: T[]
+): Promise<(T & { payable: boolean; payProvider: string | null; payment: QuotePayment })[]> {
+  const fallback = quotes.map((q) => ({
+    ...q,
+    payable: false,
+    payProvider: null as string | null,
+    payment: null as QuotePayment,
+  }));
+  try {
+    if (quotes.length === 0 || !(await portalPaymentsActive(companyId))) return fallback;
+
+    const [conns, reqs] = await Promise.all([
+      prisma.paymentConnection.findMany({
+        where: { companyId, status: "active" },
+        select: { provider: true, currency: true },
+      }),
+      prisma.paymentRequest.findMany({
+        where: { companyId, quoteId: { in: quotes.map((q) => q.id) } },
+        orderBy: { createdAt: "desc" },
+        select: { quoteId: true, status: true, amount: true, currency: true, provider: true, paidAt: true },
+      }),
+    ]);
+
+    const currencyToProvider = new Map<string, string>();
+    for (const c of conns) currencyToProvider.set(c.currency.toUpperCase(), c.provider);
+
+    // Latest request per quote (rows already ordered newest-first); a paid one wins.
+    const reqByQuote = new Map<string, (typeof reqs)[number]>();
+    for (const r of reqs) {
+      if (!r.quoteId) continue;
+      const existing = reqByQuote.get(r.quoteId);
+      if (!existing || (existing.status !== "paid" && r.status === "paid")) {
+        reqByQuote.set(r.quoteId, r);
+      }
+    }
+
+    return quotes.map((q) => {
+      const cur = q.currency.toUpperCase();
+      const provider = currencyToProvider.get(cur) ?? null;
+      const req = reqByQuote.get(q.id);
+      const paid = req?.status === "paid";
+      const payment: QuotePayment = paid
+        ? {
+            provider: req!.provider,
+            amount: Number(req!.amount),
+            currency: req!.currency,
+            paidAt: req!.paidAt ? req!.paidAt.toISOString() : null,
+          }
+        : null;
+      const payable =
+        !paid &&
+        !!provider &&
+        PAYABLE_QUOTE_STATUSES.includes(q.status) &&
+        Number(q.total) > 0;
+      return { ...q, payable, payProvider: payable ? provider : null, payment };
+    });
+  } catch {
+    return fallback; // best-effort: never break the dashboard over payments
+  }
+}
+
+// Create a checkout request for one of the authenticated customer's own quotes.
+export async function payPortalQuote(
+  customer: { id: string; companyId: string },
+  quoteId: string
+) {
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, customerId: customer.id, companyId: customer.companyId },
+    select: { id: true, status: true },
+  });
+  if (!quote) throw notFound("Quote");
+  if (!(await portalPaymentsActive(customer.companyId))) {
+    throw badRequest("Payments are not enabled");
+  }
+  if (!PAYABLE_QUOTE_STATUSES.includes(quote.status)) {
+    throw badRequest("This quote is not payable");
+  }
+  return createQuoteCollectRequest(customer.companyId, quoteId);
 }
 
 function escapeHtml(s: string): string {
