@@ -152,6 +152,21 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
   {
+    // Sprint 21 — connect Google Calendar; CRM meetings sync two-way. SEPARATE
+    // OAuth flow (calendar.events) mirroring 15D. STARTER_UP, consistent with
+    // the other connect-an-account integrations (email_inbox, service_desk).
+    key: "calendar_sync",
+    category: "integrations",
+    label: { en: "Calendar sync", ar: "مزامنة التقويم", tr: "Takvim senkronizasyonu" },
+    description: {
+      en: "Connect Google Calendar — CRM meetings sync two-way (with Meet links)",
+      ar: "اربط Google Calendar — تتزامن اجتماعات الـ CRM في الاتجاهين (مع روابط Meet)",
+      tr: "Google Takvim'i bağla — CRM toplantıları çift yönlü senkronize olur (Meet bağlantılarıyla)",
+    },
+    icon: "Calendar",
+    defaultByPlan: STARTER_UP,
+  },
+  {
     // Omnichannel inbox — unified WhatsApp/Messenger/Instagram inbox. ALL_ON to
     // preserve current behavior. NOTE: this is an ENTITLEMENT toggle only; actual
     // go-live also requires the platform WhatsApp Cloud API envs (META_APP_SECRET

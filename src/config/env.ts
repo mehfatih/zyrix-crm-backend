@@ -37,6 +37,11 @@ const envSchema = z.object({
   EMAIL_INBOX_GOOGLE_REDIRECT_URI: z
     .string()
     .default("https://api.crm.zyrix.co/api/integrations/email-inbox/google/callback"),
+  // Sprint 21 — Calendar OAuth (separate calendar.events flow + callback,
+  // reuses GOOGLE_INTEGRATION_CLIENT_ID/SECRET). Register this URI in GCP.
+  CALENDAR_GOOGLE_REDIRECT_URI: z
+    .string()
+    .default("https://api.crm.zyrix.co/api/integrations/calendar/google/callback"),
 
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().optional(),

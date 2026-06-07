@@ -1530,6 +1530,33 @@ model EmailInboxConnection {
   @@map("email_inbox_connections")
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// CALENDAR CONNECTIONS (Sprint 21) — Google Calendar two-way sync.
+// SEPARATE OAuth flow (calendar.events scope + own callback/redirect env)
+// mirroring the 15D Gmail pattern; the drive.file + gmail flows are untouched.
+// Tokens are tokenCipher-sealed in sealedCreds. syncToken is Google's
+// incremental-sync cursor (Phase B). Additive only.
+// ─────────────────────────────────────────────────────────────────────────
+model CalendarConnection {
+  id           String    @id @default(uuid())
+  companyId    String
+  userId       String
+  provider     String    @default("google") // google (outlook later)
+  emailAddress String
+  calendarId   String    @default("primary")
+  sealedCreds  String     // tokenCipher(JSON{ refreshToken })
+  status       String    @default("active") // active | error | disconnected
+  lastError    String?
+  lastSyncAt   DateTime?
+  syncToken    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
+
+  @@unique([companyId, userId, provider, emailAddress])
+  @@index([companyId])
+  @@map("calendar_connections")
+}
+
 // Sprint 15E — per-company payment collection (iyzico/HyperPay). Distinct from
 // the platform subscription-billing Payment model. Keys tokenCipher-sealed.
 model PaymentConnection {
