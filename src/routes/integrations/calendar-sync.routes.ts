@@ -15,6 +15,7 @@ router.get("/google/callback", controller.calendarCallback);
 router.use(authenticateToken);
 router.get("/", controller.list);
 router.get("/google/connect", controller.calendarConnect);
+router.post("/:id/sync", controller.syncNow);
 router.delete("/:id", controller.remove);
 
 export default router;

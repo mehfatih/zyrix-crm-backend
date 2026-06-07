@@ -115,6 +115,7 @@ import { startScheduledReportsWorker } from "./cron/scheduled-reports-worker";
 import { startSavedAiReportsWorker } from "./cron/saved-ai-reports-worker";
 import { startFxRatesWorker } from "./cron/fx-rates-worker";
 import { startEmailInboxPoller } from "./cron/email-inbox-poller";
+import { startCalendarPoller } from "./cron/calendar-poller";
 import emailInboxRoutes from "./routes/integrations/email-inbox.routes";
 import calendarSyncRoutes from "./routes/integrations/calendar-sync.routes";
 import paymentsCollectRoutes from "./routes/payments-collect.routes";
@@ -379,6 +380,7 @@ const server = app.listen(env.PORT, () => {
   startSavedAiReportsWorker();
   startFxRatesWorker();
   startEmailInboxPoller();
+  startCalendarPoller();
   startRetentionCron();
   startDocumentsReindexCron();
   startSupportFallbackCron();

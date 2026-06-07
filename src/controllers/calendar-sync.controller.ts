@@ -1,11 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../types";
 import { env } from "../config/env";
+import { prisma } from "../config/database";
 import {
   buildCalendarAuthUrl,
   completeCalendarConnect,
   listConnections,
   disconnect,
+  pollCalendarConnection,
 } from "../services/calendar-sync.service";
 
 function auth(req: Request) {
@@ -51,5 +53,16 @@ export async function remove(req: Request, res: Response, next: NextFunction) {
     const { companyId } = auth(req);
     await disconnect(companyId, String(req.params.id));
     res.json({ success: true, data: { deleted: true } });
+  } catch (e) { next(e); }
+}
+
+export async function syncNow(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const id = String(req.params.id);
+    const conn = await prisma.calendarConnection.findFirst({ where: { id, companyId }, select: { id: true } });
+    if (!conn) return res.status(404).json({ success: false, error: { message: "Connection not found" } });
+    await pollCalendarConnection(id);
+    res.json({ success: true, data: { synced: true } });
   } catch (e) { next(e); }
 }
