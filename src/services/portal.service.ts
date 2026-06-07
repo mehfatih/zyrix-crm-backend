@@ -3,6 +3,7 @@ import { notFound } from "../middleware/errorHandler";
 import { randomBytes } from "crypto";
 import { sendEmail } from "./email.service";
 import { ensureTicketForInbound, logEvent } from "./ticket.service";
+import { countPublished } from "./kb.service";
 
 // ============================================================================
 // CUSTOMER PORTAL SERVICE
@@ -272,11 +273,14 @@ export async function getCustomerDashboard(customerId: string) {
 
   if (!customer) throw notFound("Customer");
 
+  const helpArticles = await countPublished(customer.company.id);
+
   return {
     customer,
     quotes,
     contracts,
     loyaltyBalance: loyalty._sum.points ?? 0,
+    helpAvailable: helpArticles > 0,
   };
 }
 

@@ -14,6 +14,7 @@ import { randomUUID } from "crypto";
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { prisma } from "../config/database";
 import { env } from "../config/env";
+import { isEnabled } from "./entitlements.service";
 
 const genAI = env.GEMINI_API_KEY ? new GoogleGenerativeAI(env.GEMINI_API_KEY) : null;
 
@@ -377,5 +378,260 @@ export async function translateArticle(
   } catch (err) {
     console.error("[kb] translate failed:", (err as Error).message);
     return null;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Portal-facing (published only) + AI grounding
+// ──────────────────────────────────────────────────────────────────────
+
+function coerceLocale(v: string | undefined): Locale {
+  return v && (LOCALES as string[]).includes(v) ? (v as Locale) : "en";
+}
+
+/** Localized value with en→ar→tr fallback. */
+function pick(t: LocaleText | undefined, locale: Locale): string {
+  if (!t) return "";
+  return t[locale] || t.en || t.ar || t.tr || "";
+}
+
+/** Light Markdown → plain text for snippets/grounding (not a full parser). */
+function stripMarkdown(md: string): string {
+  return md
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[#>*_`~-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export interface PortalArticleSummary {
+  id: string;
+  slug: string;
+  categoryId: string | null;
+  title: string;
+  snippet: string;
+}
+export interface PortalCategory {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+/** Browse: published categories + articles, localized to the customer's locale. */
+export async function listPublished(
+  companyId: string,
+  localeIn: string | undefined,
+  opts: { q?: string; categoryId?: string } = {}
+): Promise<{ categories: PortalCategory[]; articles: PortalArticleSummary[] }> {
+  // Downgrade = pure-resolution-lock: no entitlement ⇒ portal help center hidden.
+  if (!(await isEnabled(companyId, "knowledge_base"))) return { categories: [], articles: [] };
+  const locale = coerceLocale(localeIn);
+  const cats = await listCategories(companyId);
+  const arts = await listArticles(companyId, {
+    status: "published",
+    categoryId: opts.categoryId,
+    q: opts.q,
+  });
+  return {
+    categories: cats.map((c) => ({ id: c.id, slug: c.slug, name: pick(c.name, locale) || c.slug })),
+    articles: arts.map((a) => {
+      const body = stripMarkdown(pick(a.body, locale));
+      return {
+        id: a.id,
+        slug: a.slug,
+        categoryId: a.categoryId,
+        title: pick(a.title, locale) || a.slug,
+        snippet: body.slice(0, 160) + (body.length > 160 ? "…" : ""),
+      };
+    }),
+  };
+}
+
+export interface PortalArticleFull {
+  id: string;
+  slug: string;
+  categoryId: string | null;
+  title: string;
+  body: string;
+  helpfulYes: number;
+  helpfulNo: number;
+}
+
+/** Single published article by slug (localized). Increments viewCount. */
+export async function getPublishedArticle(
+  companyId: string,
+  slug: string,
+  localeIn: string | undefined
+): Promise<PortalArticleFull | null> {
+  if (!(await isEnabled(companyId, "knowledge_base"))) return null;
+  const locale = coerceLocale(localeIn);
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT ${ART_COLS} FROM kb_articles
+       WHERE "companyId" = $1 AND "slug" = $2 AND "status" = 'published' LIMIT 1`,
+    companyId,
+    slug
+  )) as KbArticle[];
+  const a = rows[0];
+  if (!a) return null;
+  await prisma.$executeRawUnsafe(
+    `UPDATE kb_articles SET "viewCount" = "viewCount" + 1 WHERE "companyId" = $1 AND "id" = $2`,
+    companyId,
+    a.id
+  );
+  return {
+    id: a.id,
+    slug: a.slug,
+    categoryId: a.categoryId,
+    title: pick(a.title, locale) || a.slug,
+    body: pick(a.body, locale),
+    helpfulYes: a.helpfulYes,
+    helpfulNo: a.helpfulNo,
+  };
+}
+
+/** "Was this helpful?" — increments the counter on a published article. */
+export async function recordHelpful(companyId: string, id: string, yes: boolean): Promise<boolean> {
+  if (!(await isEnabled(companyId, "knowledge_base"))) return false;
+  const col = yes ? "helpfulYes" : "helpfulNo";
+  const n = await prisma.$executeRawUnsafe(
+    `UPDATE kb_articles SET "${col}" = "${col}" + 1
+       WHERE "companyId" = $1 AND "id" = $2 AND "status" = 'published'`,
+    companyId,
+    id
+  );
+  return Number(n) > 0;
+}
+
+/** Count of published articles (drives whether the portal Help surface shows). */
+export async function countPublished(companyId: string): Promise<number> {
+  if (!(await isEnabled(companyId, "knowledge_base"))) return 0;
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT count(*)::int AS c FROM kb_articles WHERE "companyId" = $1 AND "status" = 'published'`,
+    companyId
+  )) as Array<{ c: number }>;
+  return Number(rows[0]?.c ?? 0);
+}
+
+export interface GroundedCitation {
+  id: string;
+  slug: string;
+  title: string;
+}
+export interface GroundedAnswer {
+  grounded: boolean; // true = answered FROM an article
+  answer: string | null;
+  citations: GroundedCitation[];
+}
+
+const GROUND_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    answered: { type: SchemaType.BOOLEAN },
+    answer: { type: SchemaType.STRING },
+    used: { type: SchemaType.ARRAY, items: { type: SchemaType.INTEGER } },
+  },
+  required: ["answered", "answer"],
+} as const;
+
+const STOPWORDS = new Set([
+  "the", "and", "for", "are", "you", "your", "how", "what", "where", "when", "why",
+  "can", "with", "this", "that", "from", "have", "does", "did", "was", "will",
+]);
+
+/**
+ * Answer a portal customer's question STRICTLY from the merchant's published
+ * articles (top-k by keyword match v1, token-capped). Cites the article(s)
+ * actually used. Returns grounded=false (answer=null) when KB is not entitled,
+ * there are no matching articles, or the model can't answer from them — the
+ * widget then falls back to current behavior. Never hallucinates.
+ */
+export async function askGrounded(
+  companyId: string,
+  localeIn: string | undefined,
+  message: string,
+  history: { role?: string; text?: string }[] = []
+): Promise<GroundedAnswer> {
+  const empty: GroundedAnswer = { grounded: false, answer: null, citations: [] };
+  if (!message.trim()) return empty;
+  if (!genAI) return empty;
+  if (!(await isEnabled(companyId, "knowledge_base"))) return empty;
+
+  const locale = coerceLocale(localeIn);
+  const published = (await prisma.$queryRawUnsafe(
+    `SELECT "id","slug","title","body" FROM kb_articles
+       WHERE "companyId" = $1 AND "status" = 'published'`,
+    companyId
+  )) as Array<{ id: string; slug: string; title: LocaleText; body: LocaleText }>;
+  if (published.length === 0) return empty;
+
+  // Simple keyword scoring over localized title+body (title weighted ×3).
+  const tokens = message
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+  const scored = published
+    .map((a) => {
+      const title = pick(a.title, locale).toLowerCase();
+      const body = stripMarkdown(pick(a.body, locale)).toLowerCase();
+      let score = 0;
+      for (const t of tokens) {
+        if (title.includes(t)) score += 3;
+        if (body.includes(t)) score += 1;
+      }
+      return { a, score };
+    })
+    .filter((s) => s.score > 0)
+    .sort((x, y) => y.score - x.score)
+    .slice(0, 3);
+  if (scored.length === 0) return empty;
+
+  const LANG = { en: "English", ar: "Arabic", tr: "Turkish" }[locale];
+  const context = scored
+    .map((s, i) => `[Article ${i + 1}: "${pick(s.a.title, locale)}"]\n${pick(s.a.body, locale).slice(0, 1500)}`)
+    .join("\n\n");
+
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    systemInstruction:
+      `You are a helpful support assistant for a business. Answer the customer's question ` +
+      `using ONLY the help articles provided. Reply ENTIRELY in ${LANG}. Be concise and warm. ` +
+      `If the answer is not contained in the articles, set "answered" to false and leave "answer" empty — ` +
+      `do NOT use outside knowledge or guess. When you answer, set "used" to the article NUMBERS you relied on. ` +
+      `Return STRICT JSON only.`,
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: "application/json",
+      responseSchema: GROUND_SCHEMA as never,
+    },
+  });
+
+  const transcript = history
+    .slice(-8)
+    .map((h) => `${h.role === "user" ? "CUSTOMER" : "ASSISTANT"}: ${h.text ?? ""}`)
+    .join("\n");
+  const prompt =
+    `HELP ARTICLES:\n${context}\n\n` +
+    (transcript ? `CONVERSATION:\n${transcript}\n\n` : "") +
+    `CUSTOMER QUESTION: ${message}\n\nAnswer in ${LANG} as JSON {answered, answer, used}.`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const parsed = JSON.parse(result.response.text()) as { answered?: boolean; answer?: string; used?: number[] };
+    if (!parsed.answered || !parsed.answer?.trim()) return empty;
+    const used = Array.isArray(parsed.used) ? parsed.used : [];
+    const citations = scored
+      .filter((_, i) => used.includes(i + 1))
+      .map((s) => ({ id: s.a.id, slug: s.a.slug, title: pick(s.a.title, locale) || s.a.slug }));
+    // If the model answered but cited nothing, attribute to the top match.
+    if (citations.length === 0) {
+      const top = scored[0].a;
+      citations.push({ id: top.id, slug: top.slug, title: pick(top.title, locale) || top.slug });
+    }
+    return { grounded: true, answer: parsed.answer.trim(), citations };
+  } catch (err) {
+    console.error("[kb] grounded answer failed:", (err as Error).message);
+    return empty;
   }
 }

@@ -2,6 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
 import * as PortalSvc from "../services/portal.service";
+import * as Kb from "../services/kb.service";
 
 const router = Router();
 
@@ -129,6 +130,85 @@ router.post(
       const dto = portalRequestSchema.parse(req.body);
       const result = await PortalSvc.createPortalRequest(customer, dto.subject, dto.body);
       res.status(result.created ? 201 : 200).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── HELP CENTER (Knowledge Base, published articles) ────────────────────────
+// GET /api/portal/help — categories + published articles (browse/search)
+router.get(
+  "/help",
+  requireSession,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const customer = (req as any).portalCustomer as { companyId: string };
+      const locale = typeof req.query.locale === "string" ? req.query.locale : undefined;
+      const data = await Kb.listPublished(customer.companyId, locale, {
+        q: typeof req.query.q === "string" ? req.query.q : undefined,
+        categoryId: typeof req.query.categoryId === "string" ? req.query.categoryId : undefined,
+      });
+      res.status(200).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// GET /api/portal/help/articles/:slug — single published article (localized)
+router.get(
+  "/help/articles/:slug",
+  requireSession,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const customer = (req as any).portalCustomer as { companyId: string };
+      const locale = typeof req.query.locale === "string" ? req.query.locale : undefined;
+      const article = await Kb.getPublishedArticle(customer.companyId, String(req.params.slug), locale);
+      if (!article) {
+        return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Article not found" } });
+      }
+      res.status(200).json({ success: true, data: article });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// POST /api/portal/help/articles/:id/helpful — { helpful: boolean }
+const helpfulSchema = z.object({ helpful: z.boolean() });
+router.post(
+  "/help/articles/:id/helpful",
+  requireSession,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const customer = (req as any).portalCustomer as { companyId: string };
+      const dto = helpfulSchema.parse(req.body);
+      await Kb.recordHelpful(customer.companyId, String(req.params.id), dto.helpful);
+      res.status(200).json({ success: true, data: { ok: true } });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// POST /api/portal/help/ask — AI answer grounded ONLY on published articles
+const askLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
+const askSchema = z.object({
+  message: z.string().min(1).max(2000),
+  locale: z.string().max(5).optional(),
+  history: z.array(z.object({ role: z.string(), text: z.string().max(4000) })).max(12).optional(),
+});
+router.post(
+  "/help/ask",
+  requireSession,
+  askLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const customer = (req as any).portalCustomer as { companyId: string };
+      const dto = askSchema.parse(req.body);
+      const data = await Kb.askGrounded(customer.companyId, dto.locale, dto.message, dto.history ?? []);
+      res.status(200).json({ success: true, data });
     } catch (err) {
       next(err);
     }
