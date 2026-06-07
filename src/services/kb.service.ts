@@ -382,6 +382,76 @@ export async function translateArticle(
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Ticket → Article one-click (Phase C). Drafts a reusable article from a
+// resolved ticket thread, in the thread's language, with personal data
+// redacted. Always created as DRAFT — never auto-published.
+// ──────────────────────────────────────────────────────────────────────
+
+/** Strip obvious PII before the thread ever reaches the model (defense-in-depth). */
+function redactPII(text: string): string {
+  return text
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]")
+    .replace(/\bhttps?:\/\/\S+/gi, "[link]")
+    .replace(/(\+?\d[\d\s().-]{6,}\d)/g, "[phone]");
+}
+
+const DRAFT_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    locale: { type: SchemaType.STRING },
+    title: { type: SchemaType.STRING },
+    body: { type: SchemaType.STRING },
+  },
+  required: ["locale", "title", "body"],
+} as const;
+
+export async function draftArticleFromThread(
+  companyId: string,
+  input: { subject?: string | null; threadText: string },
+  actorUserId: string | null
+): Promise<{ article: KbArticle; locale: Locale } | null> {
+  if (!genAI) return null;
+  const raw = `${input.subject ? `Subject: ${input.subject}\n` : ""}${input.threadText}`;
+  const redacted = redactPII(raw).slice(0, 8000);
+  if (!redacted.trim()) return null;
+
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    systemInstruction:
+      `You convert a resolved customer-support conversation into a reusable, public help-center article. ` +
+      `Detect the dominant language of the conversation and set "locale" to ONE of: en, ar, tr ` +
+      `(if it is some other language, use en). Write the article ENTIRELY in that language. ` +
+      `CRITICAL — remove ALL personal/identifying data: customer or agent names, phone numbers, emails, ` +
+      `addresses, order/invoice/account numbers, links — generalize them ("a customer", "your order"). ` +
+      `Never address or name the specific customer. Produce a clear, reusable article: a short title and a ` +
+      `Markdown body (the problem/question + the solution or steps). Use the romanized "Türkiye". ` +
+      `Return STRICT JSON {locale, title, body}.`,
+    generationConfig: {
+      temperature: 0.3,
+      responseMimeType: "application/json",
+      responseSchema: DRAFT_SCHEMA as never,
+    },
+  });
+
+  const prompt = `Resolved support conversation:\n"""\n${redacted}\n"""\n\nDraft the help article as JSON {locale, title, body}.`;
+  try {
+    const result = await model.generateContent(prompt);
+    const parsed = JSON.parse(result.response.text()) as { locale?: string; title?: string; body?: string };
+    if (!parsed.title?.trim() || !parsed.body?.trim()) return null;
+    const locale = coerceLocale(parsed.locale);
+    const article = await createArticle(
+      companyId,
+      actorUserId,
+      { title: { [locale]: parsed.title.trim() }, body: { [locale]: parsed.body.trim() }, status: "draft" }
+    );
+    return { article, locale };
+  } catch (err) {
+    console.error("[kb] draft-from-thread failed:", (err as Error).message);
+    return null;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Portal-facing (published only) + AI grounding
 // ──────────────────────────────────────────────────────────────────────
 

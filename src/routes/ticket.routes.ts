@@ -25,5 +25,7 @@ router.get("/:id", controller.getOne);
 router.patch("/:id", controller.update);
 router.post("/:id/reply", controller.reply);
 router.post("/:id/take", controller.takeIt);
+// One-click: draft a KB article from this ticket (also needs knowledge_base).
+router.post("/:id/save-as-article", requireFeature("knowledge_base"), controller.saveAsArticle);
 
 export default router;

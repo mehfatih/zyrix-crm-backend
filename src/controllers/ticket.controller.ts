@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AuthenticatedRequest } from "../types";
 import { badRequest } from "../middleware/errorHandler";
 import * as Tickets from "../services/ticket.service";
+import * as Kb from "../services/kb.service";
 import * as conv from "../services/whatsapp/conversations.service";
 import { sendText, sendTemplate } from "../services/whatsapp/send";
 import { sendMessage as sendMetaMessage } from "../services/meta-messaging/send";
@@ -145,6 +146,68 @@ export async function reply(req: Request, res: Response, next: NextFunction) {
 
     await Tickets.recordOutboundReply(companyId, id, userId);
     res.status(200).json({ success: true, data: result });
+  } catch (err) { next(err); }
+}
+
+// ── Save as Knowledge Base article (Phase C, one-click) ─────────────────────
+// Drafts a reusable article from the resolved ticket thread (PII redacted, in
+// the thread's language). Always a DRAFT — the merchant reviews + publishes.
+// Route additionally gated by requireFeature("knowledge_base").
+export async function saveAsArticle(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId, userId } = auth(req);
+    const id = String(req.params.id);
+    const ticket = await Tickets.getTicket(companyId, id);
+    if (!ticket) {
+      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Ticket not found" } });
+    }
+    if (ticket.status !== "resolved" && ticket.status !== "closed") {
+      return res.status(400).json({
+        success: false,
+        error: { code: "TICKET_NOT_RESOLVED", message: "Only resolved or closed tickets can become articles" },
+      });
+    }
+
+    // Assemble the thread from whichever surface backs this ticket.
+    const parts: string[] = [];
+    if (ticket.conversationId) {
+      const msgs: any[] = (await conv.getMessages(companyId, ticket.conversationId)) as any[];
+      for (const m of msgs ?? []) {
+        const body = m.body ?? m.text ?? "";
+        if (body) parts.push(`${m.direction === "out" ? "Agent" : "Customer"}: ${body}`);
+      }
+    } else if (ticket.channel === "email" && ticket.customerId) {
+      const emails: any = await listContactEmails(companyId, ticket.customerId);
+      for (const m of emails?.messages ?? []) {
+        const body = m.body ?? m.bodyPreview ?? "";
+        if (body) parts.push(`${m.direction === "out" ? "Agent" : "Customer"}: ${body}`);
+      }
+    }
+    // Portal/manual replies live on ticket_events.
+    const events = await Tickets.listTicketEvents(companyId, id);
+    for (const e of events) {
+      const body = (e.metadata as any)?.body;
+      if ((e.type === "reply_in" || e.type === "reply_out") && body) {
+        parts.push(`${e.type === "reply_out" ? "Agent" : "Customer"}: ${body}`);
+      }
+    }
+
+    const threadText = parts.filter(Boolean).join("\n");
+    if (!threadText.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "EMPTY_THREAD", message: "No conversation content to draft an article from" },
+      });
+    }
+
+    const result = await Kb.draftArticleFromThread(companyId, { subject: ticket.subject, threadText }, userId);
+    if (!result) {
+      return res.status(503).json({
+        success: false,
+        error: { code: "AI_UNAVAILABLE", message: "Article drafting is unavailable right now." },
+      });
+    }
+    res.status(201).json({ success: true, data: { article: result.article, locale: result.locale } });
   } catch (err) { next(err); }
 }
 
