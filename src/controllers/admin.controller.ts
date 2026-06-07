@@ -32,6 +32,7 @@ const listCompaniesSchema = z.object({
   plan: z.string().optional(),
   sortBy: z.enum(["createdAt", "name", "plan"]).optional(),
   sortDir: z.enum(["asc", "desc"]).optional(),
+  includeDeleted: z.coerce.boolean().optional(),
 });
 
 const updateCompanySchema = z.object({
@@ -339,6 +340,20 @@ export async function deleteCompany(req: Request, res: Response, next: NextFunct
   try {
     const actor = (req as AuthenticatedRequest).user.userId;
     const result = await CompaniesSvc.deleteCompany((req.params.id as any), actor);
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const purgeCompanySchema = z.object({ confirmName: z.string().min(1) });
+
+export async function purgeCompany(req: Request, res: Response, next: NextFunction) {
+  try {
+    const actor = (req as AuthenticatedRequest).user.userId;
+    const { confirmName } = purgeCompanySchema.parse(req.body);
+    const { purgeCompanyPermanently } = await import("../services/admin-purge.service");
+    const result = await purgeCompanyPermanently((req.params.id as any), actor, confirmName);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);

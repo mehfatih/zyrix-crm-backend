@@ -14,6 +14,7 @@ export interface ListCompaniesOptions {
   plan?: string;
   sortBy?: "createdAt" | "name" | "plan";
   sortDir?: "asc" | "desc";
+  includeDeleted?: boolean;
 }
 
 export async function listCompanies(opts: ListCompaniesOptions = {}) {
@@ -24,6 +25,11 @@ export async function listCompanies(opts: ListCompaniesOptions = {}) {
   const sortDir = opts.sortDir ?? "desc";
 
   const where: Prisma.CompanyWhereInput = {};
+
+  // Hide soft-deleted tenants by default; admin can opt in to see them.
+  if (!opts.includeDeleted) {
+    where.deletedAt = null;
+  }
 
   if (opts.search) {
     where.OR = [

@@ -77,6 +77,7 @@ router.patch("/companies/:id", AdminCtrl.updateCompany);
 router.post("/companies/:id/suspend", AdminCtrl.suspendCompany);
 router.post("/companies/:id/resume", AdminCtrl.resumeCompany);
 router.delete("/companies/:id", AdminCtrl.deleteCompany);
+router.delete("/companies/:id/permanent", AdminCtrl.purgeCompany);
 router.post("/companies/:id/impersonate", AdminCtrl.impersonateCompany);
 
 // Sprint 16D — plan change requests (admin queue)
