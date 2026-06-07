@@ -22,3 +22,9 @@ export const countStores = (companyId: string) =>
 
 export const countUsers = (companyId: string) =>
   prisma.user.count({ where: { companyId, status: { not: "deleted" } } });
+
+// Sprint 20 — landing_pages is a raw-SQL table (no Prisma model); count via SQL.
+export const countLandingPages = (companyId: string) =>
+  prisma
+    .$queryRawUnsafe(`SELECT count(*)::int AS c FROM landing_pages WHERE "companyId" = $1`, companyId)
+    .then((r) => Number((r as Array<{ c: number }>)[0]?.c ?? 0));

@@ -412,6 +412,26 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: STARTER_UP,
   },
 
+  // ─── LANDING PAGES (Sprint 20) ───
+  // Ads-ready hosted campaign pages. LIMIT feature: starter gets 1 page,
+  // business+ unlimited (free off). The page cap is enforced at create-time
+  // via enforceLimit("landing_pages", count). defaultByPlan answers "has the
+  // capability at all" (limit !== 0); limitByPlan carries the cap.
+  {
+    key: "landing_pages",
+    category: "growth",
+    label: { en: "Landing pages", ar: "صفحات الهبوط", tr: "Açılış sayfaları" },
+    description: {
+      en: "Build & publish hosted campaign landing pages (AI copy + form CTA)",
+      ar: "أنشئ وانشر صفحات هبوط للحملات مستضافة (نسخ بالذكاء الاصطناعي + نموذج)",
+      tr: "Barındırılan kampanya açılış sayfaları oluştur ve yayınla (yapay zekâ metni + form)",
+    },
+    icon: "LayoutTemplate",
+    type: "limit",
+    defaultByPlan: STARTER_UP,
+    limitByPlan: { free: 0, starter: 1, business: null, enterprise: null },
+  },
+
   // ─── SECURITY & COMPLIANCE (premium tiers) ───
   {
     key: "rbac",
