@@ -43,7 +43,7 @@ export async function createActivity(
     }
   }
 
-  return prisma.activity.create({
+  const created = await prisma.activity.create({
     data: {
       companyId,
       userId,
@@ -62,6 +62,64 @@ export async function createActivity(
       deal: { select: { id: true, title: true } },
     },
   });
+
+  // Sprint 21 — push meetings to Google Calendar (fire-and-forget, failure-safe).
+  void syncMeetingOutbound(created, "upsert");
+  return created;
+}
+
+// ── Calendar sync bridge (Sprint 21) ────────────────────────────────────────
+// Fire-and-forget so a Google push never blocks (or fails) the meeting save.
+// Dynamic import avoids a load-order cycle and keeps activities decoupled.
+function syncMeetingOutbound(
+  activity: { id: string; companyId: string; userId: string; type: string },
+  op: "upsert" | "cancel"
+): void {
+  if (activity.type !== "meeting") return;
+  void import("./calendar-sync.service")
+    .then((mod) =>
+      op === "cancel"
+        ? mod.cancelMeetingForActivity(activity as never)
+        : mod.pushMeetingForActivity(activity as never)
+    )
+    .catch(() => {});
+}
+
+export interface UpdateActivityDto {
+  title?: string;
+  content?: string | null;
+  dueDate?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export async function updateActivity(
+  companyId: string,
+  activityId: string,
+  dto: UpdateActivityDto
+) {
+  const existing = await prisma.activity.findFirst({
+    where: { id: activityId, companyId },
+  });
+  if (!existing) throw notFound("Activity");
+
+  const updated = await prisma.activity.update({
+    where: { id: activityId },
+    data: {
+      ...(dto.title !== undefined && { title: dto.title }),
+      ...(dto.content !== undefined && { content: dto.content }),
+      ...(dto.dueDate !== undefined && { dueDate: dto.dueDate ? new Date(dto.dueDate) : null }),
+      ...(dto.metadata !== undefined && { metadata: dto.metadata as Prisma.InputJsonValue }),
+    },
+    include: {
+      user: { select: { id: true, fullName: true } },
+      customer: { select: { id: true, fullName: true } },
+      deal: { select: { id: true, title: true } },
+    },
+  });
+
+  // Push the edit to Google (insert-or-patch by stamped googleEventId).
+  void syncMeetingOutbound(updated, "upsert");
+  return updated;
 }
 
 export async function listActivities(
@@ -180,5 +238,7 @@ export async function deleteActivity(
   if (!existing) throw notFound("Activity");
 
   await prisma.activity.delete({ where: { id: activityId } });
+  // Sprint 21 — reflect the cancellation on Google (uses the stamped eventId).
+  void syncMeetingOutbound(existing, "cancel");
   return { deleted: true };
 }

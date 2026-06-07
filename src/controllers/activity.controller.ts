@@ -17,6 +17,13 @@ const createSchema = z.object({
   brandId: z.string().uuid().nullable().optional(),
 });
 
+const updateSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  content: z.string().max(5000).nullable().optional(),
+  dueDate: z.string().datetime().nullable().optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
 const listSchema = z.object({
   customerId: z.string().uuid().optional(),
   dealId: z.string().uuid().optional(),
@@ -78,6 +85,45 @@ export async function list(
       filters
     );
     res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function update(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const id = getParamId(req);
+    const dto = updateSchema.parse(req.body);
+    const before = await prisma.activity.findFirst({
+      where: { id, companyId: authReq.user.companyId },
+    });
+    const activity = await activityService.updateActivity(
+      authReq.user.companyId,
+      id,
+      dto
+    );
+    recordAudit({
+      userId: authReq.user.userId,
+      companyId: authReq.user.companyId,
+      action: "activity.update",
+      entityType: "activity",
+      entityId: id,
+      before,
+      after: activity,
+      changes: before
+        ? diffObjects(
+            before as unknown as Record<string, unknown>,
+            activity as unknown as Record<string, unknown>
+          )
+        : null,
+      ...extractRequestMeta(req),
+    }).catch(() => {});
+    res.json({ success: true, data: activity, message: "Activity updated" });
   } catch (error) {
     next(error);
   }

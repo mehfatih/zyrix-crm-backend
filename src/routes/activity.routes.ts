@@ -8,6 +8,7 @@ router.use(authenticateToken);
 
 router.get("/", controller.list);
 router.post("/", controller.create);
+router.patch("/:id", controller.update);
 router.post("/:id/complete", controller.complete);
 router.delete("/:id", controller.remove);
 
