@@ -64,6 +64,9 @@ interface SubmitContext {
   flow: { id: string; name: string; steps: FormStep[]; mapping: FormMapping };
   source: "public" | "internal";
   submittedBy?: string | null;
+  // Sprint 20 — set when the submit came from a landing page (CTA). Carried
+  // into form.submitted so automations can filter by landing page.
+  landing?: { id: string; title: string };
 }
 
 // Field-level validation against the flow definition.
@@ -221,7 +224,7 @@ export async function submitForm(ctx: SubmitContext, input: SubmitInput) {
 
   // Fire automation (form.submitted).
   const contact = await prisma.customer.findUnique({ where: { id: contactId }, select: { id: true, fullName: true, email: true, phone: true } });
-  void dispatchFormSubmitted(companyId, contact!, dealId, { id: flow.id, name: flow.name });
+  void dispatchFormSubmitted(companyId, contact!, dealId, { id: flow.id, name: flow.name }, ctx.landing);
 
   return { ok: true, dropped: false, contactId, dealId };
 }

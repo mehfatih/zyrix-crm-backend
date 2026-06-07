@@ -14,8 +14,10 @@
 
 import { randomUUID } from "crypto";
 import { prisma } from "../config/database";
+import { notFound } from "../middleware/errorHandler";
 import { isEnabled } from "./entitlements.service";
-import type { FormStep, FlowTheme } from "./form-flows.service";
+import { submitForm, type SubmitInput } from "./form-submit.service";
+import type { FormStep, FlowTheme, FormMapping } from "./form-flows.service";
 
 export const PAGE_STATUSES = ["draft", "published"] as const;
 export type PageStatus = (typeof PAGE_STATUSES)[number];
@@ -305,6 +307,7 @@ export interface PublicForm {
 export interface PublicLandingPage {
   id: string;
   slug: string;
+  companySlug: string;
   locale: string;
   title: string;
   blocks: LandingBlock[];
@@ -414,6 +417,7 @@ export async function getPublicPage(
   return {
     id: page.id,
     slug: page.slug,
+    companySlug,
     locale: page.locale,
     title: page.title,
     blocks,
@@ -423,6 +427,85 @@ export async function getPublicPage(
     form,
     products,
   };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Public submit — landing-aware wrapper around the Sprint-12 form pipeline
+// ──────────────────────────────────────────────────────────────────────
+
+export interface LandingSubmitResult {
+  submitted: boolean;
+  dropped: boolean;
+}
+
+/**
+ * Submit the CTA form of a published page. Resolves the page + its chosen
+ * Sprint-12 form, runs the shared submitForm pipeline (anti-spam + dedupe
+ * contact/deal + form.submitted) tagged with the landing identity so the
+ * trigger is filterable, then — when not dropped — increments submitCount and
+ * records a `submit` event. Throws notFound when the page/form can't serve.
+ */
+export async function submitFromLanding(
+  companySlug: string,
+  pageSlug: string,
+  input: SubmitInput
+): Promise<LandingSubmitResult> {
+  const companies = (await prisma.$queryRawUnsafe(
+    `SELECT "id" FROM companies WHERE "slug" = $1 LIMIT 1`,
+    companySlug
+  )) as Array<{ id: string }>;
+  const companyId = companies[0]?.id;
+  if (!companyId) throw notFound("Page");
+  if (!(await isEnabled(companyId, "landing_pages"))) throw notFound("Page");
+
+  const pages = (await prisma.$queryRawUnsafe(
+    `SELECT "id","title","formId" FROM landing_pages
+       WHERE "companyId" = $1 AND "slug" = $2 AND "status" = 'published' LIMIT 1`,
+    companyId,
+    pageSlug
+  )) as Array<{ id: string; title: string; formId: string | null }>;
+  const page = pages[0];
+  if (!page || !page.formId) throw notFound("Form");
+
+  const flows = (await prisma.$queryRawUnsafe(
+    `SELECT "id","name","steps","mapping" FROM form_flows
+       WHERE "companyId" = $1 AND "id" = $2 AND "status" = 'active' AND "mode" = 'public' LIMIT 1`,
+    companyId,
+    page.formId
+  )) as Array<{ id: string; name: string; steps: string; mapping: string }>;
+  const flow = flows[0];
+  if (!flow) throw notFound("Form");
+
+  const result = await submitForm(
+    {
+      companyId,
+      flow: {
+        id: flow.id,
+        name: flow.name,
+        steps: parseJson<FormStep[]>(flow.steps, []),
+        mapping: parseJson<FormMapping>(flow.mapping, {} as FormMapping),
+      },
+      source: "public",
+      landing: { id: page.id, title: page.title },
+    },
+    input
+  );
+
+  if (!result.dropped) {
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO landing_page_events ("id","companyId","landingPageId","type","createdAt")
+       VALUES ($1,$2,$3,'submit',NOW())`,
+      randomUUID(),
+      companyId,
+      page.id
+    );
+    await prisma.$executeRawUnsafe(
+      `UPDATE landing_pages SET "submitCount" = "submitCount" + 1 WHERE "id" = $1`,
+      page.id
+    );
+  }
+
+  return { submitted: true, dropped: result.dropped };
 }
 
 /**

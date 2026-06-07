@@ -474,7 +474,11 @@ export async function dispatchFormSubmitted(
   companyId: string,
   contact: { id: string; fullName: string; email: string | null; phone: string | null },
   dealId: string | null,
-  form: { id: string; name: string }
+  form: { id: string; name: string },
+  // Sprint 20 — when the submit came from a landing page, the same
+  // form.submitted trigger carries the landing identity so automations can
+  // filter on it (landingpage.submitted "rides" form.submitted).
+  landing?: { id: string; title: string }
 ): Promise<void> {
   await safeDispatch(
     "form.submitted",
@@ -486,8 +490,13 @@ export async function dispatchFormSubmitted(
       customerId: contact.id,
       dealId,
       form,
+      source: landing ? "landing_page" : "form",
+      landingPageId: landing?.id ?? null,
+      landingPageTitle: landing?.title ?? null,
     },
-    (cfg) => !cfg.formId || cfg.formId === form.id
+    (cfg) =>
+      (!cfg.formId || cfg.formId === form.id) &&
+      (!cfg.landingPageId || cfg.landingPageId === landing?.id)
   );
 }
 

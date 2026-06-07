@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import rateLimit from "express-rate-limit";
-import { getPublicPage, recordViewBySlug } from "../services/landing-page.service";
+import { getPublicPage, recordViewBySlug, submitFromLanding } from "../services/landing-page.service";
 
 // ============================================================================
 // PUBLIC LANDING PAGE ROUTES — /api/p/* (Sprint 20). No auth. Rate-limited.
@@ -36,6 +36,29 @@ router.post("/:companySlug/:pageSlug/view", viewLimiter, async (req: Request, re
   try {
     const counted = await recordViewBySlug(String(req.params.companySlug), String(req.params.pageSlug));
     res.status(200).json({ success: true, data: { counted } });
+  } catch (err) { next(err); }
+});
+
+// CTA submit — wraps the Sprint-12 form pipeline (anti-spam + contact/deal +
+// form.submitted), tagged with the landing identity; counts submits.
+const submitLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30, // per company+page+IP per hour (matches /api/f)
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.params.companySlug || ""}:${req.params.pageSlug || ""}:${req.ip}`,
+  message: { success: false, error: { code: "RATE_LIMITED", message: "Too many submissions. Try again later." } },
+});
+
+router.post("/:companySlug/:pageSlug/submit", submitLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = req.body ?? {};
+    const result = await submitFromLanding(String(req.params.companySlug), String(req.params.pageSlug), {
+      data: body.data ?? {},
+      honeypot: body.honeypot,
+      elapsedMs: Number(body.elapsedMs),
+    });
+    res.status(200).json({ success: true, data: result });
   } catch (err) { next(err); }
 });
 

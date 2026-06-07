@@ -510,8 +510,15 @@ export const TRIGGERS: TriggerSpec[] = [
         type: "text",
         helpText: { en: "Blank = any form", ar: "فارغ = أي نموذج", tr: "Boş = herhangi bir form" },
       },
+      {
+        // Sprint 20 — filter to submissions from a specific landing page.
+        key: "landingPageId",
+        label: { en: "Landing page (optional)", ar: "صفحة الهبوط (اختياري)", tr: "Açılış sayfası (isteğe bağlı)" },
+        type: "text",
+        helpText: { en: "Blank = any source", ar: "فارغ = أي مصدر", tr: "Boş = herhangi bir kaynak" },
+      },
     ],
-    payloadFields: ["customer.id", "customer.fullName", "customer.email", "customer.phone", "dealId", "form.id", "form.name"],
+    payloadFields: ["customer.id", "customer.fullName", "customer.email", "customer.phone", "dealId", "form.id", "form.name", "source", "landingPageId", "landingPageTitle"],
   },
   {
     type: "cadence.exited",
