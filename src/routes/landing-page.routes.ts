@@ -21,5 +21,8 @@ router.get("/:id", controller.getOne);
 router.patch("/:id", canBuild, controller.update);
 router.delete("/:id", canBuild, controller.remove);
 router.post("/:id/publish", canBuild, controller.setPublished);
+// AI one-click copy (Phase B)
+router.post("/:id/generate", canBuild, controller.generate);
+router.post("/:id/generate-block", canBuild, controller.generateBlock);
 
 export default router;

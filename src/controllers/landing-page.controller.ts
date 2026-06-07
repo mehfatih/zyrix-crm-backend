@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "../types";
 import * as Lp from "../services/landing-page.service";
+import * as LpAi from "../services/landing-ai.service";
 
 // ============================================================================
 // LANDING PAGES CONTROLLER (/api/landing-pages, session auth) — Sprint 20
@@ -84,6 +85,41 @@ export async function remove(req: Request, res: Response, next: NextFunction) {
     const ok = await Lp.deletePage(companyId, String(req.params.id));
     if (!ok) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Landing page not found" } });
     res.status(200).json({ success: true });
+  } catch (err) { next(err); }
+}
+
+// ── AI copy generation ─────────────────────────────────────────────────────
+const generateSchema = z.object({ prompt: z.string().min(1).max(600) });
+const generateBlockSchema = z.object({ blockId: z.string().min(1).max(64), prompt: z.string().min(1).max(600) });
+
+function aiUnavailable(res: Response) {
+  return res.status(503).json({
+    success: false,
+    error: { code: "AI_UNAVAILABLE", message: "Copy generation is unavailable right now." },
+  });
+}
+
+export async function generate(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const { prompt } = generateSchema.parse(req.body);
+    const page = await Lp.getPage(companyId, String(req.params.id));
+    if (!page) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Landing page not found" } });
+    const blocks = await LpAi.generatePageCopy(companyId, page, prompt);
+    if (!blocks) return aiUnavailable(res);
+    res.status(200).json({ success: true, data: { blocks } });
+  } catch (err) { next(err); }
+}
+
+export async function generateBlock(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const { blockId, prompt } = generateBlockSchema.parse(req.body);
+    const page = await Lp.getPage(companyId, String(req.params.id));
+    if (!page) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Landing page not found" } });
+    const block = await LpAi.generateBlockCopy(companyId, page, blockId, prompt);
+    if (!block) return aiUnavailable(res);
+    res.status(200).json({ success: true, data: { block } });
   } catch (err) { next(err); }
 }
 
