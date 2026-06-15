@@ -270,6 +270,25 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: BUSINESS_UP,
   },
   {
+    // Sprint 24 — Campaign Economics. Gates the per-campaign ad-spend ledger +
+    // ROAS/CPA + net profit surface (revenue rolled up from deals via lead_sources
+    // / the explicit deals.adCampaignId tag, minus ad spend + COGS, in base
+    // currency). BUSINESS_UP, alongside deal_economics — it's the campaign-level
+    // counterpart of per-deal profitability. Spend is captured via manual entry
+    // today (all 6 platforms); direct platform-API pulls are deferred to later
+    // per-platform sprints (same rows, entryMode='api').
+    key: "campaign_economics",
+    category: "growth",
+    label: { en: "Campaign economics", ar: "اقتصاديات الحملات", tr: "Kampanya ekonomisi" },
+    description: {
+      en: "Per-campaign ad spend, ROAS, CPA & net profit in your base currency",
+      ar: "إنفاق الإعلانات والعائد على الإنفاق وتكلفة الاكتساب وصافي الربح لكل حملة بعملتك الأساسية",
+      tr: "Temel para biriminizde kampanya başına reklam harcaması, ROAS, CPA ve net kâr",
+    },
+    icon: "BarChart3",
+    defaultByPlan: BUSINESS_UP,
+  },
+  {
     key: "loyalty",
     category: "growth",
     label: { en: "Loyalty", ar: "برنامج الولاء", tr: "Sadakat" },
