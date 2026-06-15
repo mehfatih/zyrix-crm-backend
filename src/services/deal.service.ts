@@ -296,6 +296,15 @@ export async function updateDeal(
       } catch {
         // Non-fatal: deal update should succeed even if commission fails
       }
+      // Sprint 23 — freeze the deal's economics (FX rate + base revenue + COGS)
+      // at close. Captured for every tenant; the profitability surface is gated
+      // separately. Non-fatal: a stamping failure never blocks the deal update.
+      try {
+        const { stampDealEconomics } = await import("./deal-economics.service");
+        await stampDealEconomics(companyId, dealId, updated.actualCloseDate ?? undefined);
+      } catch {
+        // Non-fatal
+      }
       // Cadence auto-exit: a won deal ends the contact's active enrollments
       // whose cadence has the onDealWon exit rule (Sprint 11).
       try {

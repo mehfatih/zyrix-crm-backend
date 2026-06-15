@@ -103,12 +103,20 @@ export async function createItem(
   await assertDeal(companyId, dealId);
 
   // If a productId is supplied, make sure it belongs to this company.
+  // Sprint 23 — snapshot the product's cost + cost currency onto the line at
+  // add-time (frozen; survives later product edits) for the per-deal COGS roll-up.
+  let unitCost: number | null = null;
+  let costCurrency: string | null = null;
   if (dto.productId) {
     const product = await prisma.product.findFirst({
       where: { id: dto.productId, companyId },
-      select: { id: true },
+      select: { id: true, cost: true, currency: true },
     });
     if (!product) throw badRequest("Product not found in this company");
+    if (product.cost != null) {
+      unitCost = Number(product.cost);
+      costCurrency = product.currency;
+    }
   }
 
   const qty = dto.qty ?? 1;
@@ -128,6 +136,8 @@ export async function createItem(
       taxRate,
       total,
       position: dto.position ?? 0,
+      unitCost,
+      costCurrency,
     },
   });
   await recomputeDealValue(companyId, dealId);
@@ -158,12 +168,31 @@ export async function updateItem(
         : Number(existing.taxRate);
   const total = computeTotal(qty, unitPrice, discountPct, taxRate);
 
+  // Sprint 23 — re-snapshot the cost when the product link changes. A new
+  // product pulls its current cost/currency; clearing the product clears the cost.
+  let costPatch: { unitCost: number | null; costCurrency: string | null } | null = null;
+  if (dto.productId !== undefined) {
+    if (dto.productId) {
+      const product = await prisma.product.findFirst({
+        where: { id: dto.productId, companyId },
+        select: { cost: true, currency: true },
+      });
+      costPatch =
+        product && product.cost != null
+          ? { unitCost: Number(product.cost), costCurrency: product.currency }
+          : { unitCost: null, costCurrency: null };
+    } else {
+      costPatch = { unitCost: null, costCurrency: null };
+    }
+  }
+
   const item = await prisma.dealItem.update({
     where: { id: itemId },
     data: {
       ...(dto.name !== undefined && { name: dto.name }),
       ...(dto.productId !== undefined && { productId: dto.productId }),
       ...(dto.position !== undefined && { position: dto.position }),
+      ...(costPatch && costPatch),
       qty,
       unitPrice,
       discountPct,

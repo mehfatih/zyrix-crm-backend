@@ -322,6 +322,22 @@ model Deal {
   lostReason        String?
   customFields      Json      @default("{}")
 
+  // Sprint 23 — Deal Economics. Frozen-at-close FX stamp + per-deal costs.
+  // baseCurrency..cogsBase are stamped once when the deal is won and never
+  // silently change (the FX guarantee). cost* are merchant-editable variable
+  // costs in base currency; gross profit + margin are computed on read.
+  baseCurrency       String?                    // snapshot of company base at close (e.g. 'TRY')
+  fxRateToBase       Decimal?  @db.Decimal(18, 8) // frozen dealCurrency→base rate
+  fxRateDate         DateTime? @db.Date           // the FxRate date used
+  fxRateSource       String?                      // 'same' | 'manual' | 'live' | 'unavailable'
+  baseValue          Decimal?  @db.Decimal(14, 2) // revenue in base = value × fxRateToBase
+  cogsBase           Decimal?  @db.Decimal(14, 2) // rolled-up COGS in base at close
+  costShipping       Decimal   @default(0) @db.Decimal(14, 2)
+  costPaymentFee     Decimal   @default(0) @db.Decimal(14, 2)
+  costAdSpend        Decimal   @default(0) @db.Decimal(14, 2)
+  costOther          Decimal   @default(0) @db.Decimal(14, 2)
+  economicsStampedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1118,6 +1134,12 @@ model DealItem {
   taxRate     Decimal? @db.Decimal(5, 2)
   total       Decimal @db.Decimal(14, 2)
   position    Int     @default(0)
+
+  // Sprint 23 — Deal Economics. Product cost snapshot at add-time (frozen per
+  // line). unitCost from product.cost, costCurrency from product.currency.
+  // NULL unitCost = unknown cost (no product link or product had no cost set).
+  unitCost     Decimal? @db.Decimal(14, 2)
+  costCurrency String?
 
   product Product? @relation(fields: [productId], references: [id])
 

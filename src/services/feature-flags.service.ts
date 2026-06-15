@@ -251,6 +251,25 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: ALL_ON,
   },
   {
+    // Sprint 23 — Deal Economics. Gates the per-deal profitability surface
+    // (base-currency revenue / COGS / variable costs / commission / gross
+    // profit / margin%). BUSINESS_UP, alongside the other finance-grade
+    // analytics (ai_cfo, tax_engine). The FX stamp + cost snapshots are
+    // CAPTURED on every close regardless of plan; only the read surface +
+    // variable-cost editing are gated — so upgrading retroactively lights up
+    // historical deals' profit.
+    key: "deal_economics",
+    category: "sales",
+    label: { en: "Deal profitability", ar: "ربحية الصفقات", tr: "Anlaşma kârlılığı" },
+    description: {
+      en: "Real gross profit & margin per deal in your base currency (frozen FX + COGS)",
+      ar: "الربح الإجمالي والهامش الفعلي لكل صفقة بعملتك الأساسية (سعر صرف مجمّد + تكلفة البضاعة)",
+      tr: "Temel para biriminizde anlaşma başına gerçek brüt kâr ve marj (dondurulmuş kur + SMM)",
+    },
+    icon: "TrendingUp",
+    defaultByPlan: BUSINESS_UP,
+  },
+  {
     key: "loyalty",
     category: "growth",
     label: { en: "Loyalty", ar: "برنامج الولاء", tr: "Sadakat" },
