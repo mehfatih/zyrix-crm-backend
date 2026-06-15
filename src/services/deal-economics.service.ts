@@ -20,6 +20,7 @@
 // null, and the surface badges "set an exchange rate" rather than guessing.
 // ============================================================================
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../config/database";
 import { getLiveUsdRate } from "./fx-rates.service";
 
@@ -299,4 +300,56 @@ export async function computeDealEconomics(
     grossProfit,
     marginPct,
   };
+}
+
+export interface VariableCostsDto {
+  shipping?: number;
+  paymentFee?: number;
+  adSpend?: number;
+  other?: number;
+}
+
+// Update the merchant-editable variable costs (entered in base currency).
+// Partial; only provided fields change. Returns the recomputed breakdown, or
+// null when the deal doesn't exist for this company.
+export async function updateVariableCosts(
+  companyId: string,
+  dealId: string,
+  dto: VariableCostsDto
+): Promise<DealEconomics | null> {
+  const existing = await prisma.deal.findFirst({
+    where: { id: dealId, companyId },
+    select: { id: true },
+  });
+  if (!existing) return null;
+
+  const data: Prisma.DealUpdateInput = {};
+  if (dto.shipping !== undefined) data.costShipping = dto.shipping;
+  if (dto.paymentFee !== undefined) data.costPaymentFee = dto.paymentFee;
+  if (dto.adSpend !== undefined) data.costAdSpend = dto.adSpend;
+  if (dto.other !== undefined) data.costOther = dto.other;
+
+  if (Object.keys(data).length > 0) {
+    await prisma.deal.update({ where: { id: dealId }, data });
+  }
+  return computeDealEconomics(companyId, dealId);
+}
+
+// Explicit recompute (e.g. line items changed after close). For a won deal this
+// re-stamps: keeps the frozen FX rate/revenue and refreshes COGS, or does a
+// first full stamp (at the deal's actual close date) if it was never stamped —
+// e.g. deals closed before this feature shipped. Non-won deals are returned as-is.
+export async function recomputeDealEconomics(
+  companyId: string,
+  dealId: string
+): Promise<DealEconomics | null> {
+  const deal = await prisma.deal.findFirst({
+    where: { id: dealId, companyId },
+    select: { id: true, stage: true, actualCloseDate: true },
+  });
+  if (!deal) return null;
+  if (deal.stage === "won") {
+    await stampDealEconomics(companyId, dealId, deal.actualCloseDate ?? undefined);
+  }
+  return computeDealEconomics(companyId, dealId);
 }
