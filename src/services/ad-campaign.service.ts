@@ -22,6 +22,8 @@
 import { randomUUID } from "crypto";
 import { prisma } from "../config/database";
 import { getBaseCurrency, resolveRateToBase, type FxSource } from "./deal-economics.service";
+import { isEnabled } from "./entitlements.service";
+import { createBulkNotifications } from "./notifications.service";
 
 // Unified set of supported ad platforms. Free-text in the DB (like Campaign.channel);
 // validated here + in the zod layer. All 6 get manual entry now; direct-API pulls
@@ -637,4 +639,114 @@ export async function computeCampaignEconomics(
     cpa,
     marginPct,
   };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Alerts (Phase D) — ROAS-drop / CPA-rise sweep (cron-driven)
+// ──────────────────────────────────────────────────────────────────────
+
+// Re-alert cooldown: a given campaign won't re-fire the same alert kind more
+// than once per this window, so a daily sweep of a still-breaching campaign
+// stays to one in-app ping a day (dedup is read off the notifications table —
+// no extra schema). Notification copy follows the existing English convention
+// (same as the SLA-breach notification).
+const ALERT_COOLDOWN_HOURS = 24;
+
+async function recentlyAlerted(companyId: string, kind: string, campaignId: string): Promise<boolean> {
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT 1 FROM notifications
+      WHERE "companyId" = $1 AND kind = $2 AND "entityId" = $3
+        AND "createdAt" > NOW() - ($4 * INTERVAL '1 hour') LIMIT 1`,
+    companyId,
+    kind,
+    campaignId,
+    ALERT_COOLDOWN_HOURS
+  )) as Array<unknown>;
+  return rows.length > 0;
+}
+
+/**
+ * Sweep every alerts-enabled campaign with a threshold set and notify the
+ * company's owners/managers when ROAS drops below targetRoas or CPA rises above
+ * targetCpa. Per-company gated by `campaign_economics` (cached). Cumulative
+ * threshold comparison (v1); deduped per kind via the notifications table so a
+ * daily sweep doesn't spam. Returns scan/alert counts for logging.
+ */
+export async function sweepCampaignAlerts(): Promise<{ scanned: number; alerted: number }> {
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT ${CAMPAIGN_COLS} FROM ad_campaigns
+      WHERE "alertsEnabled" = true
+        AND ("targetRoas" IS NOT NULL OR "targetCpa" IS NOT NULL)
+      ORDER BY "companyId"`
+  )) as Array<Record<string, unknown>>;
+  const campaigns = rows.map(mapCampaign);
+
+  const entitledCache = new Map<string, boolean>();
+  const baseCache = new Map<string, string>();
+  const managersCache = new Map<string, string[]>();
+  let alerted = 0;
+
+  for (const c of campaigns) {
+    // Per-company entitlement gate (cached).
+    let entitled = entitledCache.get(c.companyId);
+    if (entitled === undefined) {
+      entitled = await isEnabled(c.companyId, "campaign_economics");
+      entitledCache.set(c.companyId, entitled);
+    }
+    if (!entitled) continue;
+
+    let base = baseCache.get(c.companyId);
+    if (base === undefined) {
+      base = await getBaseCurrency(c.companyId);
+      baseCache.set(c.companyId, base);
+    }
+
+    const ec = await computeCampaignEconomics(c.companyId, c, base);
+    // ROAS/CPA are only meaningful once there's spend.
+    if (ec.spendBase <= 0) continue;
+
+    const breaches: Array<{ kind: string; title: string; body: string }> = [];
+    if (c.targetRoas != null && ec.roas != null && ec.roas < c.targetRoas) {
+      breaches.push({
+        kind: "campaign_roas_drop",
+        title: `ROAS dropped — ${c.name}`,
+        body: `ROAS ${ec.roas}× is below your ${c.targetRoas}× target (spend ${ec.spendBase} ${base}, revenue ${ec.revenueBase} ${base}).`,
+      });
+    }
+    if (c.targetCpa != null && ec.cpa != null && ec.cpa > c.targetCpa) {
+      breaches.push({
+        kind: "campaign_cpa_rise",
+        title: `CPA rose — ${c.name}`,
+        body: `CPA ${ec.cpa} ${base} is above your ${c.targetCpa} ${base} target (${ec.dealsWon} won from ${ec.spendBase} ${base}).`,
+      });
+    }
+    if (breaches.length === 0) continue;
+
+    // Recipients = active owners/admins/managers (cached per company).
+    let managers = managersCache.get(c.companyId);
+    if (managers === undefined) {
+      const mrows = (await prisma.$queryRawUnsafe(
+        `SELECT id FROM users WHERE "companyId" = $1 AND status = 'active' AND role IN ('owner','admin','manager')`,
+        c.companyId
+      )) as Array<{ id: string }>;
+      managers = mrows.map((m) => m.id);
+      managersCache.set(c.companyId, managers);
+    }
+    if (managers.length === 0) continue;
+
+    for (const b of breaches) {
+      if (await recentlyAlerted(c.companyId, b.kind, c.id)) continue;
+      await createBulkNotifications(c.companyId, managers, {
+        kind: b.kind,
+        title: b.title,
+        body: b.body,
+        link: `/ad-campaigns/${c.id}`,
+        entityType: "ad_campaign",
+        entityId: c.id,
+      });
+      alerted++;
+    }
+  }
+
+  return { scanned: campaigns.length, alerted };
 }
