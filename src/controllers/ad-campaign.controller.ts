@@ -83,6 +83,18 @@ export async function remove(req: Request, res: Response, next: NextFunction) {
   } catch (err) { next(err); }
 }
 
+// GET /api/ad-campaigns/:id/economics — full base-currency breakdown
+// (spend + attributed revenue + COGS + net profit + ROAS/CPA).
+export async function getEconomics(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { companyId } = auth(req);
+    const campaign = await Ad.getCampaign(companyId, String(req.params.id));
+    if (!campaign) return notFoundRes(res);
+    const economics = await Ad.computeCampaignEconomics(companyId, campaign);
+    res.status(200).json({ success: true, data: { campaign, economics } });
+  } catch (err) { next(err); }
+}
+
 // ── Spend ledger ──────────────────────────────────────────────────────────────
 
 export async function listSpend(req: Request, res: Response, next: NextFunction) {

@@ -103,11 +103,9 @@ export interface AdCampaign {
   updatedAt: Date;
 }
 
-/** Campaign + spend roll-up (Phase A: spend totals; revenue/ROAS land in Phase B). */
-export interface AdCampaignWithSpend extends AdCampaign {
-  spendBase: number; // Σ amountBase (base currency)
-  spendEntryCount: number;
-  spendUnconverted: number; // entries with amountBase NULL (rate missing)
+/** Campaign + full economics roll-up (spend + attributed revenue + ROAS/CPA). */
+export interface AdCampaignWithEconomics extends AdCampaign {
+  economics: CampaignEconomics;
 }
 
 const CAMPAIGN_COLS = `
@@ -135,28 +133,20 @@ function mapCampaign(r: Record<string, unknown>): AdCampaign {
   };
 }
 
-export async function listCampaigns(companyId: string): Promise<AdCampaignWithSpend[]> {
+export async function listCampaigns(companyId: string): Promise<AdCampaignWithEconomics[]> {
   const rows = (await prisma.$queryRawUnsafe(
-    `SELECT c."id",c."companyId",c."name",c."platform",c."externalId",c."accountCurrency",
-            c."status",c."objective",c."targetRoas"::text AS "targetRoas",
-            c."targetCpa"::text AS "targetCpa",c."alertsEnabled",c."createdById",
-            c."createdAt",c."updatedAt",
-            COALESCE(SUM(s."amountBase"),0)::text AS "spendBase",
-            COUNT(s."id")::int AS "spendEntryCount",
-            COUNT(s."id") FILTER (WHERE s."amountBase" IS NULL)::int AS "spendUnconverted"
-       FROM ad_campaigns c
-       LEFT JOIN ad_spend_entries s ON s."adCampaignId" = c."id"
-      WHERE c."companyId" = $1
-      GROUP BY c."id"
-      ORDER BY c."updatedAt" DESC`,
+    `SELECT ${CAMPAIGN_COLS} FROM ad_campaigns WHERE "companyId" = $1 ORDER BY "updatedAt" DESC`,
     companyId
   )) as Array<Record<string, unknown>>;
-  return rows.map((r) => ({
-    ...mapCampaign(r),
-    spendBase: round2(toNum(r.spendBase)),
-    spendEntryCount: Number(r.spendEntryCount ?? 0),
-    spendUnconverted: Number(r.spendUnconverted ?? 0),
-  }));
+  const campaigns = rows.map(mapCampaign);
+  // Campaign cardinality per tenant is low (tens), so a per-campaign roll-up loop
+  // is fine; base currency is resolved once and threaded in.
+  const base = await getBaseCurrency(companyId);
+  const out: AdCampaignWithEconomics[] = [];
+  for (const c of campaigns) {
+    out.push({ ...c, economics: await computeCampaignEconomics(companyId, c, base) });
+  }
+  return out;
 }
 
 export async function getCampaign(companyId: string, id: string): Promise<AdCampaign | null> {
@@ -503,4 +493,148 @@ export async function deleteSpend(
     spendId
   );
   return Number(n) > 0;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Economics roll-up (Phase B) — revenue attribution + ROAS / CPA / net profit
+// ──────────────────────────────────────────────────────────────────────
+
+// Map a unified ad platform to the lead_sources.source values that attribute to
+// it. Only Meta + Google have lead-capture plumbing today; the other four
+// platforms attribute revenue solely through the explicit deals.adCampaignId tag.
+function sourcesForPlatform(platform: string): string[] {
+  switch (platform) {
+    case "meta":
+      return ["meta_lead_ad"];
+    case "google":
+      return ["google_ads_lead"];
+    default:
+      return [];
+  }
+}
+
+export interface CampaignEconomics {
+  baseCurrency: string;
+  // Spend (from the ledger).
+  spendBase: number;
+  spendEntryCount: number;
+  spendUnconverted: number; // spend rows with no resolvable rate (amountBase NULL)
+  spendComplete: boolean;
+  // Revenue (won deals attributed to this campaign, Sprint-23 base value).
+  revenueBase: number;
+  dealsWon: number;
+  revenueUnstamped: number; // attributed won deals with NULL baseValue (no FX at close)
+  revenueComplete: boolean;
+  leadsCount: number; // lead_sources matched (informational; 0 for non-lead platforms)
+  // COGS (Sprint-23 rolled-up cost of the attributed won deals).
+  cogsBase: number;
+  cogsMissing: number; // attributed won deals with NULL cogsBase
+  cogsComplete: boolean;
+  // Derived.
+  netProfit: number; // revenueBase − spendBase − cogsBase (base currency)
+  roas: number | null; // revenueBase / spendBase (null when no spend)
+  cpa: number | null; // spendBase / dealsWon (cost per acquisition; null when no wins)
+  marginPct: number | null; // netProfit / revenueBase × 100
+}
+
+/**
+ * Full per-campaign economics in the company base currency (TRY default).
+ *
+ * Revenue attribution (rolls up Sprint-23 deal economics):
+ *   - EXPLICIT: deals.adCampaignId = this campaign (always attributes; wins over
+ *     any lead_sources link — so a tagged deal counts once, here).
+ *   - AUTO-MATCH: untagged won deals whose lead_sources row carries this
+ *     campaign's externalId AND a source mapping to its platform (Meta/Google).
+ * Only won deals contribute revenue/COGS. baseValue/cogsBase are the frozen
+ * Sprint-23 stamps; NULLs are summed as 0 but counted so the surface can warn.
+ */
+export async function computeCampaignEconomics(
+  companyId: string,
+  campaign: AdCampaign,
+  base?: string
+): Promise<CampaignEconomics> {
+  const baseCurrency = base ?? (await getBaseCurrency(companyId));
+
+  // ── Spend roll-up ──
+  const spendRows = (await prisma.$queryRawUnsafe(
+    `SELECT COALESCE(SUM("amountBase"),0)::text AS "spendBase",
+            COUNT(*)::int AS "spendEntryCount",
+            COUNT(*) FILTER (WHERE "amountBase" IS NULL)::int AS "spendUnconverted"
+       FROM ad_spend_entries WHERE "companyId" = $1 AND "adCampaignId" = $2`,
+    companyId,
+    campaign.id
+  )) as Array<Record<string, unknown>>;
+  const spendBase = round2(toNum(spendRows[0]?.spendBase));
+  const spendEntryCount = Number(spendRows[0]?.spendEntryCount ?? 0);
+  const spendUnconverted = Number(spendRows[0]?.spendUnconverted ?? 0);
+
+  const sources = sourcesForPlatform(campaign.platform);
+  const canAutoMatch = campaign.externalId != null && sources.length > 0;
+
+  // ── Attributed won-deal revenue + COGS ──
+  // Explicit tag always attributes; the lead_sources branch applies only to
+  // untagged deals (so explicit tagging takes priority and never double-counts).
+  let attrSql =
+    `SELECT COUNT(*)::int AS "dealsWon",
+            COALESCE(SUM(d."baseValue"),0)::text AS "revenueBase",
+            COUNT(*) FILTER (WHERE d."baseValue" IS NULL)::int AS "revenueUnstamped",
+            COALESCE(SUM(d."cogsBase"),0)::text AS "cogsBase",
+            COUNT(*) FILTER (WHERE d."cogsBase" IS NULL)::int AS "cogsMissing"
+       FROM deals d
+      WHERE d."companyId" = $1 AND d."stage" = 'won' AND (d."adCampaignId" = $2`;
+  const params: unknown[] = [companyId, campaign.id];
+  if (canAutoMatch) {
+    attrSql +=
+      ` OR (d."adCampaignId" IS NULL AND EXISTS (
+            SELECT 1 FROM lead_sources ls
+             WHERE ls."dealId" = d."id" AND ls."companyId" = $1
+               AND ls."campaignId" = $3 AND ls."source" = ANY($4)))`;
+    params.push(campaign.externalId, sources);
+  }
+  attrSql += `)`;
+  const attrRows = (await prisma.$queryRawUnsafe(attrSql, ...params)) as Array<Record<string, unknown>>;
+  const a = attrRows[0] ?? {};
+  const dealsWon = Number(a.dealsWon ?? 0);
+  const revenueBase = round2(toNum(a.revenueBase));
+  const revenueUnstamped = Number(a.revenueUnstamped ?? 0);
+  const cogsBase = round2(toNum(a.cogsBase));
+  const cogsMissing = Number(a.cogsMissing ?? 0);
+
+  // ── Leads (informational) ──
+  let leadsCount = 0;
+  if (canAutoMatch) {
+    const leadRows = (await prisma.$queryRawUnsafe(
+      `SELECT COUNT(*)::int AS c FROM lead_sources
+        WHERE "companyId" = $1 AND "campaignId" = $2 AND "source" = ANY($3)`,
+      companyId,
+      campaign.externalId,
+      sources
+    )) as Array<{ c: number }>;
+    leadsCount = Number(leadRows[0]?.c ?? 0);
+  }
+
+  const netProfit = round2(revenueBase - spendBase - cogsBase);
+  const roas = spendBase > 0 ? round2(revenueBase / spendBase) : null;
+  const cpa = dealsWon > 0 ? round2(spendBase / dealsWon) : null;
+  const marginPct = revenueBase > 0 ? round2((netProfit / revenueBase) * 100) : null;
+
+  return {
+    baseCurrency,
+    spendBase,
+    spendEntryCount,
+    spendUnconverted,
+    spendComplete: spendUnconverted === 0,
+    revenueBase,
+    dealsWon,
+    revenueUnstamped,
+    revenueComplete: revenueUnstamped === 0,
+    leadsCount,
+    cogsBase,
+    cogsMissing,
+    cogsComplete: cogsMissing === 0,
+    netProfit,
+    roas,
+    cpa,
+    marginPct,
+  };
 }

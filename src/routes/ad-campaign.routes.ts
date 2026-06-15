@@ -21,6 +21,9 @@ router.get("/:id", controller.getOne);
 router.patch("/:id", canBuild, controller.update);
 router.delete("/:id", canBuild, controller.remove);
 
+// Economics — revenue rollup + ROAS/CPA/net profit (Phase B)
+router.get("/:id/economics", controller.getEconomics);
+
 // Spend ledger (manual entry; direct platform-API pulls deferred to later sprints)
 router.get("/:id/spend", controller.listSpend);
 router.post("/:id/spend", canBuild, controller.addSpend);
