@@ -322,7 +322,7 @@ async function portalPaymentsActive(companyId: string): Promise<boolean> {
   );
 }
 
-async function enrichQuotesWithPayments<T extends DashboardQuote>(
+export async function enrichQuotesWithPayments<T extends DashboardQuote>(
   companyId: string,
   quotes: T[]
 ): Promise<(T & { payable: boolean; payProvider: string | null; payment: QuotePayment })[]> {
