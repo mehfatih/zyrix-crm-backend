@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as controller from "../controllers/deal.controller";
 import * as items from "../controllers/deal-items.controller";
 import * as economics from "../controllers/deal-economics.controller";
+import * as attribution from "../controllers/deal-attribution.controller";
 import { authenticateToken } from "../middleware/auth";
 import { requireFeature } from "../middleware/entitlement-gate";
 
@@ -31,5 +32,12 @@ const gateEconomics = requireFeature("deal_economics");
 router.get("/:id/economics", gateEconomics, economics.getEconomics);
 router.patch("/:id/economics/costs", gateEconomics, economics.updateCosts);
 router.post("/:id/economics/recompute", gateEconomics, economics.recompute);
+
+// Source Attribution (Sprint 25) — manual "where did this deal come from?" stamp,
+// gated by the `source_attribution` entitlement (STARTER_UP). Auto-capture
+// (Phases C/D/E) writes the same columns server-side, respecting manual precedence.
+const gateAttribution = requireFeature("source_attribution");
+router.get("/:id/attribution", gateAttribution, attribution.getAttribution);
+router.put("/:id/attribution", gateAttribution, attribution.setAttribution);
 
 export default router;
