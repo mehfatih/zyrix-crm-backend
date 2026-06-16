@@ -57,6 +57,7 @@ router.post("/:companySlug/:pageSlug/submit", submitLimiter, async (req: Request
       data: body.data ?? {},
       honeypot: body.honeypot,
       elapsedMs: Number(body.elapsedMs),
+      attribution: body.attribution,
     });
     res.status(200).json({ success: true, data: result });
   } catch (err) { next(err); }

@@ -13,6 +13,7 @@ import { notFound, badRequest } from "../middleware/errorHandler";
 import { normalizeE164, dialCodeForCountry } from "./google-ads/map";
 import { recordIntegrationEvent } from "./integration-events.service";
 import { dispatchFormSubmitted } from "./workflow-events.service";
+import { captureLandingAttribution } from "./lead-source-capture.service";
 import {
   CONTACT_WRITABLE, DEAL_WRITABLE, SENSITIVE_BLACKLIST,
   type FormStep, type FormField, type FormMapping,
@@ -57,6 +58,9 @@ export interface SubmitInput {
   data: Record<string, unknown>;
   honeypot?: string; // must be empty
   elapsedMs?: number; // time on the form
+  // Sprint 25 — UTM params + ad click ids gathered client-side from location.search
+  // (+ referrer/path). Drives source auto-capture; ignored when no signal present.
+  attribution?: Record<string, unknown>;
 }
 
 interface SubmitContext {
@@ -221,6 +225,17 @@ export async function submitForm(ctx: SubmitContext, input: SubmitInput) {
   });
 
   recordIntegrationEvent({ companyId, platform: "forms", eventType: "webhook_received", requestContext: { flowId: flow.id, contactId, dealId, source } });
+
+  // Sprint 25 — source attribution auto-capture from UTM/click ids (fire-safe,
+  // gated by source_attribution). Stamps the deal + writes the lead_sources audit
+  // row; respects a manual stamp if one somehow already exists.
+  void captureLandingAttribution({
+    companyId,
+    contactId,
+    dealId,
+    landingPageId: ctx.landing?.id ?? null,
+    raw: input.attribution,
+  });
 
   // Fire automation (form.submitted).
   const contact = await prisma.customer.findUnique({ where: { id: contactId }, select: { id: true, fullName: true, email: true, phone: true } });

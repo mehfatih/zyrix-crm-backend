@@ -32,7 +32,7 @@ router.post("/:token/submit", submitLimiter, async (req: Request, res: Response,
     const body = req.body ?? {};
     const result = await submitForm(
       { companyId, flow, source: "public" },
-      { data: body.data ?? {}, honeypot: body.honeypot, elapsedMs: Number(body.elapsedMs) },
+      { data: body.data ?? {}, honeypot: body.honeypot, elapsedMs: Number(body.elapsedMs), attribution: body.attribution },
     );
     res.status(200).json({ success: true, data: { submitted: true, dropped: result.dropped } });
   } catch (err) { next(err); }
