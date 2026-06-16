@@ -186,3 +186,198 @@ export async function captureLandingAttribution(
     return false;
   }
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// CTWA + Messenger referral capture (Sprint 25 Phase D)
+// ──────────────────────────────────────────────────────────────────────────
+// Click-to-WhatsApp and Click-to-Messenger ads attach a `referral` object to the
+// first inbound message. Unlike forms there is no deal at this point — inbound
+// just creates a contact/conversation — so we attribute the touch to the contact
+// and stamp the contact's most-recent OPEN deal when one exists.
+//
+// ⚠️ LIVE ACTIVATION GATED ON META CHANNEL APPROVALS (company formation): the
+// WhatsApp Cloud / Messenger webhooks only deliver real `referral` payloads once
+// the Meta app is approved for those channels. The parsing + capture below is
+// complete and unit-safe today; it simply won't fire until the channels go live.
+
+const CTWA_SOURCE = "ctwa_ad";
+const MESSENGER_SOURCE = "messenger_ad";
+
+/** Newest open (non-won/lost) deal for a contact — the one a fresh ad chat is about. */
+async function findStampableDeal(
+  companyId: string,
+  contactId: string
+): Promise<string | null> {
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT "id" FROM deals
+      WHERE "companyId" = $1 AND "customerId" = $2 AND "stage" NOT IN ('won','lost')
+      ORDER BY "createdAt" DESC LIMIT 1`,
+    companyId,
+    contactId
+  )) as Array<{ id: string }>;
+  return rows[0]?.id ?? null;
+}
+
+// Pure parse result of a referral object — no DB, unit-verifiable.
+export interface ParsedReferral {
+  source: string; // ctwa_ad | messenger_ad
+  platform: string; // meta
+  clickId: string | null;
+  adId: string | null;
+  adsetId: string | null;
+  campaignId: string | null;
+  dedupeSeed: string; // clickId || adId (composed with contactId into the dedupeKey)
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Parse a WhatsApp Cloud inbound message's `referral` object (Click-to-WhatsApp).
+ * Returns null unless it's an AD referral carrying an ad id or click id. Pure.
+ */
+export function parseWhatsAppReferral(msg: unknown): ParsedReferral | null {
+  const ref = (msg as { referral?: Record<string, unknown> } | null)?.referral;
+  if (!ref || typeof ref !== "object") return null;
+  // CTWA referrals are source_type 'ad' (vs 'post'); only ads attribute.
+  const sourceType = str(ref["source_type"]);
+  if (sourceType && sourceType.toLowerCase() !== "ad") return null;
+
+  const adId = str(ref["source_id"]);
+  const clickId = str(ref["ctwa_clid"]);
+  if (!adId && !clickId) return null;
+
+  return {
+    source: CTWA_SOURCE,
+    platform: "meta",
+    clickId,
+    adId,
+    adsetId: null,
+    campaignId: null, // CTWA gives the ad id, not the campaign id (resolved later)
+    dedupeSeed: clickId || adId || "",
+    raw: {
+      sourceUrl: str(ref["source_url"]),
+      headline: str(ref["headline"]),
+      body: str(ref["body"]),
+      mediaType: str(ref["media_type"]),
+      ctwaClid: clickId,
+      sourceId: adId,
+    },
+  };
+}
+
+/**
+ * Parse a Messenger/IG messaging event's referral (Click-to-Messenger ad). Rides
+ * either `ev.referral` (existing thread) or `ev.postback.referral` (first open
+ * from an m.me ad link). Returns null unless source is ADS / an ad id present. Pure.
+ */
+export function parseMessengerReferral(ev: unknown): ParsedReferral | null {
+  const e = ev as
+    | { referral?: Record<string, unknown>; postback?: { referral?: Record<string, unknown> } }
+    | null;
+  const ref = e?.referral ?? e?.postback?.referral;
+  if (!ref || typeof ref !== "object") return null;
+
+  const source = str(ref["source"]);
+  const adId = str(ref["ad_id"]);
+  if (!adId && (!source || source.toUpperCase() !== "ADS")) return null;
+
+  const refParam = str(ref["ref"]);
+  const ctx = (ref["ads_context_data"] as Record<string, unknown> | undefined) ?? {};
+
+  return {
+    source: MESSENGER_SOURCE,
+    platform: "meta",
+    clickId: refParam,
+    adId,
+    adsetId: null,
+    campaignId: null,
+    dedupeSeed: adId || refParam || "",
+    raw: {
+      source,
+      type: str(ref["type"]),
+      ref: refParam,
+      adId,
+      adTitle: str(ctx["ad_title"]),
+      photoUrl: str(ctx["photo_url"]),
+      postId: str(ctx["post_id"]),
+    },
+  };
+}
+
+interface ReferralTouch {
+  companyId: string;
+  contactId: string;
+  parsed: ParsedReferral;
+}
+
+/** Shared insert + deal stamp for a parsed referral touch. */
+async function recordReferralTouch(t: ReferralTouch): Promise<boolean> {
+  const { companyId, contactId, parsed } = t;
+  const dealId = await findStampableDeal(companyId, contactId);
+  const dedupeKey = `${parsed.source}:${parsed.dedupeSeed}:${contactId}`;
+
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO lead_sources
+       ("id","companyId","contactId","dealId","source","leadgenId","campaignId",
+        "adsetId","adId","formId","pageId","platform","clickId","utmSource",
+        "utmMedium","utmCampaign","captureMethod","landingPageId","dedupeKey",
+        "rawJson","createdAt")
+     VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,NULL,NULL,$9,$10,NULL,NULL,NULL,
+             'auto',NULL,$11,$12::jsonb,NOW())
+     ON CONFLICT ("companyId","dedupeKey")
+       WHERE "leadgenId" IS NULL AND "dedupeKey" IS NOT NULL
+       DO NOTHING`,
+    randomUUID(),
+    companyId,
+    contactId,
+    dealId,
+    parsed.source,
+    parsed.campaignId,
+    parsed.adsetId,
+    parsed.adId,
+    parsed.platform,
+    parsed.clickId,
+    dedupeKey,
+    JSON.stringify(parsed.raw)
+  );
+
+  if (dealId) await stampAttributionAuto(companyId, dealId, parsed.source);
+  return true;
+}
+
+/**
+ * Capture a Click-to-WhatsApp referral from a WhatsApp Cloud inbound message.
+ * No-op unless it parses as an ad referral. Gated by source_attribution; fire-safe.
+ */
+export async function captureWhatsAppReferral(
+  companyId: string,
+  contactId: string,
+  msg: unknown
+): Promise<boolean> {
+  try {
+    const parsed = parseWhatsAppReferral(msg);
+    if (!parsed) return false;
+    if (!(await isEnabled(companyId, "source_attribution"))) return false;
+    return await recordReferralTouch({ companyId, contactId, parsed });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Capture a Click-to-Messenger / IG ad referral from a messaging event. No-op
+ * unless it parses as an ad referral. Gated by source_attribution; fire-safe.
+ */
+export async function captureMessengerReferral(
+  companyId: string,
+  contactId: string,
+  ev: unknown
+): Promise<boolean> {
+  try {
+    const parsed = parseMessengerReferral(ev);
+    if (!parsed) return false;
+    if (!(await isEnabled(companyId, "source_attribution"))) return false;
+    return await recordReferralTouch({ companyId, contactId, parsed });
+  } catch {
+    return false;
+  }
+}

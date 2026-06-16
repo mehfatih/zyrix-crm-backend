@@ -24,6 +24,7 @@ import {
 import { recordIntegrationEvent } from "../integration-events.service";
 import { onContactReplied } from "../cadence.service";
 import { ensureTicketForInbound } from "../ticket.service";
+import { captureMessengerReferral } from "../lead-source-capture.service";
 
 /** Verify X-Hub-Signature-256 against the raw body (shared scheme). */
 export function verifySignature(rawBody: Buffer, header: string | undefined): boolean {
@@ -144,6 +145,10 @@ export async function processMessagingPayload(payload: any): Promise<void> {
           sentAt: ev.timestamp ? new Date(Number(ev.timestamp)) : null,
         });
         await touchInbound(conversationId);
+        // Sprint 25 — Click-to-Messenger / IG ad referral attribution (fire-safe,
+        // gated by source_attribution). Live once the channel is approved
+        // (company formation); inert no-op otherwise.
+        if (contactId) void captureMessengerReferral(companyId, contactId, ev);
         // Service desk: auto-create/reopen a ticket (inert unless enabled).
         void ensureTicketForInbound({
           companyId,

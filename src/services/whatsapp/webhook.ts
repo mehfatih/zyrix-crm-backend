@@ -20,6 +20,7 @@ import {
 import { recordIntegrationEvent } from "../integration-events.service";
 import { onContactReplied } from "../cadence.service";
 import { ensureTicketForInbound } from "../ticket.service";
+import { captureWhatsAppReferral } from "../lead-source-capture.service";
 
 /** Verify the X-Hub-Signature-256 header against the raw body. */
 export function verifySignature(rawBody: Buffer, header: string | undefined): boolean {
@@ -121,6 +122,10 @@ export async function processWebhookPayload(payload: any): Promise<void> {
             sentAt: msg.timestamp ? new Date(Number(msg.timestamp) * 1000) : null,
           });
           await touchInbound(conversationId);
+          // Sprint 25 — Click-to-WhatsApp ad referral attribution (fire-safe,
+          // gated by source_attribution). Live once the WhatsApp channel is
+          // approved (company formation); inert no-op otherwise.
+          if (contactId) void captureWhatsAppReferral(companyId, contactId, msg);
           // Service desk: auto-create/reopen a ticket (inert unless enabled).
           void ensureTicketForInbound({
             companyId,
