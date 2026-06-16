@@ -187,6 +187,25 @@ export async function captureLandingAttribution(
   }
 }
 
+/**
+ * Stamp a freshly-ingested lead-ad deal's source (Sprint 25 Phase E backfill).
+ * Called from Meta / Google lead ingestion so deals.attributionSource is set
+ * alongside the lead_sources row those flows already write. Gated by
+ * source_attribution; fire-safe; respects manual precedence (a no-op there).
+ */
+export async function captureLeadAdStamp(
+  companyId: string,
+  dealId: string,
+  source: string
+): Promise<boolean> {
+  try {
+    if (!(await isEnabled(companyId, "source_attribution"))) return false;
+    return await stampAttributionAuto(companyId, dealId, source);
+  } catch {
+    return false;
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // CTWA + Messenger referral capture (Sprint 25 Phase D)
 // ──────────────────────────────────────────────────────────────────────────

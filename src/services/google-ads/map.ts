@@ -18,6 +18,7 @@
 import { randomUUID } from "crypto";
 import { prisma } from "../../config/database";
 import { dispatchLeadCaptured } from "../workflow-events.service";
+import { captureLeadAdStamp } from "../lead-source-capture.service";
 
 export type CrmField =
   | "fullName"
@@ -306,6 +307,10 @@ export async function ingestGoogleLead(params: {
       columnIds: (payload.user_column_data ?? []).map((c) => c.column_id),
     })
   );
+
+  // Sprint 25E — stamp deals.attributionSource (gated by source_attribution,
+  // fire-safe) alongside the lead_sources row written above.
+  void captureLeadAdStamp(companyId, deal.id, "google_ads_lead");
 
   // Fire the Sprint 6 lead.captured automation trigger (fire-and-forget).
   dispatchLeadCaptured(

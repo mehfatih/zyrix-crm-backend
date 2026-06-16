@@ -24,6 +24,7 @@ import { prisma } from "../config/database";
 import { getBaseCurrency, resolveRateToBase, type FxSource } from "./deal-economics.service";
 import { isEnabled } from "./entitlements.service";
 import { createBulkNotifications } from "./notifications.service";
+import { ATTRIBUTION_SOURCES, platformForSource } from "./attribution";
 
 // Unified set of supported ad platforms. Free-text in the DB (like Campaign.channel);
 // validated here + in the zod layer. All 6 get manual entry now; direct-API pulls
@@ -501,18 +502,19 @@ export async function deleteSpend(
 // Economics roll-up (Phase B) — revenue attribution + ROAS / CPA / net profit
 // ──────────────────────────────────────────────────────────────────────
 
-// Map a unified ad platform to the lead_sources.source values that attribute to
-// it. Only Meta + Google have lead-capture plumbing today; the other four
-// platforms attribute revenue solely through the explicit deals.adCampaignId tag.
+// Map a unified ad platform to the lead_sources.source tokens that attribute to
+// it (Sprint 25 — driven by the shared platformForSource vocabulary). meta now
+// covers meta_lead_ad + ctwa_ad + messenger_ad + the manual 'meta' tag; google
+// covers google_ads_lead + manual 'google'; tiktok/snapchat/twitter/linkedin map
+// to their own manual tag. NOTE: the auto-match still requires the lead_sources
+// row to carry campaignId = the campaign's externalId — today only the lead-ad
+// flows (meta_lead_ad / google_ads_lead) populate that, so CTWA/Messenger/landing
+// rows attribute at the DEAL level (deals.attributionSource) but roll into a
+// SPECIFIC campaign only via the explicit deals.adCampaignId tag.
 function sourcesForPlatform(platform: string): string[] {
-  switch (platform) {
-    case "meta":
-      return ["meta_lead_ad"];
-    case "google":
-      return ["google_ads_lead"];
-    default:
-      return [];
-  }
+  return (ATTRIBUTION_SOURCES as readonly string[]).filter(
+    (s) => platformForSource(s) === platform
+  );
 }
 
 export interface CampaignEconomics {

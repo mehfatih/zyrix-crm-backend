@@ -15,6 +15,7 @@
 import { randomUUID } from "crypto";
 import { prisma } from "../../config/database";
 import { dispatchLeadCaptured } from "../workflow-events.service";
+import { captureLeadAdStamp } from "../lead-source-capture.service";
 import type { FetchedLead, LeadFieldDatum } from "./fetch";
 
 // Known Meta lead-form field keys → CRM contact fields. Match by key.
@@ -192,6 +193,10 @@ export async function ingestLead(params: {
     platform,
     JSON.stringify({ fieldKeys: lead.fieldData.map((f) => f.name), createdTime: lead.createdTime })
   );
+
+  // Sprint 25E — stamp deals.attributionSource (gated by source_attribution,
+  // fire-safe) alongside the lead_sources row written above.
+  void captureLeadAdStamp(companyId, deal.id, "meta_lead_ad");
 
   // Fire the lead.captured automation trigger (fire-and-forget — ingest must
   // succeed even if no workflow matches or matching errors).
