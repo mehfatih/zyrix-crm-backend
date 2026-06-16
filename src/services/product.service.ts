@@ -96,8 +96,9 @@ export async function listProducts(companyId: string, query: ListProductsQuery) 
     conds.push(`p.source = $${params.length}`);
   }
   if (query.search && query.search.trim()) {
+    const idx = params.length + 1;
     params.push(`%${query.search.trim()}%`);
-    conds.push(`(p.name ILIKE $${params.length} OR p.sku ILIKE $${params.length})`);
+    conds.push(`(p.name ILIKE $${idx} OR p.sku ILIKE $${idx})`);
   }
   if (query.lowStock) {
     conds.push(
