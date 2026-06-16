@@ -15,6 +15,7 @@ import { upsertShopCustomer, upsertOrderDeal } from "../ecommerce.service";
 import {
   upsertShopifyProduct,
   shopifyProductUpsertInput,
+  shopifyOrderCustomerInput,
   deleteShopifyProduct,
 } from "./sync";
 import { getConnectionByShopDomain } from "./connections.service";
@@ -59,14 +60,12 @@ export function verifyWebhookHmac(rawBody: Buffer, hmacHeader: string | undefine
 // ──────────────────────────────────────────────────────────────────────
 async function handleOrder(companyId: string, o: any): Promise<void> {
   if (!o.customer?.id) return; // guest checkout — no CRM contact to link
-  const customerId = await upsertShopCustomer(companyId, "shopify", String(o.customer.id), {
-    fullName:
-      [o.customer.first_name, o.customer.last_name].filter(Boolean).join(" ").trim() ||
-      o.customer.email ||
-      `Customer ${o.customer.id}`,
-    email: o.customer.email,
-    phone: o.customer.phone,
-  });
+  const customerId = await upsertShopCustomer(
+    companyId,
+    "shopify",
+    String(o.customer.id),
+    shopifyOrderCustomerInput(o)
+  );
   const value = parseFloat(o.total_price || "0") || 0;
   const isPaid = o.financial_status === "paid";
   const closedAt = isPaid && o.closed_at ? new Date(o.closed_at) : null;

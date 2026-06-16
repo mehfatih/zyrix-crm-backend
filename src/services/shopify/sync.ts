@@ -84,6 +84,40 @@ async function syncCustomers(
   return imported;
 }
 
+// Build the upsertShopCustomer input for a Shopify ORDER's customer, enriched
+// with the order's shipping/billing address (the fulfillment destination) — the
+// data the bare order.customer object drops. Prefers shipping_address, then
+// billing_address, then the customer's default_address. Shared by the order
+// poll (syncOrders) and the orders/* webhook (handleOrder) so both behave
+// identically.
+export function shopifyOrderCustomerInput(order: any): {
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  country: string | null;
+  city: string | null;
+} {
+  const c = order.customer || {};
+  const addr =
+    order.shipping_address || order.billing_address || c.default_address || null;
+  const fullName =
+    [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+    (addr ? [addr.first_name, addr.last_name].filter(Boolean).join(" ").trim() : "") ||
+    c.email ||
+    `Customer ${c.id}`;
+  return {
+    fullName,
+    email: c.email ?? null,
+    phone: c.phone || addr?.phone || null,
+    address: addr
+      ? [addr.address1, addr.city, addr.country].filter(Boolean).join(", ") || null
+      : null,
+    country: addr?.country ?? null,
+    city: addr?.city ?? null,
+  };
+}
+
 async function syncOrders(
   domain: string,
   token: string,
@@ -108,14 +142,12 @@ async function syncOrders(
 
     for (const order of data.orders) {
       if (!order.customer?.id) continue; // guest checkout — skip
-      const customerId = await upsertShopCustomer(companyId, "shopify", String(order.customer.id), {
-        fullName:
-          [order.customer.first_name, order.customer.last_name].filter(Boolean).join(" ").trim() ||
-          order.customer.email ||
-          `Customer ${order.customer.id}`,
-        email: order.customer.email,
-        phone: order.customer.phone,
-      });
+      const customerId = await upsertShopCustomer(
+        companyId,
+        "shopify",
+        String(order.customer.id),
+        shopifyOrderCustomerInput(order)
+      );
       const value = parseFloat(order.total_price || "0") || 0;
       const isPaid = order.financial_status === "paid";
       const closedAt = isPaid && order.closed_at ? new Date(order.closed_at) : null;

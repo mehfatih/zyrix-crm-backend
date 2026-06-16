@@ -610,6 +610,13 @@ export async function upsertShopCustomer(
         phone: data.phone || null,
         lifetimeValue: data.lifetimeValue ?? 0,
         notes: data.notes || null,
+        // Enrich address/country/city only when this sync actually carries
+        // them — never clobber a previously-stored value with null (e.g. an
+        // order re-upsert that lacks the address must not wipe the contact's
+        // existing shipping detail).
+        ...(data.address ? { address: data.address } : {}),
+        ...(data.country ? { country: data.country } : {}),
+        ...(data.city ? { city: data.city } : {}),
       },
     });
     return existing.id;
@@ -787,7 +794,14 @@ async function syncShopifyOrders(
 
       // The customer should already exist from the customers loop above,
       // but re-upsert defensively in case this is an order from a
-      // brand-new customer the earlier call didn't see yet.
+      // brand-new customer the earlier call didn't see yet. Enrich with the
+      // order's shipping/billing address (the fulfillment destination) which
+      // the bare order.customer object omits.
+      const addr =
+        order.shipping_address ||
+        order.billing_address ||
+        order.customer.default_address ||
+        null;
       const customerId = await upsertShopCustomer(
         companyId,
         "shopify",
@@ -801,7 +815,12 @@ async function syncShopifyOrders(
             order.customer.email ||
             `Customer ${order.customer.id}`,
           email: order.customer.email,
-          phone: order.customer.phone,
+          phone: order.customer.phone || addr?.phone || null,
+          address: addr
+            ? [addr.address1, addr.city, addr.country].filter(Boolean).join(", ") || null
+            : null,
+          country: addr?.country ?? null,
+          city: addr?.city ?? null,
         }
       );
 

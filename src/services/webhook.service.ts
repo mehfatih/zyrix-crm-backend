@@ -600,6 +600,9 @@ async function dispatch(
           fullName: o.customer.fullName,
           email: o.customer.email,
           phone: o.customer.phone,
+          address: o.customer.address,
+          country: o.customer.country,
+          city: o.customer.city,
         }
       );
       await upsertOrderDeal(companyId, customerId, platform, {
@@ -624,6 +627,7 @@ interface ExtractedCustomer {
   fullName: string;
   email?: string | null;
   phone?: string | null;
+  address?: string | null;
   country?: string | null;
   city?: string | null;
   lifetimeValue?: number;
@@ -716,9 +720,24 @@ function extractOrder(platform: string, body: any): ExtractedOrder | null {
   if (platform === "shopify") {
     const o = body.id ? body : body.order;
     if (!o) return null;
-    const customer = o.customer
+    let customer = o.customer
       ? extractCustomer("shopify", { customer: o.customer })
       : null;
+    // Enrich the contact with the order's shipping/billing address — the
+    // fulfillment destination — which the abbreviated order.customer object
+    // (and its default_address) usually omits. Only fill gaps; never blank a
+    // value the customer object already provided.
+    const addr = o.shipping_address || o.billing_address || null;
+    if (customer && addr) {
+      customer = {
+        ...customer,
+        phone: customer.phone || addr.phone || null,
+        country: customer.country || addr.country || null,
+        city: customer.city || addr.city || null,
+        address:
+          [addr.address1, addr.city, addr.country].filter(Boolean).join(", ") || null,
+      };
+    }
     return {
       externalId: String(o.id),
       total: parseFloat(o.total_price || "0") || 0,
@@ -759,6 +778,7 @@ function extractOrder(platform: string, body: any): ExtractedOrder | null {
   if (platform === "woocommerce") {
     const o = body;
     if (!o?.id) return null;
+    const ship = o.shipping && (o.shipping.address_1 || o.shipping.city) ? o.shipping : o.billing;
     const customer = o.billing
       ? {
           externalId: String(o.customer_id || o.id),
@@ -767,6 +787,9 @@ function extractOrder(platform: string, body: any): ExtractedOrder | null {
             `Customer ${o.customer_id || o.id}`,
           email: o.billing.email || null,
           phone: o.billing.phone || null,
+          address: ship
+            ? [ship.address_1, ship.city, ship.country].filter(Boolean).join(", ") || null
+            : null,
           country: o.billing.country || null,
           city: o.billing.city || null,
         }
