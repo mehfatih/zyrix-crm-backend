@@ -532,8 +532,12 @@ export interface CampaignEconomics {
   cogsBase: number;
   cogsMissing: number; // attributed won deals with NULL cogsBase
   cogsComplete: boolean;
+  // Deal-level costs (Sprint-23 per-deal economics) of the attributed won deals,
+  // so campaign net profit reconciles with per-deal gross profit minus ad spend.
+  commissionBase: number; // non-cancelled commission, converted via each deal's frozen rate
+  variableCostsBase: number; // shipping + payment fee + ad spend + other (already base currency)
   // Derived.
-  netProfit: number; // revenueBase − spendBase − cogsBase (base currency)
+  netProfit: number; // revenueBase − spendBase − cogsBase − commissionBase − variableCostsBase
   roas: number | null; // revenueBase / spendBase (null when no spend)
   cpa: number | null; // spendBase / dealsWon (cost per acquisition; null when no wins)
   marginPct: number | null; // netProfit / revenueBase × 100
@@ -576,12 +580,21 @@ export async function computeCampaignEconomics(
   // ── Attributed won-deal revenue + COGS ──
   // Explicit tag always attributes; the lead_sources branch applies only to
   // untagged deals (so explicit tagging takes priority and never double-counts).
+  // commissionBase: per-deal non-cancelled commission (deal currency) × the deal's
+  // frozen fxRateToBase — matches Sprint-23 computeDealEconomics (0 when unstamped/
+  // no rate). variableCostsBase: the 4 cost columns are already base currency.
   let attrSql =
     `SELECT COUNT(*)::int AS "dealsWon",
             COALESCE(SUM(d."baseValue"),0)::text AS "revenueBase",
             COUNT(*) FILTER (WHERE d."baseValue" IS NULL)::int AS "revenueUnstamped",
             COALESCE(SUM(d."cogsBase"),0)::text AS "cogsBase",
-            COUNT(*) FILTER (WHERE d."cogsBase" IS NULL)::int AS "cogsMissing"
+            COUNT(*) FILTER (WHERE d."cogsBase" IS NULL)::int AS "cogsMissing",
+            COALESCE(SUM(d."costShipping" + d."costPaymentFee" + d."costAdSpend" + d."costOther"),0)::text AS "variableCostsBase",
+            COALESCE(SUM(
+              (SELECT COALESCE(SUM(ce."amount"),0) FROM commission_entries ce
+                WHERE ce."dealId" = d."id" AND ce."companyId" = $1 AND ce."status" <> 'cancelled')
+              * COALESCE(d."fxRateToBase", 0)
+            ),0)::text AS "commissionBase"
        FROM deals d
       WHERE d."companyId" = $1 AND d."stage" = 'won' AND (d."adCampaignId" = $2`;
   const params: unknown[] = [companyId, campaign.id];
@@ -601,6 +614,8 @@ export async function computeCampaignEconomics(
   const revenueUnstamped = Number(a.revenueUnstamped ?? 0);
   const cogsBase = round2(toNum(a.cogsBase));
   const cogsMissing = Number(a.cogsMissing ?? 0);
+  const variableCostsBase = round2(toNum(a.variableCostsBase));
+  const commissionBase = round2(toNum(a.commissionBase));
 
   // ── Leads (informational) ──
   let leadsCount = 0;
@@ -615,7 +630,7 @@ export async function computeCampaignEconomics(
     leadsCount = Number(leadRows[0]?.c ?? 0);
   }
 
-  const netProfit = round2(revenueBase - spendBase - cogsBase);
+  const netProfit = round2(revenueBase - spendBase - cogsBase - commissionBase - variableCostsBase);
   const roas = spendBase > 0 ? round2(revenueBase / spendBase) : null;
   const cpa = dealsWon > 0 ? round2(spendBase / dealsWon) : null;
   const marginPct = revenueBase > 0 ? round2((netProfit / revenueBase) * 100) : null;
@@ -634,6 +649,8 @@ export async function computeCampaignEconomics(
     cogsBase,
     cogsMissing,
     cogsComplete: cogsMissing === 0,
+    commissionBase,
+    variableCostsBase,
     netProfit,
     roas,
     cpa,
