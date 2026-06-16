@@ -34,7 +34,9 @@ const DEFAULT_WIDGETS: Widget[] = [
   { id: "w-pipeline", type: "pipeline_snapshot", width: "half" },
   { id: "w-recent-deals", type: "recent_deals", width: "half" },
   { id: "w-upcoming-tasks", type: "upcoming_tasks", width: "half" },
-  { id: "w-connected-stores", type: "connected_stores", width: "full" },
+  // connected_stores intentionally omitted — the dashboard page already
+  // renders it once via a dedicated hardcoded section. Including it here
+  // duplicated the "Connect your store" banner on the default layout.
 ];
 
 /**
@@ -82,7 +84,9 @@ const VALID_TYPES = new Set([
   "pipeline_snapshot",
   "recent_deals",
   "upcoming_tasks",
-  "connected_stores",
+  // "connected_stores" removed: the dedicated dashboard section is the single
+  // render site. Dropping it here also strips it from any saved layout on the
+  // next save, de-duplicating existing custom layouts over time.
   "cohort_snapshot",
   "funnel_snapshot",
   "customer_count",
