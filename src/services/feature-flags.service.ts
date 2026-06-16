@@ -289,6 +289,25 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: BUSINESS_UP,
   },
   {
+    // Sprint 25 — Source Attribution. Gates auto-capture + the manual "where did
+    // this deal come from?" source dropdown on a deal. STARTER_UP — the lead-gen
+    // hook: everyone on starter+ can tag/see order source (capture is cheap; the
+    // value is the funnel insight). The downstream ROAS/CPA/net-profit MATH stays
+    // under campaign_economics (BUSINESS_UP) — attribution is starter+, profit is
+    // business+. lead_sources is the rich per-touch audit ledger; the two thin
+    // deals.attribution* columns are the fast read model (mirrors deals.adCampaignId).
+    key: "source_attribution",
+    category: "growth",
+    label: { en: "Source attribution", ar: "إسناد المصدر", tr: "Kaynak ilişkilendirme" },
+    description: {
+      en: "Track where each deal came from — ads, landing pages, WhatsApp, manual",
+      ar: "تتبّع مصدر كل صفقة — الإعلانات، صفحات الهبوط، واتساب، يدوي",
+      tr: "Her anlaşmanın nereden geldiğini izleyin — reklamlar, açılış sayfaları, WhatsApp, manuel",
+    },
+    icon: "Radar",
+    defaultByPlan: STARTER_UP,
+  },
+  {
     key: "loyalty",
     category: "growth",
     label: { en: "Loyalty", ar: "برنامج الولاء", tr: "Sadakat" },
