@@ -777,7 +777,6 @@ async function syncShopify(
     for (const sc of data.customers) {
       const fullName =
         [sc.first_name, sc.last_name].filter(Boolean).join(" ").trim() ||
-        sc.email ||
         `Customer ${sc.id}`;
       const addr = sc.default_address || sc.addresses?.[0] || null;
       await upsertShopCustomer(companyId, "shopify", String(sc.id), {
@@ -859,7 +858,6 @@ async function syncShopifyOrders(
               .filter(Boolean)
               .join(" ")
               .trim() ||
-            order.customer.email ||
             `Customer ${order.customer.id}`,
           email: order.customer.email,
           phone: order.customer.phone || addr?.phone || null,
