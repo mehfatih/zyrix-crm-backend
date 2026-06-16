@@ -1,7 +1,12 @@
 import crypto from "crypto";
 import { prisma } from "../config/database";
 import { AppError, notFound } from "../middleware/errorHandler";
-import { upsertShopCustomer, upsertOrderDeal } from "./ecommerce.service";
+import {
+  upsertShopCustomer,
+  upsertOrderDeal,
+  shopifyAddressFields,
+  wooAddressFields,
+} from "./ecommerce.service";
 
 // ============================================================================
 // WEBHOOKS — inbound receivers for Shopify, Salla, Zid, etc.
@@ -570,6 +575,11 @@ async function dispatch(
         fullName: c.fullName,
         email: c.email,
         phone: c.phone,
+        address: c.address,
+        address2: c.address2,
+        postalCode: c.postalCode,
+        province: c.province,
+        shippingPhone: c.shippingPhone,
         country: c.country,
         city: c.city,
         lifetimeValue: c.lifetimeValue,
@@ -601,6 +611,10 @@ async function dispatch(
           email: o.customer.email,
           phone: o.customer.phone,
           address: o.customer.address,
+          address2: o.customer.address2,
+          postalCode: o.customer.postalCode,
+          province: o.customer.province,
+          shippingPhone: o.customer.shippingPhone,
           country: o.customer.country,
           city: o.customer.city,
         }
@@ -628,6 +642,10 @@ interface ExtractedCustomer {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  address2?: string | null;
+  postalCode?: string | null;
+  province?: string | null;
+  shippingPhone?: string | null;
   country?: string | null;
   city?: string | null;
   lifetimeValue?: number;
@@ -648,13 +666,15 @@ function extractCustomer(platform: string, body: any): ExtractedCustomer | null 
     if (!c) return null;
     const first = (c.first_name || "").toString().trim();
     const last = (c.last_name || "").toString().trim();
+    const addr = c.default_address || c.addresses?.[0] || null;
     return {
       externalId: String(c.id),
       fullName: `${first} ${last}`.trim() || c.email || `Customer ${c.id}`,
       email: c.email || null,
       phone: c.phone || null,
-      country: c.default_address?.country || null,
-      city: c.default_address?.city || null,
+      ...shopifyAddressFields(addr),
+      country: addr?.country || null,
+      city: addr?.city || null,
       lifetimeValue: parseFloat(c.total_spent || "0") || 0,
     };
   }
@@ -691,13 +711,16 @@ function extractCustomer(platform: string, body: any): ExtractedCustomer | null 
     if (!c?.id) return null;
     const first = (c.first_name || c.billing?.first_name || "").toString().trim();
     const last = (c.last_name || c.billing?.last_name || "").toString().trim();
+    const addr =
+      c.shipping && (c.shipping.address_1 || c.shipping.city) ? c.shipping : c.billing;
     return {
       externalId: String(c.id),
       fullName: `${first} ${last}`.trim() || c.email || `Customer ${c.id}`,
       email: c.email || c.billing?.email || null,
       phone: c.billing?.phone || null,
-      country: c.billing?.country || null,
-      city: c.billing?.city || null,
+      ...wooAddressFields(addr),
+      country: addr?.country || c.billing?.country || null,
+      city: addr?.city || c.billing?.city || null,
     };
   }
   if (platform === "youcan") {
@@ -734,8 +757,7 @@ function extractOrder(platform: string, body: any): ExtractedOrder | null {
         phone: customer.phone || addr.phone || null,
         country: customer.country || addr.country || null,
         city: customer.city || addr.city || null,
-        address:
-          [addr.address1, addr.city, addr.country].filter(Boolean).join(", ") || null,
+        ...shopifyAddressFields(addr),
       };
     }
     return {
@@ -787,11 +809,9 @@ function extractOrder(platform: string, body: any): ExtractedOrder | null {
             `Customer ${o.customer_id || o.id}`,
           email: o.billing.email || null,
           phone: o.billing.phone || null,
-          address: ship
-            ? [ship.address_1, ship.city, ship.country].filter(Boolean).join(", ") || null
-            : null,
-          country: o.billing.country || null,
-          city: o.billing.city || null,
+          ...wooAddressFields(ship),
+          country: ship?.country || o.billing.country || null,
+          city: ship?.city || o.billing.city || null,
         }
       : null;
     return {

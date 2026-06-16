@@ -11,7 +11,7 @@
 import crypto from "crypto";
 import { prisma } from "../../config/database";
 import { getApiSecret } from "./config";
-import { upsertShopCustomer, upsertOrderDeal } from "../ecommerce.service";
+import { upsertShopCustomer, upsertOrderDeal, shopifyAddressFields } from "../ecommerce.service";
 import {
   upsertShopifyProduct,
   shopifyProductUpsertInput,
@@ -89,7 +89,7 @@ async function handleOrderCancelled(companyId: string, o: any): Promise<void> {
 }
 
 async function handleCustomer(companyId: string, c: any): Promise<void> {
-  const address = c.default_address || c.addresses?.[0];
+  const addr = c.default_address || c.addresses?.[0] || null;
   await upsertShopCustomer(companyId, "shopify", String(c.id), {
     fullName:
       [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
@@ -97,11 +97,9 @@ async function handleCustomer(companyId: string, c: any): Promise<void> {
       `Customer ${c.id}`,
     email: c.email,
     phone: c.phone,
-    address: address
-      ? [address.address1, address.city, address.country].filter(Boolean).join(", ")
-      : null,
-    country: address?.country,
-    city: address?.city,
+    ...shopifyAddressFields(addr),
+    country: addr?.country,
+    city: addr?.city,
     lifetimeValue: parseFloat(c.total_spent) || 0,
   });
 }

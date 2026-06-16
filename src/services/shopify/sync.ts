@@ -14,7 +14,7 @@
 
 import { prisma } from "../../config/database";
 import { fetchWithLimit } from "../../utils/rateLimiter";
-import { upsertShopCustomer, upsertOrderDeal } from "../ecommerce.service";
+import { upsertShopCustomer, upsertOrderDeal, shopifyAddressFields } from "../ecommerce.service";
 import { getApiVersion } from "./config";
 import {
   getValidAccessToken,
@@ -58,16 +58,14 @@ async function syncCustomers(
         [sc.first_name, sc.last_name].filter(Boolean).join(" ").trim() ||
         sc.email ||
         `Customer ${sc.id}`;
-      const address = sc.addresses?.[0];
+      const addr = sc.default_address || sc.addresses?.[0] || null;
       await upsertShopCustomer(companyId, "shopify", String(sc.id), {
         fullName,
         email: sc.email,
         phone: sc.phone,
-        address: address
-          ? [address.address1, address.city, address.country].filter(Boolean).join(", ")
-          : null,
-        country: address?.country,
-        city: address?.city,
+        ...shopifyAddressFields(addr),
+        country: addr?.country,
+        city: addr?.city,
         notes: sc.note,
         lifetimeValue: parseFloat(sc.total_spent) || 0,
       });
@@ -90,14 +88,7 @@ async function syncCustomers(
 // billing_address, then the customer's default_address. Shared by the order
 // poll (syncOrders) and the orders/* webhook (handleOrder) so both behave
 // identically.
-export function shopifyOrderCustomerInput(order: any): {
-  fullName: string;
-  email: string | null;
-  phone: string | null;
-  address: string | null;
-  country: string | null;
-  city: string | null;
-} {
+export function shopifyOrderCustomerInput(order: any) {
   const c = order.customer || {};
   const addr =
     order.shipping_address || order.billing_address || c.default_address || null;
@@ -110,9 +101,7 @@ export function shopifyOrderCustomerInput(order: any): {
     fullName,
     email: c.email ?? null,
     phone: c.phone || addr?.phone || null,
-    address: addr
-      ? [addr.address1, addr.city, addr.country].filter(Boolean).join(", ") || null
-      : null,
+    ...shopifyAddressFields(addr),
     country: addr?.country ?? null,
     city: addr?.city ?? null,
   };

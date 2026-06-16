@@ -579,6 +579,43 @@ async function syncByPlatform(
   }
 }
 
+// ── Structured shipping-address mappers ───────────────────────────────────
+// Map a platform address object to the structured Customer address columns.
+// `address` holds the RAW street line 1 (no concatenation) — city/country live
+// in their own columns. Shared across every Shopify/Woo ingest path so the
+// field semantics never drift between connectors.
+export interface AddressFields {
+  address: string | null;
+  address2: string | null;
+  postalCode: string | null;
+  province: string | null;
+  shippingPhone: string | null;
+}
+
+// Shopify address object (order shipping_address/billing_address, or customer
+// default_address / addresses[0]): address1, address2, zip, province, phone.
+export function shopifyAddressFields(addr: any): AddressFields {
+  return {
+    address: addr?.address1 ?? null,
+    address2: addr?.address2 ?? null,
+    postalCode: addr?.zip ?? null,
+    province: addr?.province ?? null,
+    shippingPhone: addr?.phone ?? null,
+  };
+}
+
+// WooCommerce billing/shipping object: address_1, address_2, postcode, state,
+// phone (phone present on billing; on shipping only in newer WC versions).
+export function wooAddressFields(addr: any): AddressFields {
+  return {
+    address: addr?.address_1 ?? null,
+    address2: addr?.address_2 ?? null,
+    postalCode: addr?.postcode ?? null,
+    province: addr?.state ?? null,
+    shippingPhone: addr?.phone ?? null,
+  };
+}
+
 // Generic customer upsert with deduplication by externalId
 // Exported so webhook handlers (services/webhook.service.ts) can reuse it.
 export async function upsertShopCustomer(
@@ -590,6 +627,10 @@ export async function upsertShopCustomer(
     email?: string | null;
     phone?: string | null;
     address?: string | null;
+    address2?: string | null;
+    postalCode?: string | null;
+    province?: string | null;
+    shippingPhone?: string | null;
     country?: string | null;
     city?: string | null;
     notes?: string | null;
@@ -610,11 +651,15 @@ export async function upsertShopCustomer(
         phone: data.phone || null,
         lifetimeValue: data.lifetimeValue ?? 0,
         notes: data.notes || null,
-        // Enrich address/country/city only when this sync actually carries
-        // them — never clobber a previously-stored value with null (e.g. an
-        // order re-upsert that lacks the address must not wipe the contact's
+        // Enrich address fields only when this sync actually carries them —
+        // never clobber a previously-stored value with null (e.g. an order
+        // re-upsert that lacks the address must not wipe the contact's
         // existing shipping detail).
         ...(data.address ? { address: data.address } : {}),
+        ...(data.address2 ? { address2: data.address2 } : {}),
+        ...(data.postalCode ? { postalCode: data.postalCode } : {}),
+        ...(data.province ? { province: data.province } : {}),
+        ...(data.shippingPhone ? { shippingPhone: data.shippingPhone } : {}),
         ...(data.country ? { country: data.country } : {}),
         ...(data.city ? { city: data.city } : {}),
       },
@@ -628,6 +673,10 @@ export async function upsertShopCustomer(
       email: data.email?.toLowerCase() || null,
       phone: data.phone || null,
       address: data.address || null,
+      address2: data.address2 || null,
+      postalCode: data.postalCode || null,
+      province: data.province || null,
+      shippingPhone: data.shippingPhone || null,
       country: data.country || null,
       city: data.city || null,
       notes: data.notes || null,
@@ -730,16 +779,14 @@ async function syncShopify(
         [sc.first_name, sc.last_name].filter(Boolean).join(" ").trim() ||
         sc.email ||
         `Customer ${sc.id}`;
-      const address = sc.addresses?.[0];
+      const addr = sc.default_address || sc.addresses?.[0] || null;
       await upsertShopCustomer(companyId, "shopify", String(sc.id), {
         fullName,
         email: sc.email,
         phone: sc.phone,
-        address: address
-          ? [address.address1, address.city, address.country].filter(Boolean).join(", ")
-          : null,
-        country: address?.country,
-        city: address?.city,
+        ...shopifyAddressFields(addr),
+        country: addr?.country,
+        city: addr?.city,
         notes: sc.note,
         lifetimeValue: parseFloat(sc.total_spent) || 0,
       });
@@ -816,9 +863,7 @@ async function syncShopifyOrders(
             `Customer ${order.customer.id}`,
           email: order.customer.email,
           phone: order.customer.phone || addr?.phone || null,
-          address: addr
-            ? [addr.address1, addr.city, addr.country].filter(Boolean).join(", ") || null
-            : null,
+          ...shopifyAddressFields(addr),
           country: addr?.country ?? null,
           city: addr?.city ?? null,
         }
@@ -1260,15 +1305,15 @@ async function syncWooCommerce(
         [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
         c.username ||
         c.email;
+      const addr =
+        c.shipping && (c.shipping.address_1 || c.shipping.city) ? c.shipping : c.billing;
       await upsertShopCustomer(companyId, "woocommerce", String(c.id), {
         fullName,
         email: c.email,
         phone: c.billing?.phone,
-        address: c.billing
-          ? [c.billing.address_1, c.billing.city, c.billing.country].filter(Boolean).join(", ")
-          : null,
-        country: c.billing?.country,
-        city: c.billing?.city,
+        ...wooAddressFields(addr),
+        country: addr?.country,
+        city: addr?.city,
       });
       imported++;
     }
@@ -1404,6 +1449,10 @@ async function syncWooCommerceOrders(
       // WooCommerce orders link to customer_id (0 = guest). Skip guests.
       if (!order.customer_id || order.customer_id === 0) continue;
 
+      const addr =
+        order.shipping && (order.shipping.address_1 || order.shipping.city)
+          ? order.shipping
+          : order.billing;
       const customerId = await upsertShopCustomer(
         companyId,
         "woocommerce",
@@ -1418,8 +1467,9 @@ async function syncWooCommerceOrders(
             `Customer ${order.customer_id}`,
           email: order.billing?.email,
           phone: order.billing?.phone,
-          country: order.billing?.country,
-          city: order.billing?.city,
+          ...wooAddressFields(addr),
+          country: addr?.country,
+          city: addr?.city,
         }
       );
 

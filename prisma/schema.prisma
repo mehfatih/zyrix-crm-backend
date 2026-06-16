@@ -248,7 +248,15 @@ model Customer {
 
   country String?
   city    String?
-  address String?
+  // Structured shipping address (Sprint 26 Phase 2). `address` now holds the
+  // RAW street line 1 (Shopify address1 / Woo address_1) — no longer the old
+  // "line1, city, country" concatenation, since city/country/province/postal
+  // each have their own column.
+  address       String?
+  address2      String?
+  postalCode    String?
+  province      String?
+  shippingPhone String?
 
   source        String?
   externalId    String?
