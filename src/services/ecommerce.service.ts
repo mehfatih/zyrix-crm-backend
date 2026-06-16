@@ -3,6 +3,7 @@ import { notFound } from "../middleware/errorHandler";
 import { getPlatform, PLATFORMS, listPlatforms, type PlatformDefinition } from "./ecommerce-platforms.registry";
 import { fetchWithLimit } from "../utils/rateLimiter";
 import { recordIntegrationEvent } from "./integration-events.service";
+import { listConnections as listShopifyConnections } from "./shopify/connections.service";
 import {
   bridgeUpsertWooProduct,
   archiveMissingWooProducts,
@@ -57,7 +58,7 @@ export async function listStores(companyId: string) {
   });
 
   // Enrich with platform definitions
-  return stores.map((s) => {
+  const enriched = stores.map((s) => {
     const platform = getPlatform(s.platform);
     return {
       ...s,
@@ -71,6 +72,59 @@ export async function listStores(companyId: string) {
         : null,
     };
   });
+
+  // Surface live Shopify OAuth connections that have no backing ecommerceStore
+  // row, so the dashboard "Connected stores" widget reflects a real OAuth
+  // connection instead of showing the "Connect your store" CTA. Read-only —
+  // nothing is created or mutated here.
+  //
+  // Dedup guards (each connection appears at most once):
+  //   1. status must be "connected" (ignore pending/revoked/needs_reauth/error)
+  //   2. skip if already linked to a returned ecommerceStore row
+  //   3. skip if a Shopify store with the same domain is already returned
+  //      (covers a manual-token store + OAuth connection for the same shop)
+  const connections = await listShopifyConnections(companyId);
+  const existingStoreIds = new Set(enriched.map((s) => s.id));
+  const existingShopifyDomains = new Set(
+    enriched.filter((s) => s.platform === "shopify").map((s) => s.shopDomain)
+  );
+  const shopifyPlatform = getPlatform("shopify");
+  const connectionStores = connections
+    .filter(
+      (c) =>
+        c.status === "connected" &&
+        (c.ecommerceStoreId == null ||
+          !existingStoreIds.has(c.ecommerceStoreId)) &&
+        !existingShopifyDomains.has(c.shopDomain)
+    )
+    .map((c) => ({
+      id: c.id,
+      platform: "shopify",
+      shopDomain: c.shopDomain,
+      isActive: true,
+      region: null as string | null,
+      currency: c.currency,
+      // The connection row doesn't track import counts (those live on the
+      // ecommerceStore once a sync runs); 0 here, which the widget suppresses.
+      lastSyncAt: c.lastSyncAt,
+      syncStatus: c.lastError ? "error" : c.lastSyncAt ? "success" : "idle",
+      syncError: c.lastError,
+      totalCustomersImported: 0,
+      totalOrdersImported: 0,
+      metadata: {} as Record<string, unknown>,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      platformInfo: shopifyPlatform
+        ? {
+            name: shopifyPlatform.name,
+            brandColor: shopifyPlatform.brandColor,
+            country: shopifyPlatform.country,
+            region: shopifyPlatform.region,
+          }
+        : null,
+    }));
+
+  return [...enriched, ...connectionStores];
 }
 
 export async function connectStore(
