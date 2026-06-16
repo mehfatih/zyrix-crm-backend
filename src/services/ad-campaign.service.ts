@@ -84,6 +84,11 @@ function normCurrency(v: unknown, fallback: string): string {
   const s = typeof v === "string" ? v.trim().toUpperCase() : "";
   return /^[A-Z]{3}$/.test(s) ? s : fallback;
 }
+/** Normalize an ISO-3166 alpha-2 country code; null for blank/garbage. */
+function normCountry(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim().toUpperCase() : "";
+  return /^[A-Z]{2}$/.test(s) ? s : null;
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // Campaigns
@@ -98,6 +103,8 @@ export interface AdCampaign {
   accountCurrency: string | null;
   status: string;
   objective: string | null;
+  startDate: string | null; // YYYY-MM-DD; informational, back-datable
+  country: string | null; // ISO-3166 alpha-2 (e.g. 'SA','TR')
   targetRoas: number | null;
   targetCpa: number | null;
   alertsEnabled: boolean;
@@ -113,7 +120,8 @@ export interface AdCampaignWithEconomics extends AdCampaign {
 
 const CAMPAIGN_COLS = `
   "id","companyId","name","platform","externalId","accountCurrency","status",
-  "objective","targetRoas"::text AS "targetRoas","targetCpa"::text AS "targetCpa",
+  "objective","startDate"::text AS "startDate","country",
+  "targetRoas"::text AS "targetRoas","targetCpa"::text AS "targetCpa",
   "alertsEnabled","createdById","createdAt","updatedAt"
 `;
 
@@ -127,6 +135,8 @@ function mapCampaign(r: Record<string, unknown>): AdCampaign {
     accountCurrency: (r.accountCurrency as string | null) ?? null,
     status: String(r.status),
     objective: (r.objective as string | null) ?? null,
+    startDate: dateOnlyStr(r.startDate),
+    country: (r.country as string | null) ?? null,
     targetRoas: toNumOrNull(r.targetRoas),
     targetCpa: toNumOrNull(r.targetCpa),
     alertsEnabled: r.alertsEnabled === true,
@@ -168,6 +178,8 @@ export interface CampaignInput {
   accountCurrency?: string | null;
   status?: string;
   objective?: string | null;
+  startDate?: string | null;
+  country?: string | null;
   targetRoas?: number | null;
   targetCpa?: number | null;
   alertsEnabled?: boolean;
@@ -185,11 +197,15 @@ export async function createCampaign(
   const accountCurrency = input.accountCurrency
     ? normCurrency(input.accountCurrency, "")
     : null;
+  // startDate is optional + back-datable; blank defaults to today (CURRENT_DATE).
+  const startDate = parseDateOnly(input.startDate);
+  const country = normCountry(input.country);
   await prisma.$executeRawUnsafe(
     `INSERT INTO ad_campaigns
        ("id","companyId","name","platform","externalId","accountCurrency","status",
-        "objective","targetRoas","targetCpa","alertsEnabled","createdById","createdAt","updatedAt")
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW())`,
+        "objective","startDate","country","targetRoas","targetCpa","alertsEnabled",
+        "createdById","createdAt","updatedAt")
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::date,CURRENT_DATE),$10,$11,$12,$13,$14,NOW(),NOW())`,
     id,
     companyId,
     name,
@@ -198,6 +214,8 @@ export async function createCampaign(
     accountCurrency || null,
     status,
     input.objective ?? null,
+    startDate ? startDate.toISOString().slice(0, 10) : null,
+    country,
     input.targetRoas ?? null,
     input.targetCpa ?? null,
     input.alertsEnabled === true,
@@ -223,6 +241,12 @@ export async function updateCampaign(
       ? (patch.accountCurrency ? normCurrency(patch.accountCurrency, "") || null : null)
       : current.accountCurrency;
   const objective = patch.objective !== undefined ? patch.objective : current.objective;
+  // startDate is editable + clearable; a present-but-invalid string falls back to current.
+  const startDate =
+    patch.startDate !== undefined
+      ? (patch.startDate ? (parseDateOnly(patch.startDate)?.toISOString().slice(0, 10) ?? current.startDate) : null)
+      : current.startDate;
+  const country = patch.country !== undefined ? normCountry(patch.country) : current.country;
   const targetRoas = patch.targetRoas !== undefined ? patch.targetRoas : current.targetRoas;
   const targetCpa = patch.targetCpa !== undefined ? patch.targetCpa : current.targetCpa;
   const alertsEnabled =
@@ -231,8 +255,8 @@ export async function updateCampaign(
   await prisma.$executeRawUnsafe(
     `UPDATE ad_campaigns
        SET "name" = $3, "platform" = $4, "externalId" = $5, "accountCurrency" = $6,
-           "status" = $7, "objective" = $8, "targetRoas" = $9, "targetCpa" = $10,
-           "alertsEnabled" = $11, "updatedAt" = NOW()
+           "status" = $7, "objective" = $8, "startDate" = $9::date, "country" = $10,
+           "targetRoas" = $11, "targetCpa" = $12, "alertsEnabled" = $13, "updatedAt" = NOW()
      WHERE "companyId" = $1 AND "id" = $2`,
     companyId,
     id,
@@ -242,6 +266,8 @@ export async function updateCampaign(
     accountCurrency ?? null,
     status,
     objective ?? null,
+    startDate ?? null,
+    country ?? null,
     targetRoas ?? null,
     targetCpa ?? null,
     alertsEnabled

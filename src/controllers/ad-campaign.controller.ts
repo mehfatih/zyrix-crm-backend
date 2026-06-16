@@ -24,6 +24,8 @@ const campaignSchema = z.object({
   accountCurrency: z.string().max(8).nullable().optional(),
   status: z.enum(Ad.CAMPAIGN_STATUSES).optional(),
   objective: z.string().max(200).nullable().optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}/, "startDate must be YYYY-MM-DD").nullable().optional(),
+  country: z.string().max(2).nullable().optional(),
   targetRoas: z.number().nonnegative().max(99999999).nullable().optional(),
   targetCpa: z.number().nonnegative().max(999999999999).nullable().optional(),
   alertsEnabled: z.boolean().optional(),
