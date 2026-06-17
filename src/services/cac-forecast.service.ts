@@ -38,6 +38,7 @@ import {
   type Locale,
   type Tri,
 } from "./cac-benchmarks";
+import { readEnrichment, type EnrichmentItem } from "./cac-research.service";
 
 export type ForecastWindow = 3 | 6 | "all";
 
@@ -272,6 +273,18 @@ export interface CacBenchmarkView {
   year: number;
 }
 
+// Optional live web-research enrichment (Sprint 3, Phase 2) attached to a playbook
+// lever. DISPLAY-ONLY: text + citation links + the Google Search-Suggestions HTML
+// (rendered sandboxed by the frontend). NEVER present when the shared cache has no
+// items for this industry/topic, so an empty/disabled cache leaves the response
+// byte-identical to Phase 1. No value here ever enters any CAC/forecast figure.
+export interface CacPlaybookEnrichment {
+  items: EnrichmentItem[];
+  searchEntryPoint: string | null; // Google Suggestions HTML — must render WITH the items (ToS)
+  fetchedAt: string; // ISO timestamp of the cached fetch
+  stale: boolean; // cache expired or last refresh failed — UI may show a "last updated" note
+}
+
 export interface CacPlaybookItem {
   id: string;
   title: string;
@@ -279,6 +292,7 @@ export interface CacPlaybookItem {
   stat: string;
   source: string;
   year: number;
+  enrichment?: CacPlaybookEnrichment; // absent unless real web-sourced items exist
 }
 
 export interface CacRecommendations {
@@ -440,14 +454,37 @@ export async function computeCacRecommendations(
   }
 
   // ── General sourced playbook (localized passthrough; NOT personalized) ──
-  const playbook: CacPlaybookItem[] = PLAYBOOK_LEVERS.map((l) => ({
-    id: l.id,
-    title: triPick(l.title, locale),
-    body: triPick(l.body, locale),
-    stat: triPick(l.stat, locale),
-    source: l.source,
-    year: l.year,
-  }));
+  // Optionally decorated with live web-research enrichment (Phase 2). The cache read
+  // is a PURE SELECT, keyed by the SAME benchmark band; it is fail-safe (any error →
+  // no enrichment) and EN-only in v1. When the shared cache has no items for a topic,
+  // the playbook item is returned UNCHANGED, so an empty/disabled cache leaves this
+  // response byte-identical to Phase 1. Enrichment NEVER touches any number above.
+  let research: Awaited<ReturnType<typeof readEnrichment>> = new Map();
+  try {
+    research = await readEnrichment(band.key, "en");
+  } catch {
+    research = new Map(); // degrade silently to Phase-1-only output
+  }
+  const playbook: CacPlaybookItem[] = PLAYBOOK_LEVERS.map((l) => {
+    const item: CacPlaybookItem = {
+      id: l.id,
+      title: triPick(l.title, locale),
+      body: triPick(l.body, locale),
+      stat: triPick(l.stat, locale),
+      source: l.source,
+      year: l.year,
+    };
+    const row = research.get(l.id);
+    if (row && row.items.length > 0) {
+      item.enrichment = {
+        items: row.items,
+        searchEntryPoint: row.searchEntryPoint,
+        fetchedAt: row.fetchedAt instanceof Date ? row.fetchedAt.toISOString() : String(row.fetchedAt),
+        stale: row.stale,
+      };
+    }
+    return item;
+  });
 
   return {
     baseCurrency: base,
