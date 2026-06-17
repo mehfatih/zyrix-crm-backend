@@ -308,6 +308,33 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     defaultByPlan: STARTER_UP,
   },
   {
+    // CAC Core (Sprint 1 of 3) — Customer Acquisition Cost. Monthly blended CAC
+    // (acquisition spend ÷ newly-acquired customers, in base currency) plus a
+    // per-channel breakdown with an attribution-coverage %. "Newly-acquired
+    // customer" = a customer whose FIRST WON deal closed in that month (derived
+    // via MIN(deals.actualCloseDate) per customer — no stored field; Shopify
+    // paid orders flow through deals so ecommerce is included). Acquisition spend
+    // (Sprint 1) = the existing Sprint-24 ad_spend_entries, summed in base TRY
+    // from the frozen amountBase (NULL/unconverted rows surfaced, never guessed).
+    // GIFT TO ALL PLANS: ALL_ON so it's a marketing/pricing feature on every tier,
+    // but still revokable per-company via company_feature_overrides (force_off).
+    // Distinct from campaign_economics (per-campaign CPA/ROAS/net-profit, BUSINESS_UP).
+    key: "cac",
+    category: "growth",
+    label: {
+      en: "Customer acquisition cost (CAC)",
+      ar: "تكلفة اكتساب العميل (CAC)",
+      tr: "Müşteri edinme maliyeti (CAC)",
+    },
+    description: {
+      en: "Monthly cost to acquire a new customer (ad spend ÷ new customers) — blended & per channel, in your base currency",
+      ar: "التكلفة الشهرية لاكتساب عميل جديد (إنفاق الإعلانات ÷ العملاء الجدد) — إجمالاً وحسب القناة، بعملتك الأساسية",
+      tr: "Yeni müşteri edinmenin aylık maliyeti (reklam harcaması ÷ yeni müşteriler) — karma ve kanal bazında, temel para biriminizde",
+    },
+    icon: "Coins",
+    defaultByPlan: ALL_ON,
+  },
+  {
     key: "loyalty",
     category: "growth",
     label: { en: "Loyalty", ar: "برنامج الولاء", tr: "Sadakat" },
