@@ -43,7 +43,8 @@ function toNum(v: unknown): number {
 async function acquisitionCostsTableExists(): Promise<boolean> {
   try {
     const rows = (await prisma.$queryRawUnsafe(
-      `SELECT to_regclass('public.acquisition_costs') AS t`
+      // Cast to text — Prisma can't deserialize the raw `regclass` OID type.
+      `SELECT to_regclass('public.acquisition_costs')::text AS t`
     )) as Array<{ t: string | null }>;
     return rows[0]?.t != null;
   } catch {
