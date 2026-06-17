@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as controller from "../controllers/cac.controller";
 import * as costController from "../controllers/acquisition-cost.controller";
+import * as plannedController from "../controllers/planned-spend.controller";
 import { authenticateToken, requireRole } from "../middleware/auth";
 import { requireFeature } from "../middleware/entitlement-gate";
 
@@ -10,8 +11,10 @@ import { requireFeature } from "../middleware/entitlement-gate";
 // to owner/admin/manager since CAC exposes spend/acquisition-cost data.
 //
 // Sprint 1: read-only CAC analytics (/monthly).
-// Sprint 2 (Phase 1): non-ad acquisition cost ledger (/costs). Read stays
-// owner/admin/manager; WRITE is owner/admin only (salaries/commissions sensitive).
+// Sprint 2 (Phase 1): non-ad acquisition cost ledger (/costs).
+// Sprint 2 (Phase 2): planned future spend (/planned) — feeds Sprint-3
+//   forecasting; NEVER read by /monthly (actual CAC).
+// Read stays owner/admin/manager; WRITE is owner/admin only (sensitive cost data).
 // ============================================================================
 const router = Router();
 router.use(authenticateToken);
@@ -28,5 +31,11 @@ router.get("/costs", canRead, costController.list);
 router.post("/costs", canWrite, costController.create);
 router.patch("/costs/:id", canWrite, costController.update);
 router.delete("/costs/:id", canWrite, costController.remove);
+
+// Planned future spend (Sprint 2, Phase 2) — forecaster input; not in actual CAC
+router.get("/planned", canRead, plannedController.list);
+router.post("/planned", canWrite, plannedController.create);
+router.patch("/planned/:id", canWrite, plannedController.update);
+router.delete("/planned/:id", canWrite, plannedController.remove);
 
 export default router;
