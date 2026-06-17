@@ -82,6 +82,7 @@ import { startSupportFallbackCron } from "./cron/support-fallback";
 import { startLowStockCron } from "./cron/product-low-stock";
 import { startSlaWorker } from "./cron/sla-worker";
 import { startCampaignAlertsWorker } from "./cron/campaign-alerts-worker";
+import { startCacResearchWorker } from "./cron/cac-research-worker";
 import brandRoutes from "./routes/brand.routes";
 import commentsRoutes from "./routes/comments.routes";
 import notificationsRoutes from "./routes/notifications.routes";
@@ -392,6 +393,7 @@ const server = app.listen(env.PORT, () => {
   startLowStockCron();
   startSlaWorker();
   startCampaignAlertsWorker();
+  startCacResearchWorker();
 
   // Seed curated templates — idempotent upsert by slug. Failures here
   // shouldn't crash the server; template gallery will just show whatever

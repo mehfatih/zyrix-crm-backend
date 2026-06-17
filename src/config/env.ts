@@ -82,6 +82,14 @@ const envSchema = z.object({
 
   GEMINI_API_KEY: z.string().optional(),
 
+  // CAC Sprint 3 (Phase 2): master switch for the LIVE web-research enrichment
+  // layer (Gemini grounding + weekly cron). Default OFF — until set to "true" the
+  // cron never runs, cac_research_cache stays empty, and /cac recommendations are
+  // byte-identical to Phase 1. When on it makes real grounded Gemini calls, bounded
+  // by the weekly industry×topic cache (~15 calls/week platform-wide). Opt the cron
+  // out separately with DISABLE_CAC_RESEARCH_CRON=true.
+  CAC_RESEARCH_ENABLED: z.string().optional(),
+
   // E-commerce OAuth providers. All optional — the corresponding
   // install/callback routes short-circuit with a 501 if the env vars
   // for that provider aren't set, so one provider can be live while
