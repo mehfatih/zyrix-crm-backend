@@ -26,6 +26,10 @@ const canWrite = requireRole("owner", "admin");
 // Monthly CAC — blended + per-platform + coverage (?months=1..36, default 12)
 router.get("/monthly", canRead, controller.monthly);
 
+// Sprint 3 — forecast + recommendations (read-only; consume /monthly + /planned)
+router.get("/forecast", canRead, controller.forecast);
+router.get("/recommendations", canRead, controller.recommendations);
+
 // Non-ad acquisition cost ledger (Sprint 2, Phase 1)
 router.get("/costs", canRead, costController.list);
 router.post("/costs", canWrite, costController.create);
