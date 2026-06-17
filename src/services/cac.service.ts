@@ -19,8 +19,11 @@
 // → platformForSource(). Customers with no source go to a visible "unattributed"
 // share (counted in blended + coverage denominator, not in any platform bucket).
 //
-// Gated by the `cac` entitlement (ALL_ON — a gift to every plan). Later sprints
-// add cost-input (beyond ad spend), forecasting, and recommendations.
+// Gated by the `cac` entitlement (ALL_ON — a gift to every plan). Sprint 2 folds
+// in NON-AD acquisition costs (the acquisition_costs ledger, guarded) so blended
+// CAC reflects TRUE total acquisition cost — ad spend is summed UNCHANGED; the
+// cost SUM is purely additive (empty ledger ⇒ identical numbers to Sprint 1).
+// Later sprints add forecasting + recommendations.
 // ============================================================================
 
 import { prisma } from "../config/database";
@@ -32,6 +35,20 @@ function round2(n: number): number {
 }
 function toNum(v: unknown): number {
   return v == null ? 0 : Number(v);
+}
+
+/** Guard: the Sprint-2 acquisition_costs table is applied out-of-band on Railway.
+ *  If it isn't present yet (code can deploy before the SQL is applied), CAC
+ *  degrades to ad-spend-only rather than crashing. */
+async function acquisitionCostsTableExists(): Promise<boolean> {
+  try {
+    const rows = (await prisma.$queryRawUnsafe(
+      `SELECT to_regclass('public.acquisition_costs') AS t`
+    )) as Array<{ t: string | null }>;
+    return rows[0]?.t != null;
+  } catch {
+    return false;
+  }
 }
 
 export interface CacPlatformMonth {
@@ -138,6 +155,31 @@ export async function computeMonthlyCac(companyId: string, months = 12): Promise
     fromIso
   )) as Array<{ month: string; platform: string | null; spendBase: string; spendUnconverted: number }>;
 
+  // ── Non-ad acquisition costs (base TRY) per month per channel ── (Sprint 2)
+  // Additive: folded into the SAME spend totals so blended CAC reflects TRUE total
+  // acquisition cost. GUARDED — degrades to ad-only if the table isn't applied yet
+  // (no crash). channel-tagged costs roll into that platform's bucket; untagged
+  // costs go to a distinct "non_ad" bucket. amountBase NULL rows counted as
+  // unconverted (honest), never guessed — identical to ad spend.
+  let costRows: Array<{ month: string; platform: string | null; spendBase: string; spendUnconverted: number }> = [];
+  if (await acquisitionCostsTableExists()) {
+    try {
+      costRows = (await prisma.$queryRawUnsafe(
+        `SELECT to_char(date_trunc('month', "costDate"), 'YYYY-MM') AS month,
+                "channel" AS platform,
+                COALESCE(SUM("amountBase"),0)::text AS "spendBase",
+                COUNT(*) FILTER (WHERE "amountBase" IS NULL)::int AS "spendUnconverted"
+           FROM acquisition_costs
+          WHERE "companyId" = $1 AND "costDate" >= $2::date
+          GROUP BY 1, 2`,
+        companyId,
+        fromIso
+      )) as Array<{ month: string; platform: string | null; spendBase: string; spendUnconverted: number }>;
+    } catch {
+      costRows = []; // any runtime hiccup → degrade to ad-only, never crash CAC
+    }
+  }
+
   const acc = new Map<string, MonthAcc>();
   const ensure = (mk: string): MonthAcc => {
     let a = acc.get(mk);
@@ -168,6 +210,15 @@ export async function computeMonthlyCac(companyId: string, months = 12): Promise
     a.spendBase = round2(a.spendBase + sb);
     a.spendUnconverted += Number(r.spendUnconverted ?? 0);
     const plat = r.platform || "other";
+    a.spendByPlatform.set(plat, round2((a.spendByPlatform.get(plat) ?? 0) + sb));
+  }
+  // Non-ad costs fold into the SAME accumulator (Sprint 2). Untagged → "non_ad".
+  for (const r of costRows) {
+    const a = ensure(r.month);
+    const sb = round2(toNum(r.spendBase));
+    a.spendBase = round2(a.spendBase + sb);
+    a.spendUnconverted += Number(r.spendUnconverted ?? 0);
+    const plat = r.platform || "non_ad";
     a.spendByPlatform.set(plat, round2((a.spendByPlatform.get(plat) ?? 0) + sb));
   }
 
